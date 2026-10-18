@@ -5,6 +5,7 @@ fixtures:
   - file: generated/01-01-hide-unhide-columns-find.xlsm
     source: families/01-mise-en-forme/01-01-hide-unhide-columns-find.bas
     code_page: 1252
+    expected_protected: true
     modules:
       - { name: ThisWorkbook, type: document }
       - { name: Sheet1, type: document }
@@ -761,6 +762,7 @@ fixtures:
   - file: generated/08-01-udf-regex.xlsm
     source: families/08-fonctions-personnalisees/08-01-udf-regex.bas
     code_page: 1252
+    expected_protected: true
     modules:
       - { name: ThisWorkbook, type: document }
       - { name: Sheet1, type: document }
@@ -1253,6 +1255,7 @@ fixtures:
   - file: generated/12-02-mailing-outlook-html-signature.xlsm
     source: families/12-interop-office/12-02-mailing-outlook-html-signature.bas
     code_page: 1252
+    expected_protected: true
     modules:
       - { name: ThisWorkbook, type: document }
       - { name: Sheet1, type: document }
