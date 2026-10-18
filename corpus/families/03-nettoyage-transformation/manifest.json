@@ -1,0 +1,181 @@
+[
+  {
+    "id": "03-01",
+    "file": "03-01-fill-blanks-from-above.bas",
+    "title": "Recopier la valeur du dessus dans les cellules vides",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/fill-a-value-down-into-blank-cells-in-a-column.md",
+    "author": "Tom Urtis (Microsoft VBA-Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 10,
+    "key_apis": [
+      "Range.SpecialCells(xlCellTypeBlanks)",
+      "Range.Formula R1C1",
+      "Range.Value = Range.Value",
+      "On Error Resume Next"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "Remplit les trous de la colonne A avec la valeur de la cellule au-dessus (formule =R[-1]C convertie en valeurs)."
+  },
+  {
+    "id": "03-02",
+    "file": "03-02-delete-duplicates-advancedfilter.bas",
+    "title": "Supprimer les doublons par filtre avancé",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/delete-duplicate-entries-in-a-range.md",
+    "author": "Tom Urtis (Microsoft VBA-Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 17,
+    "key_apis": [
+      "Range.AdvancedFilter (Unique)",
+      "Range.SpecialCells(xlCellTypeVisible)",
+      "Worksheet.ShowAllData",
+      "Range.Find",
+      "EntireRow.Delete"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "AdvancedFilter (filtre avancé) mal supporté"
+    ],
+    "notes": "Marque les valeurs uniques de la colonne A via un filtre avancé, puis supprime toutes les lignes non marquées (doublons)."
+  },
+  {
+    "id": "03-03",
+    "file": "03-03-remove-spaces-nonprintable.bas",
+    "title": "Nettoyer espaces insécables et caractères non imprimables",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/RemoveNonPrintableCharacters/removeSpace.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 15,
+    "key_apis": [
+      "Intersect",
+      "Selection",
+      "Range.Replace",
+      "Chr(160)",
+      "Application.Trim",
+      "Application.Clean"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "Sur la sélection, remplace les espaces insécables puis applique SUPPRESPACE et EPURAGE cellule par cellule."
+  },
+  {
+    "id": "03-04",
+    "file": "03-04-split-and-concatenate.bas",
+    "title": "Scinder sur « _ » puis concaténer",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/Aquafortis/vba-sub-snippets/blob/58f65955ff084471ab8a4c3b541e528672d577f4/Excel/LeftRightConcatenate.vb",
+    "author": "Aquafortis",
+    "license": "MPL-2.0",
+    "status": "included",
+    "loc": 25,
+    "key_apis": [
+      "Split",
+      "InStr",
+      "Range.Offset",
+      "Range.Value2",
+      "EntireColumn.AutoFit"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "Découpe les valeurs de la colonne A en deux colonnes LEFT/RIGHT sur le séparateur « _ » puis les recombine avec « and » ; variable non déclarée (pas d'Option Explicit), licence MPL-2.0 à signaler."
+  },
+  {
+    "id": "03-05",
+    "file": "03-05-split-product-code-regex.bas",
+    "title": "Éclater un code article (style/tissu/coloris/taille) par regex",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/SplitStringInMultipleCells/splitStyleFabricColourSize.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 65,
+    "key_apis": [
+      "CreateObject(\"vbscript.regexp\")",
+      "Collection",
+      "classe productCode",
+      "Range.Resize",
+      "tableaux Variant",
+      "Attribute VB_ProcData (raccourci Ctrl+Maj+T)"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject (VBScript.RegExp)",
+      "module de classe productCode requis"
+    ],
+    "notes": "Analyse des codes article textile avec une expression régulière et écrit style, tissu, coloris et taille dans 4 colonnes, via une classe métier et une collection."
+  },
+  {
+    "id": "03-06",
+    "file": "03-06-rtv-report-cleanup-and-compare.bas",
+    "title": "Retraitement et rapprochement d'un export RTV (retours fournisseur)",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [
+      "01-mise-en-forme",
+      "04-recherche-referentiel"
+    ],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/CompareTwoLists/RTV.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 265,
+    "key_apis": [
+      "Columns.Insert/Delete",
+      "Range.UnMerge",
+      "Union",
+      "Rows.Delete",
+      "SpecialCells(xlCellTypeBlanks).FormulaR1C1",
+      "Range.Value = Range.Value",
+      "Range.Sort",
+      "Range.BorderAround",
+      "Range.AutoFilter",
+      "PageSetup",
+      "Application.InputBox Type:=8",
+      "Range.Find",
+      "UserForm ProgressDialogue"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "UserForm ProgressDialogue déclarée",
+      "Application.InputBox de sélection de plage",
+      "dépend du module SmartUtilities"
+    ],
+    "notes": "Module métier complet (logistique retail) : nettoie un export RTV (suppression d'en-têtes et colonnes, recopie vers le bas, fusion des lignes d'un même article, suppression des lignes vides), le met en forme puis le rapproche d'une liste d'inventaire."
+  },
+  {
+    "id": "03-07",
+    "file": null,
+    "title": "Supprimer lignes vides et doublons (OsSyLab)",
+    "family": "03-nettoyage-transformation",
+    "secondary_families": [],
+    "source_url": "https://github.com/OsSyLab/Excel-VBA-Macros/tree/main/Remove_Blank_Duplicates",
+    "author": "Osman Uluhan (Data Solutions Lab.)",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "Range.RemoveDuplicates",
+      "SpecialCells(xlCellTypeBlanks)"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "Référence seulement : pas de fichier LICENSE (« All rights reserved ») ; supprime lignes vides et doublons d'une plage."
+  }
+]

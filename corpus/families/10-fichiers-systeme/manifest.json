@@ -1,0 +1,183 @@
+[
+  {
+    "id": "10-01",
+    "file": "10-01-boucle-dir-classeurs-dossier.bas",
+    "title": "Boucle Dir sur les classeurs d'un dossier",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [
+      "02-consolidation"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Utilities/SmartUtilities.bas#L125-L146",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 15,
+    "key_apis": [
+      "Dir",
+      "Workbooks.Open",
+      "Workbook.Close",
+      "Application.ScreenUpdating"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "accès système de fichiers local",
+      "chemin Windows codé en dur",
+      "ouverture de classeurs externes"
+    ],
+    "notes": "Parcourt tous les fichiers .xls d'un dossier local avec Dir, ouvre chaque classeur puis le referme sans enregistrer."
+  },
+  {
+    "id": "10-02",
+    "file": "10-02-export-feuilles-en-classeurs.bas",
+    "title": "Export de chaque feuille en classeur séparé (SaveAs en lot)",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/WB%20%26%20WS/CopyEachWSToNewWB.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 27,
+    "key_apis": [
+      "Worksheet.Copy",
+      "Workbook.SaveAs",
+      "Application.DisplayAlerts",
+      "MsgBox",
+      "On Error GoTo"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "SaveAs vers le système de fichiers local",
+      "création de nouveaux classeurs"
+    ],
+    "notes": "Copie chaque feuille du classeur actif dans un nouveau classeur .xlsx enregistré dans le même dossier."
+  },
+  {
+    "id": "10-03",
+    "file": "10-03-generation-html-sommaire.bas",
+    "title": "Génération d'un fichier HTML de sommaire (Open For Output)",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [
+      "06-generation-rapports",
+      "13-api-windows-activex"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/create-an-html-file-with-a-table-of-contents-based-on-cell-data.md",
+    "author": "Holy Macro! Books (Microsoft Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 63,
+    "key_apis": [
+      "Open ... For Output",
+      "Print #",
+      "Close",
+      "WorksheetFunction.CountA",
+      "Shell"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "E/S fichier natives VBA (Open/Print #)",
+      "Shell (hh.exe)",
+      "accès système de fichiers local"
+    ],
+    "notes": "Transforme une hiérarchie sur trois colonnes en liste HTML imbriquée écrite dans test.htm puis ouvre le fichier via Shell."
+  },
+  {
+    "id": "10-04",
+    "file": "10-04-renommage-versions-fso.bas",
+    "title": "Renommage en lot de fichiers avec suffixe de version (FSO)",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Utilities/VersionRename.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 51,
+    "key_apis": [
+      "Application.FileDialog(msoFileDialogFolderPicker)",
+      "Scripting.FileSystemObject",
+      "Folder.SubFolders",
+      "File.Name",
+      "Application.InputBox"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject Scripting.FileSystemObject",
+      "sélecteur de dossier FileDialog",
+      "renommage de fichiers locaux"
+    ],
+    "notes": "Demande un dossier puis renomme tous ses fichiers et ceux des sous-dossiers en ajoutant ou remplaçant un suffixe _Vn."
+  },
+  {
+    "id": "10-05",
+    "file": "10-05-import-export-csv-stream.bas",
+    "title": "Lecture/écriture de CSV via ADODB.Stream et FSO",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [
+      "03-nettoyage-transformation",
+      "11-donnees-externes"
+    ],
+    "source_url": "https://github.com/sdkn104/VBA-CSV/blob/48d98d679a39850217e4fa1319020458d062ad95/CSVUtils_Examples.bas",
+    "author": "sdkn104",
+    "license": "MIT",
+    "status": "included",
+    "loc": 121,
+    "key_apis": [
+      "ADODB.Stream",
+      "Scripting.FileSystemObject",
+      "OpenTextFile",
+      "CreateTextFile",
+      "ParseCSVToCollection",
+      "ConvertArrayToCSV"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject ADODB.Stream",
+      "COM/CreateObject Scripting.FileSystemObject",
+      "dépend du module CSVUtils.bas"
+    ],
+    "notes": "Exemples d'export d'une plage en CSV UTF-8 puis de relecture et d'analyse du fichier avec la bibliothèque VBA-CSV."
+  },
+  {
+    "id": "10-06",
+    "file": "10-06-libfiletools-bibliotheque.bas",
+    "title": "Bibliothèque complète d'outils fichiers multiplateforme (LibFileTools)",
+    "family": "10-fichiers-systeme",
+    "secondary_families": [
+      "13-api-windows-activex",
+      "08-fonctions-personnalisees"
+    ],
+    "source_url": "https://github.com/cristianbuse/VBA-FileTools/blob/7552e41bee4f7f03c01b687f21009745b179a5d7/src/LibFileTools.bas",
+    "author": "Cristian Buse",
+    "license": "MIT",
+    "status": "included",
+    "loc": 2940,
+    "key_apis": [
+      "Declare PtrSafe",
+      "LongPtr",
+      "#If Mac",
+      "Dir",
+      "MkDir",
+      "Kill",
+      "GetAttr",
+      "Scripting.FileSystemObject",
+      "OneDrive/SharePoint URL",
+      "MacScript",
+      "advapi32 (registre)"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Declare PtrSafe (API Win32 et libc Mac)",
+      "accès système de fichiers local",
+      "compilation conditionnelle #If Mac/VBA7/Win64",
+      "registre (comptes OneDrive)"
+    ],
+    "notes": "Module de plus de 3000 lignes offrant copie, suppression, création de dossiers, recherche de fichiers et conversion d'URL OneDrive en chemins locaux."
+  }
+]

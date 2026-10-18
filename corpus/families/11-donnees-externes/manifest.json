@@ -1,0 +1,172 @@
+[
+  {
+    "id": "11-01",
+    "file": "11-01-querytable-recordset-sqlserver.bas",
+    "title": "QueryTable alimentée par un Recordset SQL Server",
+    "family": "11-donnees-externes",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.QueryTables.Add.md",
+    "author": "Microsoft",
+    "license": "MIT",
+    "status": "included",
+    "loc": 31,
+    "key_apis": [
+      "ADODB.Connection",
+      "ADODB.Recordset",
+      "QueryTables.Add",
+      "QueryTable.Refresh"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "ADODB",
+      "QueryTables",
+      "identifiants en clair dans la chaîne de connexion"
+    ],
+    "notes": "Ouvre une connexion SQLOLEDB, exécute une requête sur Products et déverse le résultat dans une QueryTable de la feuille active."
+  },
+  {
+    "id": "11-02",
+    "file": "11-02-api-rest-erp-infor-m3.bas",
+    "title": "Appels REST XML vers l'ERP Infor M3 ligne à ligne",
+    "family": "11-donnees-externes",
+    "secondary_families": [
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Infor%20M3%20API%20-%20Data%20upload/OIS100MI_CONFIRM.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 82,
+    "key_apis": [
+      "MSXML2.XMLHTTP.6.0",
+      "MSXML2.DOMDocument.6.0",
+      "setRequestHeader",
+      "Basic Auth",
+      "Range.Replace"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject MSXML2",
+      "authentification Basic avec mot de passe en cellule",
+      "dépend du module Encoding (Base64)"
+    ],
+    "notes": "Pour chaque ligne de la feuille, appelle la transaction OIS100MI de l'API REST Infor M3 et écrit OK/NOK avec le message renvoyé."
+  },
+  {
+    "id": "11-03",
+    "file": "11-03-vba-web-google-maps.bas",
+    "title": "Itinéraire Google Maps via VBA-Web (client REST JSON)",
+    "family": "11-donnees-externes",
+    "secondary_families": [
+      "08-fonctions-personnalisees"
+    ],
+    "source_url": "https://github.com/VBA-tools/VBA-Web/blob/9dbcc751d177099f20c96c5ee332ec10ef47423c/examples/maps/Maps.bas",
+    "author": "Tim Hall (VBA-tools)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 51,
+    "key_apis": [
+      "WebClient",
+      "WebRequest",
+      "WebResponse",
+      "AddQuerystringParam",
+      "Dictionary",
+      "JSON"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "dépend de la bibliothèque VBA-Web (WinHttp/MSXML)",
+      "Scripting.Dictionary"
+    ],
+    "notes": "Construit une requête GET vers l'API Directions de Google Maps et formate la durée et la distance du trajet à partir du JSON."
+  },
+  {
+    "id": "11-04",
+    "file": "11-04-classe-sql-server-adodb.cls",
+    "title": "Classe d'accès SQL Server (ADODB + QueryTable + export)",
+    "family": "11-donnees-externes",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/cavo789/vba_excel_sql/blob/cf470e8dd08e8c84687241c645450e925cbc9d29/src/SQL2Excel.xlsm/clsData.cls",
+    "author": "Christophe Avonture",
+    "license": "MIT",
+    "status": "included",
+    "loc": 240,
+    "key_apis": [
+      "ADODB.Connection",
+      "ADODB.Recordset",
+      "CopyFromRecordset",
+      "QueryTables.Add",
+      "Workbooks.Add"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "ADODB",
+      "référence Microsoft ActiveX Data Objects",
+      "QueryTables OLEDB",
+      "connexion SQL Server Windows"
+    ],
+    "notes": "Classe réutilisable qui exécute une requête SQL Server, copie le résultat dans une feuille, crée une QueryTable rafraîchissable ou exporte vers un nouveau classeur."
+  },
+  {
+    "id": "11-05",
+    "file": "11-05-vba-json-jsonconverter.bas",
+    "title": "Parseur/sérialiseur JSON VBA-JSON (JsonConverter)",
+    "family": "11-donnees-externes",
+    "secondary_families": [
+      "08-fonctions-personnalisees",
+      "13-api-windows-activex"
+    ],
+    "source_url": "https://github.com/VBA-tools/VBA-JSON/blob/06b6c45a2e8086a7a761f00bead7460852d6b602/JsonConverter.bas",
+    "author": "Tim Hall (VBA-tools)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 731,
+    "key_apis": [
+      "ParseJson",
+      "ConvertToJson",
+      "Scripting.Dictionary",
+      "Collection",
+      "Declare PtrSafe (Mac utc)",
+      "#If Mac"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "Scripting.Dictionary",
+      "Declare PtrSafe pour conversions UTC",
+      "bibliothèque inutile en JS (JSON natif)"
+    ],
+    "notes": "Bibliothèque de référence pour analyser et produire du JSON en VBA, utilisée par la plupart des macros d'appel d'API REST."
+  },
+  {
+    "id": "11-06",
+    "file": null,
+    "title": "Module ADODB de requêtes SQL sur classeurs (sans licence)",
+    "family": "11-donnees-externes",
+    "secondary_families": [
+      "02-consolidation"
+    ],
+    "source_url": "https://github.com/ngtridung97/Vba/blob/master/ADODB.bas",
+    "author": "ngtridung97",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "ADODB.Connection",
+      "ADODB.Recordset",
+      "CopyFromRecordset"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "ADODB"
+    ],
+    "notes": "Exemple réel de requêtage SQL sur des classeurs Excel via ADODB, non copié faute de fichier LICENSE dans le dépôt."
+  }
+]

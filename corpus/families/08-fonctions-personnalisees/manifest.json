@@ -1,0 +1,157 @@
+[
+  {
+    "id": "08-01",
+    "file": "08-01-udf-regex.bas",
+    "title": "Bibliothèque de fonctions regex (UDF)",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://github.com/molsonkiko/vba_regex_funcs/blob/c8628aeaf5e9a0cf99d547a5eb5ebe0a4f4c99e8/RegexFunctions.bas",
+    "author": "Mark Johnston Olson (molsonkiko)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 185,
+    "key_apis": [
+      "VBScript.RegExp",
+      "CreateObject",
+      "MatchCollection",
+      "SubMatches",
+      "fonctions renvoyant des tableaux"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "VBScript.RegExp (COM Windows)",
+      "UDF renvoyant des tableaux"
+    ],
+    "notes": "Une douzaine d'UDF (RegexReplace, RegexMatch, RegexFindAll, RegexSplit, RegexEscape...) basées sur VBScript.RegExp."
+  },
+  {
+    "id": "08-02",
+    "file": "08-02-udf-extraction-entre-chaines.bas",
+    "title": "UDF d'extraction de texte entre deux sous-chaînes",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/SuperMidFunction/SuperMidFunction.bas",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 38,
+    "key_apis": [
+      "InStr",
+      "InStrRev",
+      "Mid",
+      "MsgBox",
+      "End"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "MsgBox et instruction End dans une UDF"
+    ],
+    "notes": "Fonction SuperMid qui renvoie le texte compris entre deux délimiteurs, avec recherche inversée optionnelle."
+  },
+  {
+    "id": "08-03",
+    "file": "08-03-udf-cle-controle-upc.bas",
+    "title": "Calcul de la clé de contrôle UPC",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Utilities/CalculateCheckDigit.bas",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 25,
+    "key_apis": [
+      "Mid",
+      "CInt",
+      "Mod",
+      "Selection",
+      "Range.Offset"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "UDF calculant la clé de contrôle d'un code UPC/EAN et macro qui l'ajoute aux codes sélectionnés."
+  },
+  {
+    "id": "08-04",
+    "file": "08-04-udf-somme-cellules-visibles.bas",
+    "title": "Somme des seules cellules visibles (volatile)",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Utilities/Utilities.bas",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 10,
+    "key_apis": [
+      "Application.Volatile",
+      "Range.Rows.Hidden",
+      "Range.Columns.Hidden"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "Application.Volatile",
+      "fonction Private (non appelable depuis une cellule en l'état)"
+    ],
+    "notes": "UDF volatile qui additionne les cellules non masquées d'une plage (extrait ; déclarée Private dans la source)."
+  },
+  {
+    "id": "08-05",
+    "file": "08-05-udf-montant-en-lettres.bas",
+    "title": "Montant en toutes lettres (devise)",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [],
+    "source_url": "https://github.com/physics515/VBA-Common-Library/blob/7cf609e32621de16de5b077215efa765d3c148e5/spellNumberAsCurrency.bas",
+    "author": "physics515",
+    "license": "GPL-3.0-only",
+    "status": "included",
+    "loc": 46,
+    "key_apis": [
+      "Str",
+      "InStr",
+      "Mid",
+      "Select Case",
+      "appels module common.*"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "dépend de fonctions d'autres modules (common.threeDigitNumberToText...)"
+    ],
+    "notes": "Convertit un nombre en montant anglais en toutes lettres avec devise ; la valeur de retour est affectée à SpellNumber au lieu du nom de fonction (bug d'origine) ; licence GPL-3.0 à signaler."
+  },
+  {
+    "id": "08-06",
+    "file": "08-06-udf-chemins-fichiers-tableaux.bas",
+    "title": "UDF matricielles sur chemins de fichiers",
+    "family": "08-fonctions-personnalisees",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/cristianbuse/VBA-FileTools/blob/7552e41bee4f7f03c01b687f21009745b179a5d7/src/UDF_FileTools.bas",
+    "author": "Cristian Buse",
+    "license": "MIT",
+    "status": "included",
+    "loc": 182,
+    "key_apis": [
+      "Application.Volatile False",
+      "Application.Caller",
+      "UDF renvoyant des tableaux (spill)",
+      "LibFileTools.IsFile/GetLocalPath"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "dépendance au module LibFileTools (API système, OneDrive/SharePoint)",
+      "accès au système de fichiers depuis une cellule",
+      "Application.Caller"
+    ],
+    "notes": "UDF IS_FILE, IS_FOLDER, LOCAL_PATH, REMOTE_PATH acceptant plages ou tableaux et renvoyant des tableaux débordants."
+  }
+]

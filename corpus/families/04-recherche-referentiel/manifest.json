@@ -1,0 +1,240 @@
+[
+  {
+    "id": "04-01",
+    "file": "04-01-count-unique-dictionary.bas",
+    "title": "Compter les valeurs distinctes avec un dictionnaire",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Testing.bas",
+    "author": "Byron Wall (@byronwall)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 13,
+    "key_apis": [
+      "Scripting.Dictionary (New Dictionary, early binding)",
+      "Dictionary.Exists",
+      "Intersect",
+      "UsedRange"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "référence Microsoft Scripting Runtime",
+      "GetInputOrSelection non inclus"
+    ],
+    "notes": "Charge les valeurs d'une plage dans un dictionnaire et affiche le nombre de clés distinctes."
+  },
+  {
+    "id": "04-02",
+    "file": "04-02-compare-lists-return-column.bas",
+    "title": "RECHERCHEV en VBA entre deux listes choisies à la souris",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/CompareLists/CompareLists.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 100,
+    "key_apis": [
+      "Application.InputBox Type:=8",
+      "Range.Find (LookAt:=xlWhole, MatchCase)",
+      "Trim",
+      "Range.Cells relatif",
+      "EntireColumn.AutoFit",
+      "Err.Number (Select Case)"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "Application.InputBox de sélection de plage",
+      "dépend du module SmartUtilities (ResetFilters)"
+    ],
+    "notes": "Équivalent RECHERCHEV codé à la main : l'utilisateur désigne la liste source, la colonne résultat, la liste de référence et la colonne à rapatrier ; chaque valeur est cherchée par Find et le résultat ou « No match found » est écrit (fichier marqué « All rights reserved » mais dépôt sous licence MIT)."
+  },
+  {
+    "id": "04-03",
+    "file": "04-03-categorical-coloring-lookup.bas",
+    "title": "Appliquer les couleurs d'une table de référence par correspondance",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Formatting_Helpers.bas",
+    "author": "Byron Wall (@byronwall)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 26,
+    "key_apis": [
+      "Application.Match",
+      "Range.Font",
+      "Range.Interior.Color",
+      "Range.Borders.LineStyle"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "GetInputOrSelection (InputBox Type:=8) non inclus"
+    ],
+    "notes": "Pour chaque cellule cible, cherche sa valeur dans une plage de référence (EQUIV) et recopie le style de police et la couleur de fond de la cellule trouvée."
+  },
+  {
+    "id": "04-04",
+    "file": "04-04-compare-hr-snapshots.bas",
+    "title": "Comparer deux extractions RH par matricule",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "03-nettoyage-transformation",
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/jasonbxu/excel/blob/33a108703e9470b04d6b13f43e888b2b2fc265fb/Compare%20Macro",
+    "author": "jasonbxu",
+    "license": "GPL-2.0-only",
+    "status": "included",
+    "loc": 47,
+    "key_apis": [
+      "InputBox",
+      "UsedRange",
+      "WorksheetFunction.Match",
+      "WorksheetFunction.Index",
+      "Range.Interior.Color",
+      "On Error Resume Next"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "InputBox de saisie des noms de feuilles"
+    ],
+    "notes": "Compare la photo du jour et la veille d'un fichier RH : pour chaque salarié (clé matricule) et chaque colonne (rapprochée par en-tête), surligne en jaune les cellules modifiées et compte les écarts par ligne ; licence GPL-2.0 à signaler."
+  },
+  {
+    "id": "04-05",
+    "file": "04-05-compare-stock-vs-consignment.bas",
+    "title": "Rapprocher le stock disponible et les listes de consignation",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/ManipulateData/SpotCheck.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 106,
+    "key_apis": [
+      "Application.InputBox Type:=8",
+      "Range.Find",
+      "Range.FindNext",
+      "Range.End(xlToRight)",
+      "Trim",
+      "MsgBox"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "Application.InputBox de sélection de plage",
+      "dépend du module SmartUtilities (ResetFilters)"
+    ],
+    "notes": "Réconciliation métier retail : pour chaque SKU en stock, retrouve toutes ses occurrences dans la liste de consignation (Find/FindNext), concatène quantités et références de consignation et marque les lignes trouvées."
+  },
+  {
+    "id": "04-06",
+    "file": null,
+    "title": "Modèle de réconciliation de portefeuille (opérations sur titres)",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "02-consolidation",
+      "11-donnees-externes"
+    ],
+    "source_url": "https://github.com/brookswoolf/CA-Portfolio-Reconciliation",
+    "author": "brookswoolf",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "Workbooks.Open",
+      "VLOOKUP en VBA",
+      "import TXT/XLS"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Workbooks.Open sur fichiers locaux",
+      "ouverture de fichier depuis le web"
+    ],
+    "notes": "Référence seulement (pas de LICENSE) : rapproche les choix des gérants avec les données du dépositaire par RECHERCHEV automatisées, cas typique de base de données qui s'ignore."
+  },
+  {
+    "id": "04-07",
+    "file": null,
+    "title": "Fonctions de rapprochement approximatif (fuzzy matching)",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "08-fonctions-personnalisees"
+    ],
+    "source_url": "https://github.com/kyledeer-32/vba_fuzzymatching",
+    "author": "kyledeer-32",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "UDF",
+      "distance de chaînes"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [],
+    "notes": "Référence seulement (pas de LICENSE) : fonctions et procédures de correspondance approximative entre listes de classeurs différents."
+  },
+  {
+    "id": "04-08",
+    "file": null,
+    "title": "Comparer deux feuilles avec un dictionnaire (forum MrExcel)",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://www.mrexcel.com/board/threads/excel-vba-using-dictionary-to-compare-multiple-columns-in-two-worksheet-ranges.1026097/",
+    "author": "Contributeurs MrExcel",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "Scripting.Dictionary",
+      "tableaux Variant"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject"
+    ],
+    "notes": "Référence seulement (contenu de forum sans licence ouverte) : rapprochement multi-colonnes entre deux feuilles par clés de dictionnaire, motif très répandu."
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "04-09",
+    "file": "04-09-rapprochement-dictionary-synthetique.bas",
+    "title": "Rapprochement paie / RH par Scripting.Dictionary",
+    "family": "04-recherche-referentiel",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "key_apis": [
+      "Scripting.Dictionary",
+      "Worksheets.Add",
+      "End(xlUp)"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject Scripting.Dictionary"
+    ],
+    "notes": "Compare deux listes par matricule et liste les écarts dans une nouvelle feuille ; comble l'absence d'échantillon Dictionary sous licence.",
+    "loc": 44
+  }
+]

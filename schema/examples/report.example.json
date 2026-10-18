@@ -1,0 +1,219 @@
+{
+  "schema_version": "0.1.0",
+  "tool": {
+    "name": "macro-port",
+    "version": "0.1.0",
+    "rules_version": "0.1.0",
+    "build": "cli"
+  },
+  "generated_at": "2026-10-18T09:00:00Z",
+  "redacted": false,
+  "lang": "en",
+  "scan": {
+    "roots": [
+      "examples"
+    ],
+    "files_total": 1,
+    "files_with_macros": 1,
+    "files_failed": 0,
+    "duration_ms": 12
+  },
+  "files": [
+    {
+      "path": "examples/14-01-auto-open-shell.xlsm",
+      "size": 14321,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "container": "xlsm",
+      "status": "ok",
+      "errors": [],
+      "vba_project": {
+        "name": "VBAProject",
+        "protected": false,
+        "code_page": 1252,
+        "references": [
+          "Visual Basic For Applications",
+          "Microsoft Excel 16.0 Object Library",
+          "OLE Automation",
+          "Microsoft Office 16.0 Object Library"
+        ],
+        "modules": [
+          {
+            "name": "M_14_01",
+            "type": "standard",
+            "stream_name": "M_14_01",
+            "source_available": true,
+            "source_missing_suspected": false,
+            "source_sha256": "ce76993f3336b3bdd4370c2fa7200ae4422112c3460812c025d47edb05ea2042",
+            "metrics": {
+              "loc": 7,
+              "logical_loc": 5,
+              "procedures": 1,
+              "cyclomatic": 1,
+              "cyclomatic_total": 1,
+              "max_nesting": 0
+            },
+            "declarations": {
+              "declare_count": 0,
+              "with_events_count": 0,
+              "option_explicit": true,
+              "option_vba_support": false
+            },
+            "procedures": [
+              {
+                "name": "Auto_Open",
+                "kind": "sub",
+                "visibility": "default",
+                "is_entry_point": true,
+                "is_event_handler": false,
+                "possibly_unused": false,
+                "start_line": 4,
+                "end_line": 7,
+                "metrics": {
+                  "loc": 4,
+                  "logical_loc": 4,
+                  "cyclomatic": 1,
+                  "max_nesting": 0,
+                  "parameters": 0,
+                  "goto_count": 0
+                },
+                "calls": [],
+                "apis": [
+                  {
+                    "name": "Shell",
+                    "count": 1
+                  }
+                ],
+                "primary_family": "09-events",
+                "secondary_families": [
+                  "13-windows-api"
+                ],
+                "families": [
+                  {
+                    "family": "09-events",
+                    "score": 3,
+                    "evidence": [
+                      {
+                        "rule_id": "evt.auto-macros",
+                        "line": 4,
+                        "snippet": "Sub Auto_Open()"
+                      }
+                    ]
+                  },
+                  {
+                    "family": "13-windows-api",
+                    "score": 3,
+                    "evidence": [
+                      {
+                        "rule_id": "win.shell",
+                        "line": 6,
+                        "snippet": "r = Shell(\"notepad.exe\", vbNormalFocus)"
+                      }
+                    ]
+                  }
+                ],
+                "signals": [
+                  {
+                    "signal_id": "sec.auto-exec",
+                    "severity": "medium",
+                    "module": "M_14_01",
+                    "procedure": "Auto_Open",
+                    "evidence": [
+                      {
+                        "rule_id": "sec.auto-exec",
+                        "line": 4,
+                        "snippet": "Sub Auto_Open()"
+                      }
+                    ]
+                  },
+                  {
+                    "signal_id": "sec.shell",
+                    "severity": "medium",
+                    "module": "M_14_01",
+                    "procedure": "Auto_Open",
+                    "evidence": [
+                      {
+                        "rule_id": "sec.shell",
+                        "line": 6,
+                        "snippet": "r = Shell(\"notepad.exe\", vbNormalFocus)"
+                      }
+                    ]
+                  }
+                ],
+                "traits": [],
+                "orientation": null
+              }
+            ],
+            "signals": []
+          }
+        ]
+      },
+      "xlm": {
+        "present": false,
+        "macro_sheets": 0
+      },
+      "metrics": {
+        "loc": 7,
+        "logical_loc": 5,
+        "procedures": 1,
+        "cyclomatic": 1,
+        "cyclomatic_total": 1,
+        "max_nesting": 0,
+        "forms": 0,
+        "declare_count": 0,
+        "external_dependencies": 0
+      },
+      "complexity_level": "low",
+      "primary_family": "09-events",
+      "families": [
+        {
+          "family": "09-events",
+          "score": 3
+        },
+        {
+          "family": "13-windows-api",
+          "score": 3
+        }
+      ],
+      "max_severity": "high",
+      "signals": [
+        {
+          "signal_id": "sec.chain.autoexec-execution",
+          "severity": "high",
+          "evidence": [
+            {
+              "rule_id": "sec.auto-exec",
+              "line": 4
+            },
+            {
+              "rule_id": "sec.shell",
+              "line": 6
+            }
+          ]
+        }
+      ],
+      "traits": [],
+      "orientation": null,
+      "workbook_encrypted": false
+    }
+  ],
+  "summary": {
+    "by_status": {
+      "ok": 1
+    },
+    "by_family": {
+      "09-events": 1
+    },
+    "by_complexity": {
+      "low": 1
+    },
+    "by_severity": {
+      "high": 1
+    },
+    "totals": {
+      "modules": 1,
+      "procedures": 1,
+      "logical_loc": 5,
+      "possibly_unused_procedures": 0
+    }
+  }
+}

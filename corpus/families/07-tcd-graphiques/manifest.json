@@ -1,0 +1,163 @@
+[
+  {
+    "id": "07-01",
+    "file": "07-01-graphiques-series-temporelles.bas",
+    "title": "Création de graphiques et séries temporelles",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Chart_Processing.bas",
+    "author": "Byron Wall (byronwall/bUTL)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 133,
+    "key_apis": [
+      "ChartObjects.Add",
+      "SeriesCollection.NewSeries",
+      "Chart.ChartType",
+      "Series.XValues",
+      "DataLabels",
+      "Application.InputBox",
+      "classe bUTLChartSeries"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "manipulation fine des séries (SeriesCollection, Formula)",
+      "dépendances à des classes/modules du add-in bUTL",
+      "InputBox Type:=8"
+    ],
+    "notes": "Module d'un add-in : crée des nuages de points/séries temporelles par colonne, copie et trie les séries, supprime les étiquettes à zéro."
+  },
+  {
+    "id": "07-02",
+    "file": "07-02-tcd-depuis-recordset-ado.bas",
+    "title": "TCD créé depuis un recordset ADO (Access)",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [
+      "11-donnees-externes"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.PivotTables.Add.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 45,
+    "key_apis": [
+      "ADODB.Connection",
+      "ADODB.Recordset",
+      "PivotCaches.Add",
+      "PivotCache.Recordset",
+      "PivotTables.Add",
+      "PivotFields.Orientation"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "ADODB / Jet OLEDB",
+      "PivotCache alimenté par Recordset",
+      "TCD piloté par VBA"
+    ],
+    "notes": "Ouvre une base Access via ADO, crée un cache et un tableau croisé « Performance » puis place les champs en ligne, colonne et données."
+  },
+  {
+    "id": "07-03",
+    "file": "07-03-tcd-champs-moyenne.bas",
+    "title": "Passer tous les champs de valeur des TCD en moyenne",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Usability.bas",
+    "author": "Byron Wall (byronwall/bUTL)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 13,
+    "key_apis": [
+      "Worksheet.PivotTables",
+      "PivotTable.DataFields",
+      "PivotField.Function",
+      "xlAverage"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "modèle objet PivotTable"
+    ],
+    "notes": "Parcourt tous les TCD de la feuille active et passe chaque champ de valeur en fonction Moyenne (extrait d'un module plus large)."
+  },
+  {
+    "id": "07-04",
+    "file": "07-04-animation-sparklines.bas",
+    "title": "Animation d'un groupe de sparklines",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Sparklines/animate-a-sparkline.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 13,
+    "key_apis": [
+      "SparklineGroups",
+      "SparklineGroup.ModifySourceData",
+      "Range.Offset",
+      "DoEvents"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Sparklines (SparklineGroups)",
+      "boucle d'attente active DoEvents"
+    ],
+    "notes": "Décale la source de données d'un groupe de sparklines mois par mois pour produire une animation."
+  },
+  {
+    "id": "07-05",
+    "file": "07-05-graphique-ligne-axe.bas",
+    "title": "Graphique en courbes et croisement d'axe",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.Axis.CrossesAt.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 14,
+    "key_apis": [
+      "Charts.Add",
+      "Chart.SetSourceData",
+      "Chart.Location",
+      "Axes(xlValue)",
+      "Selection.CrossesAt"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "Charts.Add puis Location (feuille graphique)",
+      "style enregistreur Select/Selection"
+    ],
+    "notes": "Écrit des données exemple, crée un graphique en courbes empilées placé sur Sheet1 et fixe le croisement de l'axe à 3."
+  },
+  {
+    "id": "07-06",
+    "file": null,
+    "title": "Création de TCD de reporting marketing",
+    "family": "07-tcd-graphiques",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/ateneva/VBAExcelTips/blob/cd3a9403496e71700e4ca97795fa682498ce2c70/VBAProjectFiles/PTCreateJohnW.bas",
+    "author": "ateneva",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "PivotCaches.Create",
+      "CreatePivotTable",
+      "PivotFields"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "TCD piloté par VBA"
+    ],
+    "notes": "Série de macros réelles de création de TCD (PivotCaches.Create) et de graphiques (ChtCreate.bas) ; dépôt sans LICENSE, référence seulement."
+  }
+]

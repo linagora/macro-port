@@ -1,0 +1,183 @@
+# Macro-Port usage families (Lot 1). Licence: CC BY 4.0.
+# Each signal adds `weight` to its family score for a procedure, at most `max_hits_per_procedure` times (default 3).
+# Matchers are defined in docs/SPEC-LOT1.md section 7.
+version: 0.1.0
+scoring:
+  min_score: 3            # below this, the procedure is "unclassified"
+  secondary_ratio: 0.6    # secondary families: score >= ratio * primary score
+  default_max_hits_per_procedure: 3
+
+families:
+  - id: 01-formatting
+    corpus_slug: 01-mise-en-forme
+    label: { en: "Formatting and layout", fr: "Mise en forme" }
+    signals:
+      - { id: fmt.cell-style, match: member, pattern: [Interior, Borders, BorderAround, ColorIndex, Pattern, TintAndShade], weight: 1 }
+      - { id: fmt.conditional, match: member, pattern: [FormatConditions, AddDatabar, AddColorScale, AddIconSetCondition], weight: 3 }
+      - { id: fmt.text-style, match: member, pattern: [Font, Bold, Italic, Underline, FontStyle, WrapText, Orientation, IndentLevel], weight: 1 }
+      - { id: fmt.alignment, match: member, pattern: [HorizontalAlignment, VerticalAlignment, MergeCells, Merge, UnMerge], weight: 1 }
+      - { id: fmt.number-format, match: member, pattern: [NumberFormat, NumberFormatLocal, Style], weight: 1 }
+      - { id: fmt.dimensions, match: member, pattern: [ColumnWidth, RowHeight, AutoFit, StandardWidth], weight: 2 }
+      - { id: fmt.visibility, match: chain, pattern: [EntireColumn.Hidden, EntireRow.Hidden, Columns.Hidden, Rows.Hidden], weight: 2 }
+      - { id: fmt.window, match: member, pattern: [FreezePanes, DisplayGridlines, Zoom, SplitRow, SplitColumn], weight: 1 }
+
+  - id: 02-consolidation
+    corpus_slug: 02-consolidation
+    label: { en: "Consolidation of sheets and workbooks", fr: "Consolidation" }
+    signals:
+      - { id: cons.open-workbooks, match: chain, pattern: [Workbooks.Open], weight: 3 }
+      - { id: cons.loop-sheets, match: regex, pattern: '\bFor\s+Each\s+\w+\s+In\s+(\w+\.)?(Worksheets|Sheets)\b', weight: 2 }
+      - { id: cons.loop-workbooks, match: regex, pattern: '\bFor\s+Each\s+\w+\s+In\s+(Application\.)?Workbooks\b', weight: 2 }
+      - { id: cons.copy-block, match: regex, pattern: '\.Copy\s+(Destination\s*:=\s*)?\w', weight: 1 }
+      - { id: cons.paste, match: member, pattern: [PasteSpecial], weight: 1 }
+      - { id: cons.native, match: member, pattern: [Consolidate], weight: 4 }
+      - { id: cons.multi-file-picker, match: regex, pattern: 'GetOpenFilename\s*\(.*MultiSelect\s*:=\s*True|\.AllowMultiSelect\s*=\s*True', weight: 3 }
+      - { id: cons.last-row, match: regex, pattern: '\.End\s*\(\s*xl(Up|Down|ToLeft|ToRight)\s*\)', weight: 1, max_hits_per_procedure: 1 }
+      - { id: cons.close-workbook, match: regex, pattern: '\.Close\s+(SaveChanges\s*:=\s*)?False', weight: 1 }
+
+  - id: 03-cleaning
+    corpus_slug: 03-nettoyage-transformation
+    label: { en: "Data cleaning and transformation", fr: "Nettoyage et transformation" }
+    signals:
+      - { id: clean.dedupe, match: member, pattern: [RemoveDuplicates], weight: 4 }
+      - { id: clean.advanced-filter, match: member, pattern: [AdvancedFilter], weight: 3 }
+      - { id: clean.text-to-columns, match: member, pattern: [TextToColumns], weight: 4 }
+      - { id: clean.blanks, match: regex, pattern: 'SpecialCells\s*\(\s*xlCellTypeBlanks', weight: 3 }
+      - { id: clean.delete-rows, match: regex, pattern: '(EntireRow|Rows\s*\([^)]*\))\.Delete', weight: 2 }
+      - { id: clean.string-functions, match: call, pattern: [Trim, LTrim, RTrim, Replace, Split, Join, UCase, LCase, StrConv, Mid, Left, Right, InStr, InStrRev, Len], weight: 1 }
+      - { id: clean.cleanup-functions, match: chain, pattern: [WorksheetFunction.Clean, WorksheetFunction.Trim, WorksheetFunction.Substitute, WorksheetFunction.Proper], weight: 2 }
+      - { id: clean.regex, match: progid, pattern: ['VBScript.RegExp'], weight: 3 }
+      - { id: clean.type-conversion, match: call, pattern: [CLng, CInt, CDbl, CDate, CStr, CDec, Val, Format], weight: 1 }
+      - { id: clean.sort-filter, match: member, pattern: [Sort, SortFields, AutoFilter, ShowAllData], weight: 1 }
+      - { id: clean.replace-range, match: regex, pattern: '\.Replace\s+What\s*:=', weight: 2 }
+
+  - id: 04-lookup
+    corpus_slug: 04-recherche-referentiel
+    label: { en: "Lookup and reference data", fr: "Recherche et référentiel" }
+    signals:
+      - { id: lookup.dictionary, match: progid, pattern: ['Scripting.Dictionary'], weight: 3 }
+      - { id: lookup.dictionary-early, match: regex, pattern: '\bNew\s+(Scripting\.)?Dictionary\b', weight: 3 }
+      - { id: lookup.exists, match: regex, pattern: '\.Exists\s*\(', weight: 2 }
+      - { id: lookup.find, match: member, pattern: [Find, FindNext, FindPrevious], weight: 3 }
+      - { id: lookup.worksheet-functions, match: chain, pattern: [WorksheetFunction.VLookup, WorksheetFunction.HLookup, WorksheetFunction.XLookup, WorksheetFunction.Match, WorksheetFunction.Index, WorksheetFunction.CountIf, WorksheetFunction.CountIfs, Application.Match, Application.VLookup, Application.XLookup, Application.CountIf], weight: 3 }
+      - { id: lookup.nested-loop-compare, match: structural, pattern: nested_loop_compare, weight: 3 }
+      - { id: lookup.collection-key, match: regex, pattern: '\.Add\s+[^,]+,\s*(Key\s*:=\s*)?\w', weight: 1 }
+
+  - id: 05-forms
+    corpus_slug: 05-formulaires-saisie
+    label: { en: "Forms and data entry", fr: "Formulaires de saisie" }
+    signals:
+      - { id: form.userform-module, match: module_type, pattern: form, weight: 5, scope: module }
+      - { id: form.show, match: regex, pattern: '\b\w+\.Show(\s+vbModeless|\s*\()?\s*$', weight: 3 }
+      - { id: form.unload, match: regex, pattern: '\bUnload\s+(Me|\w+)\b', weight: 2 }
+      - { id: form.controls, match: member, pattern: [AddItem, ListIndex, ListCount, RowSource, ControlSource, SetFocus], weight: 2 }
+      - { id: form.control-events, match: procedure_name, pattern: '^\w+_(Click|Change|Initialize|Activate|Exit|BeforeUpdate|AfterUpdate|KeyPress|DblClick|QueryClose)$', weight: 2 }
+      - { id: form.inputbox, match: call, pattern: [InputBox], weight: 2 }
+      - { id: form.app-inputbox, match: chain, pattern: [Application.InputBox], weight: 2 }
+      - { id: form.validation, match: chain, pattern: [Validation.Add, Validation.Delete], weight: 2 }
+
+  - id: 06-reporting
+    corpus_slug: 06-generation-rapports
+    label: { en: "Report generation and printing", fr: "Génération de rapports" }
+    signals:
+      - { id: rpt.pdf-export, match: member, pattern: [ExportAsFixedFormat], weight: 5 }
+      - { id: rpt.pdf-constant, match: regex, pattern: '\bxlTypePDF\b', weight: 2 }
+      - { id: rpt.print, match: member, pattern: [PrintOut, PrintPreview], weight: 3 }
+      - { id: rpt.page-setup, match: member, pattern: [PageSetup, PrintArea, PrintTitleRows, PrintTitleColumns, CenterFooter, LeftFooter, RightFooter, CenterHeader, LeftHeader, RightHeader, FitToPagesWide, FitToPagesTall], weight: 2 }
+      - { id: rpt.page-breaks, match: member, pattern: [HPageBreaks, VPageBreaks, ResetAllPageBreaks], weight: 2 }
+      - { id: rpt.save-copy, match: member, pattern: [SaveCopyAs], weight: 2 }
+      - { id: rpt.new-report-sheet, match: chain, pattern: [Worksheets.Add, Sheets.Add, Workbooks.Add], weight: 1 }
+
+  - id: 07-pivots-charts
+    corpus_slug: 07-tcd-graphiques
+    label: { en: "Pivot tables and charts", fr: "TCD et graphiques" }
+    signals:
+      - { id: pivot.cache, match: member, pattern: [PivotCaches, PivotCache, CreatePivotTable], weight: 4 }
+      - { id: pivot.table, match: member, pattern: [PivotTables, PivotTable, PivotFields, PivotItems, DataFields, RowFields, ColumnFields, RefreshTable], weight: 3 }
+      - { id: chart.objects, match: member, pattern: [ChartObjects, AddChart, AddChart2, SeriesCollection, NewSeries, ChartType, SetSourceData, HasTitle, ChartTitle, Axes], weight: 3 }
+      - { id: chart.charts-add, match: chain, pattern: [Charts.Add, Shapes.AddChart, Shapes.AddChart2], weight: 3 }
+      - { id: chart.sparklines, match: member, pattern: [SparklineGroups, Sparklines], weight: 3 }
+
+  - id: 08-udf
+    corpus_slug: 08-fonctions-personnalisees
+    label: { en: "User-defined functions", fr: "Fonctions personnalisées" }
+    signals:
+      - { id: udf.candidate, match: structural, pattern: udf_candidate, weight: 4 }
+      - { id: udf.volatile, match: chain, pattern: [Application.Volatile], weight: 3 }
+      - { id: udf.caller, match: chain, pattern: [Application.Caller, Application.ThisCell], weight: 2 }
+      - { id: udf.range-param, match: regex, pattern: '^\s*(Public\s+)?Function\s+\w+\s*\([^)]*\bAs\s+Range\b', weight: 2 }
+      - { id: udf.macro-options, match: chain, pattern: [Application.MacroOptions], weight: 2 }
+
+  - id: 09-events
+    corpus_slug: 09-evenements
+    label: { en: "Event-driven automation", fr: "Événements" }
+    signals:
+      - { id: evt.handler, match: structural, pattern: event_handler, weight: 4 }
+      - { id: evt.auto-macros, match: procedure_name, pattern: '^(Auto_Open|Auto_Close)$', weight: 3 }
+      - { id: evt.ontime, match: chain, pattern: [Application.OnTime], weight: 4 }
+      - { id: evt.onkey, match: chain, pattern: [Application.OnKey], weight: 2 }
+      - { id: evt.withevents, match: regex, pattern: '\bWithEvents\b', weight: 3, scope: module }
+      - { id: evt.enable-events, match: chain, pattern: [Application.EnableEvents], weight: 2 }
+      - { id: evt.intersect, match: chain, pattern: [Application.Intersect], weight: 2 }
+      - { id: evt.intersect-bare, match: call, pattern: [Intersect], weight: 2 }
+
+  - id: 10-files
+    corpus_slug: 10-fichiers-systeme
+    label: { en: "Files and file system", fr: "Fichiers et système" }
+    signals:
+      - { id: file.dir, match: call, pattern: [Dir, CurDir, ChDir, ChDrive], weight: 2 }
+      - { id: file.fso, match: progid, pattern: ['Scripting.FileSystemObject'], weight: 3 }
+      - { id: file.fso-early, match: regex, pattern: '\bNew\s+(Scripting\.)?FileSystemObject\b', weight: 3 }
+      - { id: file.open-statement, match: regex, pattern: '\bOpen\s+.+\s+For\s+(Input|Output|Append|Binary|Random)\b', weight: 3 }
+      - { id: file.io-statements, match: regex, pattern: '\b(Line\s+Input|Print|Write|Get|Put|Input)\s*#', weight: 2 }
+      - { id: file.manage, match: call, pattern: [Kill, MkDir, RmDir, FileCopy, FileLen, FileDateTime, GetAttr, SetAttr], weight: 2 }
+      - { id: file.rename, match: regex, pattern: '^\s*Name\s+.+\s+As\s+', weight: 2 }
+      - { id: file.fso-members, match: member, pattern: [GetFolder, GetFile, CreateTextFile, OpenTextFile, FolderExists, FileExists, CopyFile, MoveFile, DeleteFile, CreateFolder, SubFolders], weight: 2 }
+      - { id: file.save-as, match: member, pattern: [SaveAs, GetSaveAsFilename], weight: 1 }
+      - { id: file.stream, match: progid, pattern: ['ADODB.Stream'], weight: 2 }
+
+  - id: 11-external-data
+    corpus_slug: 11-donnees-externes
+    label: { en: "External data access", fr: "Données externes" }
+    signals:
+      - { id: ext.adodb, match: progid, pattern: ['ADODB.Connection', 'ADODB.Recordset', 'ADODB.Command'], weight: 4 }
+      - { id: ext.adodb-early, match: regex, pattern: '\bNew\s+ADODB\.(Connection|Recordset|Command)\b', weight: 4 }
+      - { id: ext.recordset, match: member, pattern: [CopyFromRecordset, Recordset, ActiveConnection, CommandText], weight: 3 }
+      - { id: ext.querytables, match: member, pattern: [QueryTables, QueryTable, Connections, OLEDBConnection, ODBCConnection, WorkbookConnection], weight: 3 }
+      - { id: ext.connection-string, match: string, pattern: '(?i)(Provider\s*=|Driver\s*=\s*\{|DSN\s*=|Data Source\s*=|ODBC;|OLEDB;)', weight: 3 }
+      - { id: ext.http, match: progid, pattern: ['MSXML2.XMLHTTP*', 'MSXML2.ServerXMLHTTP*', 'Microsoft.XMLHTTP', 'WinHttp.WinHttpRequest*'], weight: 4 }
+      - { id: ext.http-members, match: member, pattern: [responseText, responseBody, setRequestHeader, ResponseXML], weight: 2 }
+      - { id: ext.json, match: call, pattern: [ParseJson, ConvertToJson], weight: 2 }
+      - { id: ext.web-query, match: string, pattern: '(?i)^URL;https?://', weight: 3 }
+      - { id: ext.references, match: reference, pattern: '(?i)(ActiveX Data Objects|Microsoft XML|WinHTTP)', weight: 2, scope: project }
+      - { id: ext.sql, match: string, pattern: '(?i)^\s*(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b', weight: 2 }
+
+  - id: 12-office-interop
+    corpus_slug: 12-interop-office
+    label: { en: "Automation of other Office applications", fr: "Interopérabilité Office" }
+    signals:
+      - { id: office.outlook, match: progid, pattern: ['Outlook.Application'], weight: 5 }
+      - { id: office.word, match: progid, pattern: ['Word.Application', 'Word.Document'], weight: 5 }
+      - { id: office.powerpoint, match: progid, pattern: ['PowerPoint.Application'], weight: 5 }
+      - { id: office.access, match: progid, pattern: ['Access.Application'], weight: 4 }
+      - { id: office.early-binding, match: regex, pattern: '\bNew\s+(Outlook|Word|PowerPoint|Access)\.\w+', weight: 5 }
+      - { id: office.mail-members, match: member, pattern: [CreateItem, MailItem, HTMLBody, Recipients, Attachments, GetNamespace, GetDefaultFolder], weight: 2 }
+      - { id: office.word-members, match: member, pattern: [Bookmarks, MailMerge, Documents, Paragraphs, TypeText, ContentControls], weight: 2 }
+      - { id: office.ppt-members, match: member, pattern: [Presentations, Slides, CopyPicture], weight: 2 }
+      - { id: office.references, match: reference, pattern: '(?i)Microsoft (Outlook|Word|PowerPoint|Access) [0-9.]+ Object Library', weight: 3, scope: project }
+
+  - id: 13-windows-api
+    corpus_slug: 13-api-windows-activex
+    label: { en: "Windows API, shell and ActiveX", fr: "API Windows et ActiveX" }
+    signals:
+      - { id: win.declare, match: regex, pattern: '^\s*(Public\s+|Private\s+)?Declare\s+(PtrSafe\s+)?(Function|Sub)\b', weight: 5, scope: module }
+      - { id: win.ptrsafe, match: regex, pattern: '\b(PtrSafe|LongPtr|LongLong)\b', weight: 2, scope: module }
+      - { id: win.conditional-compilation, match: regex, pattern: '^\s*#If\s+.*\b(VBA7|VBA6|Win64|Win32|Win16|Mac)\b', weight: 2, scope: module }
+      - { id: win.shell, match: call, pattern: [Shell, AppActivate, SendKeys], weight: 3 }
+      - { id: win.wscript, match: progid, pattern: ['WScript.Shell', 'Shell.Application', 'WScript.Network'], weight: 4 }
+      - { id: win.registry, match: member, pattern: [RegRead, RegWrite, RegDelete], weight: 3 }
+      - { id: win.settings, match: call, pattern: [GetSetting, SaveSetting, DeleteSetting, GetAllSettings], weight: 2 }
+      - { id: win.environ, match: call, pattern: [Environ], weight: 1 }
+      - { id: win.activex, match: member, pattern: [OLEObjects, OLEObject], weight: 2 }
+      - { id: win.other-com, match: progid, pattern: ['*'], weight: 1, note: "Any ProgID not matched by another family signal." }
+      - { id: win.app-run, match: chain, pattern: [Application.Run], weight: 1 }

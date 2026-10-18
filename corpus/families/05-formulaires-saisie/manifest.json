@@ -1,0 +1,181 @@
+[
+  {
+    "id": "05-01",
+    "file": "05-01-formulaire-pressing-employes.frm",
+    "title": "Formulaire de gestion du pressing des employés",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [
+      "04-recherche-referentiel",
+      "14-patterns-securite"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/Forms/DryCleaningForm.frm",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 1171,
+    "key_apis": [
+      "UserForm",
+      "ComboBox",
+      "ListBox",
+      "Scripting.Dictionary",
+      "Worksheets.Add",
+      "Range.Find",
+      "MsgBox",
+      "Property Let",
+      "Enum"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "UserForm",
+      "contrôles MSForms (ComboBox, ListBox, MultiPage)",
+      "fichier .frx binaire non fourni",
+      "mode admin avec login",
+      "création dynamique de feuilles"
+    ],
+    "notes": "Très gros UserForm métier (commandes de pressing par employé, ajout/suppression d'employés et d'articles, mode admin) écrivant dans des feuilles par employé ; .frx compagnon non copié."
+  },
+  {
+    "id": "05-02",
+    "file": "05-02-selection-multivaleurs-cellule.frm",
+    "title": "Saisie multi-valeurs dans une cellule via liste",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://github.com/sergey-frolov-pets/excel-helpers/blob/dc8a9678836b55f1ee486b7f76bd345167309c9d/tools/multivalue_cells/src/FMultiValues.frm",
+    "author": "Sergey Frolov (sergey-frolov-pets)",
+    "license": "GPL-3.0-only",
+    "status": "included",
+    "loc": 66,
+    "key_apis": [
+      "UserForm",
+      "ListBox.Selected",
+      "ListBox.AddItem",
+      "Selection.Cells",
+      "Split",
+      "PasteFromClipboard (module externe)"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "UserForm",
+      "ListBox multi-sélection",
+      "accès presse-papiers (module MClipboard, API Windows)",
+      "fichier .frx binaire non fourni"
+    ],
+    "notes": "UserForm permettant de choisir plusieurs valeurs dans une liste et de les écrire concaténées avec un séparateur dans les cellules sélectionnées (licence GPL-3.0 à signaler)."
+  },
+  {
+    "id": "05-03",
+    "file": "05-03-combobox-valeurs-uniques.bas",
+    "title": "Alimenter une ComboBox avec des valeurs uniques",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [
+      "03-nettoyage-transformation",
+      "13-api-windows-activex"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Controls-DialogBoxes-Forms/add-a-unique-list-of-values-to-a-combo-box.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 26,
+    "key_apis": [
+      "OLEObjects",
+      "ComboBox.AddItem",
+      "ComboBox.Clear",
+      "VBA.Collection",
+      "On Error Resume Next"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "contrôle ActiveX ComboBox sur feuille (OLEObjects)"
+    ],
+    "notes": "Dédoublonne une colonne via une Collection et remplit une ComboBox ActiveX posée sur la feuille (extrait : 2e variante du billet)."
+  },
+  {
+    "id": "05-04",
+    "file": "05-04-formulaire-commercial-region.bas",
+    "title": "Formulaire commercial/région avec variables publiques",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Controls-DialogBoxes-Forms/using-control-values-while-code-is-running.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 26,
+    "key_apis": [
+      "UserForm.Show",
+      "UserForm_Initialize",
+      "Unload Me",
+      "ListBox.List",
+      "ListIndex",
+      "MsgBox"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "UserForm",
+      "variables publiques partagées formulaire/module"
+    ],
+    "notes": "Patron OK/Annuler : le formulaire stocke l'ID commercial et la région dans des variables publiques relues par le module appelant ; code module et formulaire mélangés dans un même extrait (contient une ligne de continuation invalide)."
+  },
+  {
+    "id": "05-05",
+    "file": "05-05-formulaire-export-feuilles.frm",
+    "title": "Formulaire de sélection de feuilles à exporter",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [
+      "06-generation-rapports",
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/tduyng/vba-excel/blob/f8b9884da544379757bb274ae3ce843ca1675e65/50-ImportExportSheetExcelsOrPDF/ufExportImport.frm",
+    "author": "Tien Duy NGUYEN (tduyng)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 382,
+    "key_apis": [
+      "UserForm",
+      "MultiPage",
+      "ListBox",
+      "CheckBox",
+      "ComboBox",
+      "Application.GetSaveAsFilename",
+      "QueryClose"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "UserForm",
+      "contrôles MSForms (MultiPage, ListBox)",
+      "boîtes de dialogue fichier",
+      "fichier .frx binaire non fourni"
+    ],
+    "notes": "UserForm listant les feuilles du classeur (filtres feuilles masquées, type de sortie) pour piloter l'export PDF/Excel du module 06-01 ; encodage d'origine ISO-8859 converti en UTF-8."
+  },
+  {
+    "id": "05-06",
+    "file": null,
+    "title": "Formulaire de saisie du personnel (ajout/modification)",
+    "family": "05-formulaires-saisie",
+    "secondary_families": [],
+    "source_url": "https://github.com/dannieRope/DataEntryForm-VBA-Project",
+    "author": "dannieRope",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "UserForm",
+      "ListBox",
+      "TextBox",
+      "Range.Find"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "UserForm"
+    ],
+    "notes": "Projet complet de formulaire de saisie/édition de fiches employés ; dépôt sans fichier LICENSE, donc non copié (référence seulement)."
+  }
+]

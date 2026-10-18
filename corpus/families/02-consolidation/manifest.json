@@ -1,0 +1,214 @@
+[
+  {
+    "id": "02-01",
+    "file": "02-01-range-consolidate-sum.bas",
+    "title": "Consolidation native par somme (Range.Consolidate)",
+    "family": "02-consolidation",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.Range.Consolidate.md",
+    "author": "Microsoft (VBA-Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 3,
+    "key_apis": [
+      "Range.Consolidate",
+      "xlSum",
+      "références R1C1"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "Range.Consolidate sans équivalent direct en macro OnlyOffice"
+    ],
+    "notes": "Fragment minimal (instruction unique, sans Sub) qui consolide par SOMME deux plages de Sheet2 et Sheet3 dans Sheet1 via la fonction native de consolidation."
+  },
+  {
+    "id": "02-02",
+    "file": "02-02-merge-all-sheets.bas",
+    "title": "Fusionner toutes les feuilles dans une feuille « Merged »",
+    "family": "02-consolidation",
+    "secondary_families": [],
+    "source_url": "https://github.com/Aquafortis/vba-sub-snippets/blob/58f65955ff084471ab8a4c3b541e528672d577f4/Excel/MergeAllSheets.vb",
+    "author": "Aquafortis",
+    "license": "MPL-2.0",
+    "status": "included",
+    "loc": 15,
+    "key_apis": [
+      "Sheets.Add",
+      "Worksheet.Activate",
+      "UsedRange",
+      "Range.Offset/Resize",
+      "Range.Copy",
+      "Range(\"A65536\").End(xlUp)"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "limite codée en dur A65536 (format .xls)"
+    ],
+    "notes": "Crée une feuille Merged, recopie l'en-tête de la première feuille puis empile les données de toutes les autres feuilles ; licence MPL-2.0 (copyleft faible, à signaler)."
+  },
+  {
+    "id": "02-03",
+    "file": "02-03-consolidating-worksheets.bas",
+    "title": "Consolider les feuilles d'un classeur vers la première",
+    "family": "02-consolidation",
+    "secondary_families": [],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/WB%20&%20WS/ConsolidatingWS.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 33,
+    "key_apis": [
+      "ActiveWorkbook.Worksheets",
+      "Worksheet.Activate",
+      "UsedRange.Copy",
+      "Range.PasteSpecial xlPasteAll",
+      "Application.CutCopyMode"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "PasteSpecial (formats inclus)"
+    ],
+    "notes": "Copie la plage utilisée de chaque feuille sous les données de la feuille maître (première feuille), formats compris."
+  },
+  {
+    "id": "02-04",
+    "file": "02-04-consolidating-workbooks-filedialog.bas",
+    "title": "Consolider plusieurs classeurs choisis par boîte de dialogue",
+    "family": "02-consolidation",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/WB%20&%20WS/ConsolidatingWB.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 48,
+    "key_apis": [
+      "Application.FileDialog(msoFileDialogOpen)",
+      "Workbooks.Open",
+      "Workbook.Close",
+      "UsedRange.Copy",
+      "PasteSpecial xlPasteValues",
+      "Application.DisplayAlerts"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "FileDialog multi-sélection",
+      "Workbooks.Open sur fichiers locaux"
+    ],
+    "notes": "L'utilisateur sélectionne plusieurs fichiers ; chaque classeur est ouvert et sa feuille active collée en valeurs à la suite dans la feuille courante (bug d'origine : boucle sur les feuilles mais copie toujours ActiveSheet)."
+  },
+  {
+    "id": "02-05",
+    "file": "02-05-open-folder-files-and-copy.bas",
+    "title": "Ouvrir tous les fichiers d'un dossier réseau et empiler",
+    "family": "02-consolidation",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/RandomCode.bas",
+    "author": "Byron Wall (@byronwall)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 20,
+    "key_apis": [
+      "Dir",
+      "Workbooks.Open",
+      "UsedRange.Copy",
+      "PasteSpecial xlPasteValues",
+      "Workbook.Close"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Workbooks.Open sur fichiers locaux",
+      "chemin réseau codé en dur (lecteur O:)",
+      "Dir sur système de fichiers"
+    ],
+    "notes": "Boucle Dir sur un dossier partagé codé en dur, ouvre chaque classeur, écrit son nom puis colle en valeurs sa première feuille dans la feuille de sortie."
+  },
+  {
+    "id": "02-06",
+    "file": "02-06-combine-all-sheets-by-key.bas",
+    "title": "Combiner toutes les feuilles par en-têtes et clé PnPID",
+    "family": "02-consolidation",
+    "secondary_families": [
+      "04-recherche-referentiel"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Usability.bas",
+    "author": "Byron Wall (@byronwall)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 50,
+    "key_apis": [
+      "Workbooks.Add",
+      "Worksheet.Unprotect",
+      "Application.Match",
+      "Range.SpecialCells(xlCellTypeConstants)",
+      "Range.End(xlToRight)"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Workbooks.Add (nouveau classeur)",
+      "Unprotect de feuilles"
+    ],
+    "notes": "Fusionne toutes les feuilles dans un nouveau classeur en alignant les colonnes par libellé d'en-tête et en dédoublonnant les lignes sur la clé PnPID (jointure externe faite à la main)."
+  },
+  {
+    "id": "02-07",
+    "file": null,
+    "title": "Combiner les fichiers d'un dossier en feuilles (OsSyLab)",
+    "family": "02-consolidation",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/OsSyLab/Excel-VBA-Macros/tree/main/Combine_Files_To_Sheets",
+    "author": "Osman Uluhan (Data Solutions Lab.)",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "Dir",
+      "Workbooks.Open",
+      "Worksheet.Copy"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Workbooks.Open sur fichiers locaux",
+      "sélection de dossier"
+    ],
+    "notes": "Référence seulement : pas de fichier LICENSE et mention « All rights reserved » dans le README ; importe chaque fichier d'un dossier comme feuille du classeur maître."
+  },
+  {
+    "id": "02-08",
+    "file": null,
+    "title": "RDBMerge / fusion de classeurs (Ron de Bruin)",
+    "family": "02-consolidation",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://jkp-ads.com/rdb/win/s3/win008.htm",
+    "author": "Ron de Bruin",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "Dir",
+      "Workbooks.Open",
+      "FileSystemObject"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Workbooks.Open sur fichiers locaux",
+      "COM/CreateObject"
+    ],
+    "notes": "Référence seulement : code de fusion de classeurs le plus copié en entreprise, sans licence de redistribution explicite."
+  }
+]

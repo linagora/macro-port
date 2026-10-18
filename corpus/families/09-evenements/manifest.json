@@ -1,0 +1,167 @@
+[
+  {
+    "id": "09-01",
+    "file": "09-01-ecouteur-evenements-controles.cls",
+    "title": "Classe d'écoute d'événements des contrôles UserForm",
+    "family": "09-evenements",
+    "secondary_families": [
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/todar/VBA-Userform-EventListener/blob/e6136e1f9186fbb31d9eedd2e4878619e6062b79/src/EventListenerItem.cls",
+    "author": "Robert Todar",
+    "license": "MIT",
+    "status": "included",
+    "loc": 204,
+    "key_apis": [
+      "WithEvents",
+      "MSForms.TextBox",
+      "MSForms.CommandButton",
+      "MSForms.ComboBox",
+      "RaiseEvent (via Emitter)",
+      "TypeName"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "module de classe WithEvents",
+      "événements MSForms (MouseMove, KeyDown, Enter/Exit)",
+      "UserForm"
+    ],
+    "notes": "Module de classe qui s'abonne par WithEvents aux contrôles d'un UserForm et réémet des événements MouseOver/Focus/Blur/Click vers un émetteur central ; encodage d'origine converti en UTF-8."
+  },
+  {
+    "id": "09-02",
+    "file": "09-02-interdire-doublons-classeur.cls",
+    "title": "Interdire les doublons dans tout le classeur",
+    "family": "09-evenements",
+    "secondary_families": [
+      "14-patterns-securite",
+      "04-recherche-referentiel"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/prevent-duplicate-entries-in-a-range.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 26,
+    "key_apis": [
+      "Workbook_SheetChange",
+      "Intersect",
+      "WorksheetFunction.CountIf",
+      "Application.Undo",
+      "Application.EnableEvents"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "événement Workbook_SheetChange",
+      "Application.Undo"
+    ],
+    "notes": "À chaque saisie dans A1:B20, annule l'entrée si la valeur existe déjà sur la feuille ou sur une autre feuille du classeur."
+  },
+  {
+    "id": "09-03",
+    "file": "09-03-horodatage-statut.cls",
+    "title": "Horodatage automatique au changement de statut",
+    "family": "09-evenements",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/guillermodean/Excel_Macros/blob/25729a05742bdd8f1721782c2e2c659dc933c9bd/WhenACellChangesValue.cls",
+    "author": "Guillermo Deán",
+    "license": "MIT",
+    "status": "included",
+    "loc": 19,
+    "key_apis": [
+      "Worksheet_Change",
+      "Target",
+      "Now",
+      "Interior.ColorIndex"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "événement Worksheet_Change"
+    ],
+    "notes": "Quand le statut en colonne AC passe à Accepted/Rejected, inscrit la date en AD et colore la ligne si elle était déjà datée ; contient des Else/End If en trop (code non compilable tel quel)."
+  },
+  {
+    "id": "09-04",
+    "file": "09-04-cellule-clignotante-ontime.bas",
+    "title": "Cellule clignotante avec minuterie OnTime",
+    "family": "09-evenements",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/make-a-cell-blink.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 22,
+    "key_apis": [
+      "Application.OnTime",
+      "TimeSerial",
+      "Application.Goto",
+      "Interior.ColorIndex"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "Application.OnTime"
+    ],
+    "notes": "Fait alterner chaque seconde la couleur et le texte d'une cellule via un OnTime auto-replanifié, avec procédure d'arrêt."
+  },
+  {
+    "id": "09-05",
+    "file": "09-05-surligner-ligne-colonne-active.cls",
+    "title": "Surligner la ligne et la colonne de la cellule active",
+    "family": "09-evenements",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/highlight-the-active-cell-row-or-column.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 10,
+    "key_apis": [
+      "Worksheet_SelectionChange",
+      "EntireRow",
+      "EntireColumn",
+      "Interior.ColorIndex"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "événement Worksheet_SelectionChange",
+      "efface toute la mise en forme de fond de la feuille"
+    ],
+    "notes": "À chaque changement de sélection, efface les couleurs de fond puis colore la ligne et la colonne de la cellule active (extrait : 2e variante)."
+  },
+  {
+    "id": "09-06",
+    "file": "09-06-controle-avant-enregistrement.cls",
+    "title": "Bloquer l'enregistrement si champs obligatoires vides",
+    "family": "09-evenements",
+    "secondary_families": [
+      "14-patterns-securite",
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.Workbook.BeforeSave.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 7,
+    "key_apis": [
+      "Workbook_BeforeSave",
+      "Cancel",
+      "WorksheetFunction.CountA",
+      "MsgBox"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "événement Workbook_BeforeSave (annulation de l'enregistrement)"
+    ],
+    "notes": "Annule l'enregistrement du classeur tant que les six cellules obligatoires de Sheet1 ne sont pas remplies."
+  }
+]

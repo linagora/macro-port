@@ -1,0 +1,168 @@
+[
+  {
+    "id": "01-01",
+    "file": "01-01-hide-unhide-columns-find.bas",
+    "title": "Masquer/afficher les colonnes marquées d'un X",
+    "family": "01-mise-en-forme",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Cells-and-Ranges/hide-and-unhide-columns.md",
+    "author": "Dennis Wallentin (Microsoft VBA-Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 40,
+    "key_apis": [
+      "Range.SpecialCells",
+      "Range.Find",
+      "Range.FindNext",
+      "Range.EntireColumn.Hidden"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [],
+    "notes": "Deux procédures (Hide_Columns/Unhide_Columns) qui cherchent un « X » en ligne 1 via Find/FindNext et masquent ou réaffichent les colonnes correspondantes."
+  },
+  {
+    "id": "01-02",
+    "file": "01-02-hide-rows-not-on-hold.bas",
+    "title": "Masquer les lignes hors statut « On hold »",
+    "family": "01-mise-en-forme",
+    "secondary_families": [
+      "03-nettoyage-transformation"
+    ],
+    "source_url": "https://github.com/guillermodean/Excel_Macros/blob/25729a05742bdd8f1721782c2e2c659dc933c9bd/FilteringColumnsORCondition.bas",
+    "author": "Guillermo Deán",
+    "license": "MIT",
+    "status": "included",
+    "loc": 21,
+    "key_apis": [
+      "Worksheet CodeName (Sheet2)",
+      "Union",
+      "Range.EntireRow.Hidden",
+      "Range.End(xlUp)"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "référence par CodeName de feuille"
+    ],
+    "notes": "Parcourt un tableau de suivi et masque toutes les lignes dont aucune des colonnes W, Y ou AA ne vaut « On hold » (filtre OU fait à la main)."
+  },
+  {
+    "id": "01-03",
+    "file": "01-03-percent-format-toggle.bas",
+    "title": "Bascule de format pourcentage (raccourci clavier)",
+    "family": "01-mise-en-forme",
+    "secondary_families": [],
+    "source_url": "https://github.com/jasonbxu/excel/blob/33a108703e9470b04d6b13f43e888b2b2fc265fb/format_macros",
+    "author": "jasonbxu",
+    "license": "GPL-2.0-only",
+    "status": "extract",
+    "loc": 28,
+    "key_apis": [
+      "Selection.NumberFormat",
+      "Range nommé (DashToggle)",
+      "ThisWorkbook.Sheets"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "dépend d'Application.OnKey (Auto_Open) pour le raccourci",
+      "classeur de macros personnel XLSTART"
+    ],
+    "notes": "Extrait d'un classeur XLSTART de raccourcis de mise en forme façon analyste financier : alterne entre formats pourcentage 0 et 1 décimale, avec ou sans tiret pour les zéros. Licence GPL-2.0 (copyleft, à signaler)."
+  },
+  {
+    "id": "01-04",
+    "file": "01-04-color-for-unique-values.bas",
+    "title": "Colorer chaque valeur distincte d'une couleur unique",
+    "family": "01-mise-en-forme",
+    "secondary_families": [
+      "04-recherche-referentiel"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/Formatting_Helpers.bas",
+    "author": "Byron Wall (@byronwall), Raymond Wise",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 40,
+    "key_apis": [
+      "Scripting.Dictionary (early binding)",
+      "Application.RandBetween",
+      "Application.Transpose",
+      "Range.Interior.Color",
+      "MsgBox vbYesNo"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "référence Microsoft Scripting Runtime",
+      "GetInputOrSelection (InputBox Type:=8) non inclus"
+    ],
+    "notes": "Attribue une couleur aléatoire unique à chaque valeur (ou clé multi-colonnes) distincte d'une plage, sur la cellule ou toute la ligne, via deux dictionnaires."
+  },
+  {
+    "id": "01-05",
+    "file": "01-05-common-print-settings.bas",
+    "title": "Mise en page d'impression homogène sur toutes les feuilles",
+    "family": "01-mise-en-forme",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/byronwall/bUTL/blob/be303d89ea61c7326a381b91596fc85ce60901f4/src/code/RandomCode.bas",
+    "author": "Byron Wall (@byronwall)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 58,
+    "key_apis": [
+      "PageSetup",
+      "Application.InchesToPoints",
+      "Worksheet.ResetAllPageBreaks",
+      "PageSetup.EvenPage/FirstPage",
+      "PageSetup.FitToPagesWide"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "PageSetup détaillé (EvenPage/FirstPage, PrintQuality) peu exposé dans l'API OnlyOffice"
+    ],
+    "notes": "Style macro enregistrée : réinitialise en-têtes/pieds, marges, orientation paysage et ajustement 1 page en largeur pour chaque feuille du classeur."
+  },
+  {
+    "id": "01-06",
+    "file": "01-06-edit-table-report.bas",
+    "title": "Mise en forme complète d'un rapport tableau importé",
+    "family": "01-mise-en-forme",
+    "secondary_families": [
+      "03-nettoyage-transformation",
+      "05-formulaires-saisie",
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/Marius-Dragan/VBA-CODE/blob/703962956c17d25ed102c4f2771d078cd219c110/FormatTable/editTableReport.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 154,
+    "key_apis": [
+      "UserForm ProgressDialogue (New)",
+      "Range.TextToColumns",
+      "ActiveWindow.FreezePanes",
+      "Range.Replace Chr(160)",
+      "Application.Trim/Clean",
+      "Range.Borders",
+      "Range.AutoFilter",
+      "Union + EntireColumn.Hidden",
+      "PageSetup",
+      "Workbook.SaveAs",
+      "Select/ActiveCell"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "UserForm",
+      "ActiveWindow.FreezePanes",
+      "TextToColumns",
+      "Workbook.SaveAs vers chemin local",
+      "module ConfigProgressCode externe"
+    ],
+    "notes": "Module complet de retraitement d'un export : conversion texte en colonnes (;), nettoyage des espaces, total en bas de colonne, bordures, en-tête coloré avec filtre, masquage de colonnes, mise en page paysage et sauvegarde horodatée ; contient une ligne de commentaire non préfixée (erreur de syntaxe d'origine)."
+  }
+]

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "12-01",
+    "file": "12-01-envoi-mail-outlook-liste-bcc.bas",
+    "title": "Envoi d'un e-mail Outlook à une liste de destinataires en Cci",
+    "family": "12-interop-office",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Working-with-Other-Applications/sending-email-to-a-list-of-recipients-using-excel-and-outlook.md",
+    "author": "Holy Macro! Books (Microsoft Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 25,
+    "key_apis": [
+      "CreateObject(\"Outlook.Application\")",
+      "CreateItem",
+      "MailItem.BCC",
+      "MailItem.Send",
+      "TextBoxes"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject Outlook",
+      "envoi de mail depuis le poste client"
+    ],
+    "notes": "Concatène les adresses de la colonne A en Cci et envoie un message Outlook dont le corps provient d'une zone de texte."
+  },
+  {
+    "id": "12-02",
+    "file": "12-02-mailing-outlook-html-signature.bas",
+    "title": "Mailing Outlook personnalisé en HTML avec signature et image",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/SendEmailFromExcel/SendEmailFromExcel.bas",
+    "author": "Marius Dragan",
+    "license": "MIT",
+    "status": "included",
+    "loc": 91,
+    "key_apis": [
+      "CreateObject(\"Outlook.Application\")",
+      "MailItem.HTMLBody",
+      "Attachments.Add",
+      "Environ",
+      "Scripting.FileSystemObject",
+      "Dir"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject Outlook",
+      "lecture de la signature dans %APPDATA%",
+      "pièce jointe sur chemin local"
+    ],
+    "notes": "Parcourt une liste clients et prépare pour chacun un e-mail HTML personnalisé avec image intégrée et signature Outlook, puis marque la ligne."
+  },
+  {
+    "id": "12-03",
+    "file": "12-03-import-contacts-outlook.bas",
+    "title": "Import des contacts Outlook dans une feuille",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "04-recherche-referentiel",
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Working-with-Other-Applications/import-outlook-contacts-to-a-worksheet.md",
+    "author": "Dennis Wallentin (Microsoft Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 70,
+    "key_apis": [
+      "Outlook.Application",
+      "GetNamespace(\"MAPI\")",
+      "GetDefaultFolder",
+      "ContactItem",
+      "Hyperlinks.Add",
+      "Range.Sort"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM Outlook (liaison anticipée)",
+      "référence Microsoft Outlook Object Library",
+      "accès MAPI local"
+    ],
+    "notes": "Lit le dossier Contacts par défaut d'Outlook, écrit société, adresse et e-mail dans la feuille avec liens mailto puis trie la liste."
+  },
+  {
+    "id": "12-04",
+    "file": "12-04-document-word-par-ligne.bas",
+    "title": "Création d'un document Word par ligne de la feuille",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Working-with-Other-Applications/controlling-one-microsoft-office-application-from-another.md",
+    "author": "Bill Jelen (Microsoft Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 14,
+    "key_apis": [
+      "CreateObject(\"Word.Application.12\")",
+      "Documents.Add",
+      "Selection.Paste",
+      "Rows.Copy",
+      "SaveAs"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject Word",
+      "presse-papiers entre applications",
+      "référence Microsoft Word Object Library"
+    ],
+    "notes": "Copie chaque ligne de Sheet1 dans un nouveau document Word enregistré sous un nom séquentiel."
+  },
+  {
+    "id": "12-05",
+    "file": "12-05-remplissage-signets-word.bas",
+    "title": "Remplissage de signets d'un modèle Word depuis une plage nommée",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Working-with-Other-Applications/controlling-one-microsoft-office-application-from-another.md",
+    "author": "Dennis Wallentin (Microsoft Docs)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 34,
+    "key_apis": [
+      "New Word.Application",
+      "Documents.Open",
+      "Bookmarks",
+      "Range.Text",
+      "Document.Save"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM Word (liaison anticipée)",
+      "fichier Word local à côté du classeur"
+    ],
+    "notes": "Ouvre Test.docx et écrit les trois valeurs de la plage W_Data dans les signets td1 à td3, façon publipostage simplifié."
+  },
+  {
+    "id": "12-06",
+    "file": null,
+    "title": "Export de plages et graphiques vers PowerPoint (sans licence)",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "07-tcd-graphiques",
+      "06-generation-rapports"
+    ],
+    "source_url": "https://github.com/OsSyLab/Excel-VBA-Macros/tree/main/Export_To_PowerPoint",
+    "author": "OsSyLab",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "PowerPoint.Application",
+      "Slides.Add",
+      "CopyPicture",
+      "Shapes.Paste"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject PowerPoint",
+      "presse-papiers entre applications"
+    ],
+    "notes": "Génération de diapositives PowerPoint à partir de plages Excel, non copiée faute de fichier LICENSE dans le dépôt."
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "12-07",
+    "file": "12-07-export-powerpoint-synthetique.bas",
+    "title": "Export d'une synthèse et des graphiques vers PowerPoint",
+    "family": "12-interop-office",
+    "secondary_families": [
+      "07-tcd-graphiques",
+      "06-generation-rapports"
+    ],
+    "key_apis": [
+      "CreateObject PowerPoint.Application",
+      "Range.CopyPicture",
+      "ChartObjects",
+      "Shapes.PasteSpecial"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "COM/CreateObject PowerPoint",
+      "presse-papiers"
+    ],
+    "notes": "Crée une présentation avec une diapositive par graphique ; comble l'absence d'échantillon PowerPoint sous licence.",
+    "loc": 23
+  }
+]

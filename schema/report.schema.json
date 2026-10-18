@@ -1,0 +1,684 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/linagora/macro-port/schema/report.schema.json",
+  "title": "Macro-Port report",
+  "description": "Inventory report produced by Macro-Port for one or many Excel files. Schema version 0.1.0 (Lot 1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "generated_at",
+    "redacted",
+    "scan",
+    "files",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "rules_version"
+      ],
+      "properties": {
+        "name": {
+          "const": "macro-port"
+        },
+        "version": {
+          "type": "string"
+        },
+        "rules_version": {
+          "type": "string"
+        },
+        "build": {
+          "type": "string",
+          "description": "cli or wasm"
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Injected by the caller, never by the core."
+    },
+    "redacted": {
+      "type": "boolean",
+      "description": "True when snippets are removed and paths hashed."
+    },
+    "lang": {
+      "enum": [
+        "en",
+        "fr"
+      ]
+    },
+    "scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files_total",
+        "files_with_macros",
+        "files_failed"
+      ],
+      "properties": {
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files_with_macros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "severity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "level": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "family_id": {
+      "type": "string",
+      "pattern": "^([0-9]{2}-[a-z0-9-]+|unclassified)$",
+      "description": "Family id from rules/families.yaml, e.g. 04-lookup, or unclassified."
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "line"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line in the module source."
+        },
+        "snippet": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Absent when redacted."
+        }
+      }
+    },
+    "family_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "score"
+      ],
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/family_id"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signal_id",
+        "severity"
+      ],
+      "properties": {
+        "signal_id": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "module": {
+          "type": "string"
+        },
+        "procedure": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "loc",
+        "logical_loc"
+      ],
+      "properties": {
+        "loc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "logical_loc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "procedures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cyclomatic": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Per procedure: value; per module or file: maximum."
+        },
+        "cyclomatic_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_nesting": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parameters": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "goto_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "forms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "declare_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "external_dependencies": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "See rules/complexity.yaml."
+        }
+      }
+    },
+    "procedure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "start_line",
+        "end_line",
+        "metrics",
+        "primary_family",
+        "families",
+        "signals"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "sub",
+            "function",
+            "property_get",
+            "property_let",
+            "property_set"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "public",
+            "private",
+            "friend",
+            "default"
+          ]
+        },
+        "is_entry_point": {
+          "type": "boolean"
+        },
+        "is_event_handler": {
+          "type": "boolean",
+          "description": "True only for the event_handler predicate (auto-exec procedures are entry points but not event handlers unless they are document-module events)."
+        },
+        "possibly_unused": {
+          "type": "boolean"
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "calls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Procedures of the same project called by this one."
+        },
+        "apis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "count"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "description": "Object model members, chains, functions and ProgIDs used, normalised (e.g. Range.Interior, CreateObject:Scripting.Dictionary)."
+        },
+        "primary_family": {
+          "$ref": "#/$defs/family_id"
+        },
+        "secondary_families": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/family_id"
+          }
+        },
+        "families": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/family_score"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          }
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "orientation": {
+          "type": "null",
+          "description": "Reserved for Lot 2 (migration target). Always null in Lot 1."
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "source_available",
+        "metrics",
+        "procedures"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "standard",
+            "class",
+            "document",
+            "form"
+          ]
+        },
+        "stream_name": {
+          "type": "string"
+        },
+        "source_available": {
+          "type": "boolean"
+        },
+        "source_missing_suspected": {
+          "type": "boolean",
+          "description": "Stream present, source empty or truncated, p-code present (VBA stomping indicator)."
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "declarations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "declare_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "with_events_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "option_explicit": {
+              "type": "boolean"
+            },
+            "option_vba_support": {
+              "type": "boolean"
+            }
+          }
+        },
+        "procedures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/procedure"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          },
+          "description": "Module-scope signals (e.g. Declare statements)."
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "size",
+        "sha256",
+        "container",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative path, or hashed path when redacted."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "container": {
+          "enum": [
+            "xlsm",
+            "xltm",
+            "xlam",
+            "xlsb",
+            "xls",
+            "xlt",
+            "xla",
+            "xlsx",
+            "xltx",
+            "text_module",
+            "unknown"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_macros",
+            "encrypted",
+            "corrupted",
+            "unsupported",
+            "too_large",
+            "suspicious_archive",
+            "error"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "vba_project": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "protected",
+            "modules"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "protected": {
+              "type": "boolean"
+            },
+            "code_page": {
+              "type": "integer"
+            },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/module"
+              }
+            }
+          }
+        },
+        "xlm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present"
+          ],
+          "properties": {
+            "present": {
+              "type": "boolean"
+            },
+            "macro_sheets": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "complexity_level": {
+          "$ref": "#/$defs/level"
+        },
+        "primary_family": {
+          "$ref": "#/$defs/family_id"
+        },
+        "families": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/family_score"
+          },
+          "description": "Aggregated over procedures (sum of scores)."
+        },
+        "max_severity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/severity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          },
+          "description": "File-scope and chained signals."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "orientation": {
+          "type": "null",
+          "description": "Reserved for Lot 2."
+        },
+        "workbook_encrypted": {
+          "type": "boolean",
+          "description": "BIFF8 FILEPASS present: workbook stream encrypted, VBA still extracted."
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Machine-readable notes, e.g. encrypted_default_password_possible."
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by_status",
+        "by_family",
+        "by_complexity",
+        "by_severity"
+      ],
+      "properties": {
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_family": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Number of procedures per primary family."
+        },
+        "by_complexity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "totals": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "modules": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "procedures": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "logical_loc": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "possibly_unused_procedures": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

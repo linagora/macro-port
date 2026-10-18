@@ -1,0 +1,7 @@
+# Expected security signals per synthetic sample of family 14 (must all be detected, ACCEPTANCE A5).
+14-01: [sec.auto-exec, sec.shell, sec.chain.autoexec-execution]
+14-02: [sec.auto-exec, sec.wscript-run, sec.chr-obfuscation, sec.chain.autoexec-execution, sec.chain.obfuscated-execution]
+14-03: [sec.http, sec.stream-save, sec.url-literal, sec.temp-path, sec.chain.download-write]
+14-04: [sec.hardcoded-credential]
+14-05: [sec.vbproject]
+14-06: [sec.xlm, sec.very-hidden]

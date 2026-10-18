@@ -1,0 +1,58 @@
+# Macro-Port complexity levels and traits (Lot 1). Licence: CC BY 4.0.
+# Initial thresholds, to be calibrated on the corpus and on the first real fleets (see ACCEPTANCE.md A4).
+version: 0.1.0
+
+# A file's level is the highest level reached by any criterion.
+file_levels:
+  medium:
+    any:
+      - { metric: logical_loc, gte: 150 }
+      - { metric: procedures, gte: 10 }
+      - { metric: max_cyclomatic, gte: 10 }
+      - { metric: max_nesting, gte: 4 }
+      - { metric: forms, gte: 1 }
+      - { metric: external_dependencies, gte: 1 }
+  high:
+    any:
+      - { metric: logical_loc, gte: 1000 }
+      - { metric: procedures, gte: 50 }
+      - { metric: max_cyclomatic, gte: 25 }
+      - { metric: max_nesting, gte: 6 }
+      - { metric: forms, gte: 3 }
+      - { metric: external_dependencies, gte: 3 }
+      - { metric: declare_count, gte: 1 }
+
+# external_dependencies = distinct ProgIDs passed to CreateObject/GetObject (excluding Scripting.Dictionary and VBScript.RegExp)
+#                         + non-default VBA references (anything other than VBA, Excel, stdole, Office)
+#                         + 1 if any Declare statement exists.
+metric_definitions:
+  logical_loc: "Non-blank, non-comment lines, after joining line continuations."
+  procedures: "Number of Sub, Function and Property procedures."
+  max_cyclomatic: "Highest per-procedure cyclomatic complexity."
+  max_nesting: "Deepest nesting of If/Select/For/Do/While/With blocks."
+  forms: "Number of UserForm modules."
+  external_dependencies: "File level: see comment above. Procedure level: distinct ProgIDs used in the procedure (same exclusions) + number of distinct Declare'd functions it calls."
+  declare_count: "Number of Declare statements."
+
+traits:
+  - id: recorded_macro
+    label: { en: "Recorded macro style", fr: "Macro enregistrée" }
+    description: "Typical of the macro recorder: likely simple, often replaceable by native features."
+    any:
+      - { match: comment, pattern: '(?i)(macro (recorded|enregistr)|keyboard shortcut|touche de raccourci)' }
+      - { match: procedure_name, pattern: '^Macro\d+$' }
+      - { match: ratio, of: [Select, Activate, Selection, ActiveCell, ActiveWindow.ScrollRow, ActiveWindow.ScrollColumn], per_logical_loc_gte: 0.3 }
+  - id: trivial
+    label: { en: "Trivial", fr: "Trivial" }
+    description: "Procedure with at most 3 logical lines and no external dependency."
+    all:
+      - { metric: logical_loc, lte: 3 }
+      - { metric: external_dependencies, lte: 0 }
+  - id: possibly_unused
+    label: { en: "Possibly unused", fr: "Possiblement inutilisée" }
+    description: "Not an entry point and never referenced from the project (see SPEC M2, call graph)."
+    structural: possibly_unused
+  - id: compile_error_suspected
+    label: { en: "Does not parse cleanly", fr: "Analyse syntaxique incomplète" }
+    description: "Unbalanced blocks or unparseable statements were recovered from; results may be incomplete."
+    structural: parse_recovered

@@ -1,0 +1,85 @@
+# Macro-Port security signals (Lot 1). Licence: CC BY 4.0.
+# Severity scale: info < low < medium < high. File severity = max of its signals.
+# Policy: a single capability (Shell, HTTP, Declare...) is at most medium; "high" is reserved for chains
+# of capabilities typical of malicious behaviour and for container anomalies.
+# Categories are inspired by common macro triage practice (auto-execution, suspicious keywords, indicators).
+version: 0.1.0
+
+signals:
+  # Auto-execution
+  - { id: sec.auto-exec, category: auto_exec, match: structural, pattern: auto_exec, severity: medium,
+      label: { en: "Runs automatically when the file opens or closes", fr: "S'exécute automatiquement à l'ouverture ou à la fermeture" } }
+
+  # Execution of external programs
+  - { id: sec.shell, category: execution, match: call, pattern: [Shell], severity: medium,
+      label: { en: "Launches an external program (Shell)", fr: "Lance un programme externe (Shell)" } }
+  - { id: sec.wscript-run, category: execution, match: progid, pattern: ['WScript.Shell', 'Shell.Application'], severity: medium,
+      label: { en: "Uses the Windows shell (WScript.Shell, Shell.Application)", fr: "Utilise le shell Windows (WScript.Shell, Shell.Application)" } }
+  - { id: sec.shell-execute-api, category: execution, match: regex, pattern: '\b(ShellExecute[AW]?|WinExec|CreateProcess[AW]?)\b', severity: medium, scope: module,
+      label: { en: "Declares a Windows API that starts processes", fr: "Déclare une API Windows de lancement de processus" } }
+  - { id: sec.sendkeys, category: execution, match: call, pattern: [SendKeys], severity: medium,
+      label: { en: "Simulates keystrokes (SendKeys)", fr: "Simule des frappes clavier (SendKeys)" } }
+  - { id: sec.xlm, category: execution, match: chain, pattern: [Application.ExecuteExcel4Macro], severity: medium,
+      label: { en: "Runs Excel 4.0 (XLM) macro code", fr: "Exécute du code macro Excel 4.0 (XLM)" } }
+  - { id: sec.xlm-call, category: execution, match: call, pattern: [ExecuteExcel4Macro], severity: medium,
+      label: { en: "Runs Excel 4.0 (XLM) macro code", fr: "Exécute du code macro Excel 4.0 (XLM)" } }
+
+  # Network and download
+  - { id: sec.http, category: network, match: progid, pattern: ['MSXML2.XMLHTTP*', 'MSXML2.ServerXMLHTTP*', 'Microsoft.XMLHTTP', 'WinHttp.WinHttpRequest*', 'InternetExplorer.Application'], severity: medium,
+      label: { en: "Makes HTTP requests", fr: "Effectue des requêtes HTTP" } }
+  - { id: sec.download-api, category: network, match: regex, pattern: '\b(URLDownloadToFile[AW]?|InternetOpenUrl[AW]?|InternetReadFile)\b', severity: medium, scope: module,
+      label: { en: "Declares a Windows download API", fr: "Déclare une API Windows de téléchargement" } }
+  - { id: sec.url-literal, category: indicator, match: string, pattern: '(?i)\bhttps?://[^\s"]+', severity: info,
+      label: { en: "Contains a URL", fr: "Contient une URL" } }
+
+  # Writing to disk
+  - { id: sec.stream-save, category: file_write, match: member, pattern: [SaveToFile], severity: medium,
+      label: { en: "Writes binary content to disk (ADODB.Stream)", fr: "Écrit du contenu binaire sur le disque (ADODB.Stream)" } }
+  - { id: sec.file-write, category: file_write, match: regex, pattern: '\bOpen\s+.+\s+For\s+(Output|Append|Binary)\b', severity: low,
+      label: { en: "Writes files", fr: "Écrit des fichiers" } }
+  - { id: sec.file-delete, category: file_write, match: call, pattern: [Kill, RmDir], severity: low,
+      label: { en: "Deletes files or folders", fr: "Supprime des fichiers ou dossiers" } }
+  - { id: sec.temp-path, category: indicator, match: regex, text: raw, pattern: '(?i)Environ\$?\s*\(\s*"(TEMP|TMP|APPDATA|USERPROFILE)"', severity: low,
+      label: { en: "Uses temporary or profile folders", fr: "Utilise les dossiers temporaires ou de profil" } }
+
+  # System modification and persistence
+  - { id: sec.registry-write, category: system, match: member, pattern: [RegWrite, RegDelete], severity: medium,
+      label: { en: "Modifies the Windows registry", fr: "Modifie le registre Windows" } }
+  - { id: sec.vbproject, category: system, match: member, pattern: [VBProject, VBComponents, CodeModule, AddFromString, AddFromFile, InsertLines], severity: medium,
+      label: { en: "Reads or modifies VBA code programmatically", fr: "Lit ou modifie du code VBA par programme" } }
+  - { id: sec.declare, category: system, match: regex, pattern: '^\s*(Public\s+|Private\s+)?Declare\s+', severity: low, scope: module,
+      label: { en: "Calls native Windows APIs (Declare)", fr: "Appelle des API Windows natives (Declare)" } }
+
+  # Concealment and obfuscation
+  - { id: sec.chr-obfuscation, category: obfuscation, match: structural, pattern: chr_obfuscation, severity: medium,
+      label: { en: "Builds strings from character codes (possible obfuscation)", fr: "Construit des chaînes par codes caractères (obfuscation possible)" } }
+  - { id: sec.encoded-literal, category: obfuscation, match: structural, pattern: long_hex_or_base64_literal, severity: medium,
+      label: { en: "Contains a long encoded string", fr: "Contient une longue chaîne encodée" } }
+  - { id: sec.callbyname, category: obfuscation, match: call, pattern: [CallByName], severity: low,
+      label: { en: "Calls members by name at runtime", fr: "Appelle des membres par leur nom à l'exécution" } }
+  - { id: sec.very-hidden, category: concealment, match: regex, pattern: '\bxlSheetVeryHidden\b|\.Visible\s*=\s*2\b', severity: low,
+      label: { en: "Makes sheets very hidden", fr: "Masque des feuilles en mode très masqué" } }
+  - { id: sec.alerts-off, category: concealment, match: regex, pattern: '\bApplication\.(DisplayAlerts|ScreenUpdating)\s*=\s*False\b', severity: info,
+      label: { en: "Disables alerts or screen updates", fr: "Désactive les alertes ou l'affichage" } }
+
+  # Secrets and data exposure
+  - { id: sec.hardcoded-credential, category: secret, match: string, pattern: '(?i)(password|pwd|passwd|mot\s*de\s*passe|mdp)\s*=\s*[^;"\s]{3,}', severity: medium, scope: module,
+      label: { en: "Contains a hard-coded password", fr: "Contient un mot de passe en clair" } }
+  - { id: sec.mail-send, category: exfiltration, match: regex, pattern: '\.Send\b', severity: low, requires_family: 12-office-interop,
+      label: { en: "Sends email automatically", fr: "Envoie des e-mails automatiquement" } }
+
+# Chains: raise a combined signal when all listed signals occur in the same file.
+chains:
+  - { id: sec.chain.autoexec-execution, all: [sec.auto-exec, { any: [sec.shell, sec.wscript-run, sec.shell-execute-api] }], severity: high,
+      label: { en: "Auto-execution combined with program launch", fr: "Exécution automatique combinée au lancement d'un programme" } }
+  - { id: sec.chain.download-write, all: [{ any: [sec.http, sec.download-api] }, { any: [sec.stream-save, sec.file-write] }], severity: high,
+      label: { en: "Downloads content and writes it to disk", fr: "Télécharge du contenu et l'écrit sur le disque" } }
+  - { id: sec.chain.obfuscated-execution, all: [{ any: [sec.chr-obfuscation, sec.encoded-literal] }, { any: [sec.shell, sec.wscript-run, sec.xlm, sec.xlm-call] }], severity: high,
+      label: { en: "Obfuscated strings combined with code execution", fr: "Chaînes obfusquées combinées à une exécution de code" } }
+
+# Container-level indicators set by the extraction layer (M1), listed here for labels and severities.
+container_indicators:
+  - { id: sec.source-missing, severity: high, label: { en: "VBA source missing while compiled code is present (stomping indicator)", fr: "Source VBA absente alors que du code compilé est présent (indice de stomping)" } }
+  - { id: sec.xlm-macrosheet, severity: medium, label: { en: "Contains Excel 4.0 (XLM) macro sheets", fr: "Contient des feuilles de macros Excel 4.0 (XLM)" } }
+  - { id: sec.vbaproject-in-xlsx, severity: high, label: { en: "VBA project found in a file type that should not contain macros", fr: "Projet VBA trouvé dans un type de fichier qui ne devrait pas en contenir" } }
+  - { id: sec.suspicious-archive, severity: medium, label: { en: "Abnormal compression ratio (possible archive bomb)", fr: "Taux de compression anormal (bombe d'archive possible)" } }

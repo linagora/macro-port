@@ -1,0 +1,152 @@
+[
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-01",
+    "file": "14-01-auto-open-shell.bas",
+    "title": "Auto_Open lançant un programme par Shell",
+    "key_apis": [
+      "Auto_Open",
+      "Shell"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "exécution automatique",
+      "Shell"
+    ],
+    "notes": "Exécution automatique à l'ouverture qui lance notepad.exe.",
+    "family": "14-patterns-securite",
+    "secondary_families": [],
+    "loc": 5
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-02",
+    "file": "14-02-workbook-open-obfuscation-chr.cls",
+    "title": "Workbook_Open, WScript.Shell et chaîne obfusquée",
+    "key_apis": [
+      "Workbook_Open",
+      "CreateObject WScript.Shell",
+      "Chr",
+      "StrReverse"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "exécution automatique",
+      "COM/CreateObject WScript.Shell",
+      "obfuscation"
+    ],
+    "notes": "Construit le nom du programme par Chr() et concaténation pour tester la désobfuscation.",
+    "family": "14-patterns-securite",
+    "secondary_families": [],
+    "loc": 7
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-03",
+    "file": "14-03-telechargement-ecriture-temp.bas",
+    "title": "Téléchargement HTTP et écriture dans %TEMP%",
+    "key_apis": [
+      "MSXML2.XMLHTTP",
+      "ADODB.Stream.SaveToFile",
+      "Environ",
+      "Workbooks.OpenText"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "COM/CreateObject",
+      "écriture disque locale"
+    ],
+    "notes": "Motif typique de téléchargeur, ici vers example.com et un CSV inoffensif.",
+    "family": "14-patterns-securite",
+    "secondary_families": [],
+    "loc": 17
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-04",
+    "file": "14-04-identifiants-en-clair.bas",
+    "title": "Identifiants SQL en clair dans le code",
+    "secondary_families": [
+      "11-donnees-externes"
+    ],
+    "key_apis": [
+      "ADODB.Connection",
+      "CopyFromRecordset"
+    ],
+    "expected_target": "grist",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "ADODB",
+      "secret en clair"
+    ],
+    "notes": "Chaîne de connexion avec mot de passe fictif pour tester la détection de secrets.",
+    "family": "14-patterns-securite",
+    "loc": 10
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-05",
+    "file": "14-05-acces-vbproject.bas",
+    "title": "Accès au modèle objet VBProject (export et injection)",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "key_apis": [
+      "VBProject.VBComponents",
+      "CodeModule.AddFromString",
+      "MkDir"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "VBProject",
+      "code auto-modifiant"
+    ],
+    "notes": "Export des modules (usage légitime) et injection de code à la volée (motif à risque).",
+    "family": "14-patterns-securite",
+    "loc": 18
+  },
+  {
+    "source_url": null,
+    "author": "LINAGORA",
+    "license": "CC0-1.0",
+    "status": "synthetic",
+    "id": "14-06",
+    "file": "14-06-xlm-et-feuille-tres-masquee.bas",
+    "title": "Macro XLM via ExecuteExcel4Macro et feuille très masquée",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "key_apis": [
+      "ExecuteExcel4Macro",
+      "xlSheetVeryHidden"
+    ],
+    "expected_target": "abandon",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "macros XLM Excel 4.0",
+      "xlSheetVeryHidden"
+    ],
+    "notes": "Deux techniques souvent détournées, utilisées ici de façon bénigne.",
+    "family": "14-patterns-securite",
+    "loc": 6
+  }
+]

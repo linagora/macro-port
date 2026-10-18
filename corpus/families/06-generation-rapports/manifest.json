@@ -1,0 +1,170 @@
+[
+  {
+    "id": "06-01",
+    "file": "06-01-export-pdf-excel-factures.bas",
+    "title": "Export PDF/Excel des feuilles de facturation",
+    "family": "06-generation-rapports",
+    "secondary_families": [
+      "10-fichiers-systeme",
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/tduyng/vba-excel/blob/f8b9884da544379757bb274ae3ce843ca1675e65/50-ImportExportSheetExcelsOrPDF/m04_Export.bas",
+    "author": "Tien Duy NGUYEN (tduyng)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 373,
+    "key_apis": [
+      "ExportAsFixedFormat",
+      "Sheets(Array).Select",
+      "Workbook.SaveAs",
+      "Sheets.Copy",
+      "MkDir",
+      "Dir",
+      "Application.Calculation"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "ExportAsFixedFormat",
+      "dépendance au UserForm ufExportImport",
+      "chemins Windows codés en dur",
+      "création de dossiers (MkDir)"
+    ],
+    "notes": "Module métier (facturation FAC.01..) exportant des feuilles en un ou plusieurs PDF ou classeurs, avec nommage incrémental et création de dossiers."
+  },
+  {
+    "id": "06-02",
+    "file": "06-02-mise-en-page-impression-rapport.bas",
+    "title": "Mise en page et impression du rapport quotidien",
+    "family": "06-generation-rapports",
+    "secondary_families": [
+      "01-mise-en-forme",
+      "05-formulaires-saisie"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/EditPrintOutProperties/editReportNew.bas",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 82,
+    "key_apis": [
+      "PageSetup",
+      "Application.InchesToPoints",
+      "Worksheet.PrintOut",
+      "PasteSpecial",
+      "Merge",
+      "Application.Match",
+      "UserForm (barre de progression)"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "PrintOut",
+      "PageSetup détaillé (marges, FitToPages)",
+      "barre de progression UserForm",
+      "ActiveWindow.Split"
+    ],
+    "notes": "Boucle sur les feuilles, reformate chacune, règle la mise en page (paysage, 1 page en largeur) et imprime celles du personnel listé ; contient une ligne de commentaire sans apostrophe (erreur de syntaxe d'origine)."
+  },
+  {
+    "id": "06-03",
+    "file": "06-03-sommaire-classeur-pages.bas",
+    "title": "Sommaire du classeur avec nombre de pages",
+    "family": "06-generation-rapports",
+    "secondary_families": [
+      "01-mise-en-forme"
+    ],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/excel/Concepts/Workbooks-and-Worksheets/add-a-table-of-contents-to-a-workbook.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 50,
+    "key_apis": [
+      "Worksheets.Add",
+      "Hyperlinks.Add",
+      "PageSetup.Pages.Count",
+      "Application.DisplayAlerts"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "PageSetup.Pages().Count (pagination d'impression)"
+    ],
+    "notes": "Crée une feuille TOC avec un lien hypertexte par feuille et la plage de pages imprimées de chacune (extrait : 1re variante)."
+  },
+  {
+    "id": "06-04",
+    "file": "06-04-copie-feuilles-classeurs.bas",
+    "title": "Enregistrer chaque feuille comme classeur séparé",
+    "family": "06-generation-rapports",
+    "secondary_families": [
+      "10-fichiers-systeme"
+    ],
+    "source_url": "https://github.com/Alrowithy/vba-code/blob/703962956c17d25ed102c4f2771d078cd219c110/CopyEachSheetToNewWorkbook/CopyEachSheetToNewWorkbook.bas",
+    "author": "Marius Dragan (repo Alrowithy/vba-code)",
+    "license": "MIT",
+    "status": "included",
+    "loc": 27,
+    "key_apis": [
+      "Worksheet.Copy",
+      "Workbook.SaveAs",
+      "Workbook.Close",
+      "Application.DisplayAlerts",
+      "MsgBox"
+    ],
+    "expected_target": "libreoffice",
+    "migration_difficulty": "faible",
+    "blockers": [
+      "création de nouveaux fichiers classeurs (SaveAs)"
+    ],
+    "notes": "Copie chaque feuille du classeur actif dans un nouveau classeur .xlsx enregistré dans le même dossier."
+  },
+  {
+    "id": "06-05",
+    "file": "06-05-numerotation-pages-apercu.bas",
+    "title": "Zone d'impression et numéros de page en aperçu",
+    "family": "06-generation-rapports",
+    "secondary_families": [],
+    "source_url": "https://github.com/MicrosoftDocs/VBA-Docs/blob/6765796079a1552460769cb633068d387594dc99/api/Excel.Application.ActiveSheet.md",
+    "author": "Microsoft Corporation (MicrosoftDocs/VBA-Docs)",
+    "license": "MIT",
+    "status": "extract",
+    "loc": 15,
+    "key_apis": [
+      "PageSetup.PrintArea",
+      "HPageBreaks",
+      "DisplayAutomaticPageBreaks",
+      "PrintPreview"
+    ],
+    "expected_target": "excel_maintien",
+    "migration_difficulty": "forte",
+    "blockers": [
+      "HPageBreaks (sauts de page automatiques)",
+      "PrintPreview"
+    ],
+    "notes": "Définit la zone d'impression, écrit « Page n » à chaque saut de page horizontal, affiche l'aperçu puis nettoie."
+  },
+  {
+    "id": "06-06",
+    "file": null,
+    "title": "Générateur de rapport automatique et export PDF",
+    "family": "06-generation-rapports",
+    "secondary_families": [
+      "02-consolidation"
+    ],
+    "source_url": "https://github.com/OsSyLab/Excel-VBA-Macros/tree/5c94f11d20d024db67e679d017ff89e7b24271d0/Automatic_Report_Generator",
+    "author": "OsSyLab",
+    "license": "NOASSERTION",
+    "status": "reference_only",
+    "loc": null,
+    "key_apis": [
+      "ExportAsFixedFormat",
+      "Worksheets.Add"
+    ],
+    "expected_target": "onlyoffice",
+    "migration_difficulty": "moyenne",
+    "blockers": [
+      "ExportAsFixedFormat"
+    ],
+    "notes": "Macros de génération de rapport et d'export PDF ; dépôt sans LICENSE, référence seulement."
+  }
+]
