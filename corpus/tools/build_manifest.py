@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Agrege les manifest.json de chaque famille, verifie le corpus et produit manifest.json / manifest.csv a la racine."""
 import json, glob, os, csv, hashlib, collections, sys
 
