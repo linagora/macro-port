@@ -17,7 +17,7 @@ Never, in Lot 1: call an LLM, translate or convert VBA code, score compatibility
 
 ## Current state of the repository
 
-Still the starter kit: no Cargo workspace yet, and `crates/`, `schema/rules/` (M0), `i18n/` (M4) and `web/` (M5) do not exist. Until M0 is merged, only the Python tools run. Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
+M0 in progress. The Cargo workspace holds `macroport-core` (empty so far; `crates/macroport-core/clippy.toml` bans the impure standard library APIs) and `macroport-cli`, whose `macro-port` binary only answers `--version` and `--help`; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: `schema/rules/`, `rules check` and the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
 
 ## Non-negotiable engineering rules
 
@@ -27,7 +27,7 @@ Still the starter kit: no Cargo workspace yet, and `crates/`, `schema/rules/` (M
 - Treat every input as hostile: no `unwrap()`, `expect()`, indexing or arithmetic that can panic on input-dependent data. Use checked arithmetic and bounded reads. Respect the limits in SPEC M1.
 - Deterministic output: stable ordering (`BTreeMap`, sorted vectors), no hash-map iteration order in output.
 - Family, security and complexity logic lives in `rules/*.yaml`. Rust only implements the generic matchers and the closed list of structural predicates in SPEC section 7. If a rule cannot be expressed, propose a new matcher in an ADR instead of hard-coding a family.
-- Every source file starts with `// SPDX-License-Identifier: Apache-2.0`.
+- Every source file starts with `// SPDX-License-Identifier: Apache-2.0` (`#` instead of `//` in Python, shell and PowerShell, after the shebang if any).
 - New dependency: take it from `docs/adr/0002-dependencies.md`, with the features listed there; any other crate needs an ADR in the PR that adds it. No HTTP client crate anywhere in the dependency tree, dev-dependencies included; `cargo deny` enforces it.
 
 ## Repository layout
@@ -44,6 +44,7 @@ corpus/                 # test corpus: families/ (text samples), fixtures/ (bina
 docs/                   # SPEC, ACCEPTANCE, ADRs, CORPUS-PLAN
 tools/rules-prototype/  # Python calibration prototype: reference only, never port it
 tools/fixtures/         # Build-Fixtures.ps1 (Windows + Excel only, never in CI), make_malformed.py
+tools/ci/               # scripts run by CI: check-spdx.sh
 LISEZMOI-KIT.md, PROMPT-*.md  # owner-facing kit notes and prompts, in French
 ```
 
@@ -68,15 +69,22 @@ python3 -I tools/fixtures/make_malformed.py corpus/fixtures/generated corpus/fix
 
 Prototype baseline on rules v0.1.0: 74 samples, top-1 70 %, top-2 88 %, 17/17 expected security signals.
 
-From M0 on:
+Cargo, from the repository root (`rust-toolchain.toml` selects the toolchain). The gates of CI, which adds `--locked` to the cargo commands, so a stale `Cargo.lock` fails there:
 
 ```
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --workspace
 cargo test -p macroport-core <name_filter>   # a single test or group
-cargo insta review                           # review snapshot diffs (cargo-insta)
 cargo deny check
+tools/ci/check-spdx.sh                       # SPDX header on every tracked source file
+cargo build -p macroport-core --target wasm32-unknown-unknown
+```
+
+As their milestones land:
+
+```
+cargo insta review                           # review snapshot diffs (cargo-insta)
 cargo run -p macroport-cli -- scan corpus/families -o target/out --format json,html,csv
 cargo run -p macroport-cli -- rules check
 wasm-pack build crates/macroport-wasm --target web
@@ -89,6 +97,7 @@ wasm-pack build crates/macroport-wasm --target web
 - Corpus tests compute A4 and A5 metrics and fail below thresholds; print the confusion matrix.
 - Every JSON produced in tests is validated against `schema/report.schema.json`.
 - Malformed fixtures and fuzz targets for every binary parser.
+- The purity bans of `clippy.toml` apply to the core's tests too. A core test that reads files, such as a corpus test, starts with `#![allow(clippy::disallowed_methods, clippy::disallowed_types)]`.
 - Do not edit the corpus manifests (`corpus/families/*/manifest.json` and the root `corpus/manifest.json` and `.csv` generated from them), `corpus/ground-truth/` or corpus samples to make a test pass. If you believe the ground truth is wrong, say so in the PR and let the owner decide.
 
 ## Changing contracts
