@@ -1,0 +1,16 @@
+[package]
+name = "macroport-cli"
+description = "The macro-port command: inventory of Excel VBA macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "macro-port"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
