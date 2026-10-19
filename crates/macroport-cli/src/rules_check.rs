@@ -12,11 +12,14 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use jsonschema::error::ValidationErrorKind;
-use macroport_core::rules::{self, FAMILIES_FILE, Problem, RuleSet, RulesSources, SECURITY_FILE};
+use macroport_core::rules::{
+    self, COMPLEXITY_FILE, FAMILIES_FILE, Problem, RuleSet, RulesSources, SECURITY_FILE,
+};
 use serde_json::Value;
 
 const FAMILIES_SCHEMA: &str = include_str!("../../../schema/rules/families.schema.json");
 const SECURITY_SCHEMA: &str = include_str!("../../../schema/rules/security.schema.json");
+const COMPLEXITY_SCHEMA: &str = include_str!("../../../schema/rules/complexity.schema.json");
 
 /// A rules file, as `rules check` sees it.
 struct RulesFile {
@@ -37,6 +40,12 @@ const SECURITY: RulesFile = RulesFile {
     name: SECURITY_FILE,
     schema: SECURITY_SCHEMA,
     embedded: RulesSources::EMBEDDED.security,
+};
+
+const COMPLEXITY: RulesFile = RulesFile {
+    name: COMPLEXITY_FILE,
+    schema: COMPLEXITY_SCHEMA,
+    embedded: RulesSources::EMBEDDED.complexity,
 };
 
 /// Rules files above this size are refused.
@@ -64,7 +73,7 @@ enum Outcome {
 pub fn run(dir: Option<&Path>) -> ExitCode {
     match check(dir) {
         Ok(Outcome::Valid) => {
-            for file in [FAMILIES, SECURITY] {
+            for file in [FAMILIES, SECURITY, COMPLEXITY] {
                 println!("{}: ok", file.name);
             }
             ExitCode::SUCCESS
@@ -87,13 +96,15 @@ fn check(dir: Option<&Path>) -> Result<Outcome, String> {
     let mut problems = Vec::new();
     let families = file_stage(dir, &FAMILIES, &mut problems)?;
     let security = file_stage(dir, &SECURITY, &mut problems)?;
-    let (Some(families), Some(security)) = (families, security) else {
+    let complexity = file_stage(dir, &COMPLEXITY, &mut problems)?;
+    let (Some(families), Some(security), Some(complexity)) = (families, security, complexity)
+    else {
         return Ok(Outcome::FileProblems(problems));
     };
     match RuleSet::load(&RulesSources {
         families: &families,
         security: &security,
-        complexity: RulesSources::EMBEDDED.complexity,
+        complexity: &complexity,
     }) {
         Ok(_) => Ok(Outcome::Valid),
         Err(problems) => Ok(Outcome::CoreProblems(problems)),
@@ -403,6 +414,21 @@ mod tests {
         for pointer in shared {
             assert_copied(&families, &pointer, &security, &pointer);
         }
+
+        // Every top-level key and definition of the same name, and the
+        // pattern of a signal, which a pattern condition has too.
+        let complexity = json(COMPLEXITY_SCHEMA);
+        let mut shared = in_both(&families, &complexity, "/properties");
+        shared.extend(in_both(&families, &complexity, "/$defs"));
+        for pointer in shared {
+            assert_copied(&families, &pointer, &complexity, &pointer);
+        }
+        assert_copied(
+            &families,
+            "/$defs/signal/properties/pattern",
+            &complexity,
+            "/$defs/pattern_condition/properties/pattern",
+        );
     }
 
     /// Every severity that the schema allows loads in the core.
@@ -459,5 +485,51 @@ mod tests {
               keyword (at /value)"
             ]
         );
+    }
+
+    /// Every rule of a trait, bound and matcher that the schema allows loads
+    /// in the core.
+    #[test]
+    fn the_core_loads_every_condition_of_the_schema() {
+        let schema = json(COMPLEXITY_SCHEMA);
+        let mut rules = Vec::new();
+        for key in exactly_one_of(&schema, "/$defs/trait/oneOf").expect("the rules of a trait") {
+            rules.push(match key {
+                "structural" => format!("{key}: udf_candidate"),
+                _ => format!("{key}: [{{ metric: m, gte: 1 }}]"),
+            });
+        }
+        for bound in exactly_one_of(&schema, "/$defs/metric_condition/oneOf").expect("the bounds") {
+            rules.push(format!("all: [{{ metric: m, {bound}: 1 }}]"));
+        }
+        for matcher in names(&schema["$defs"]["condition"]["properties"]["match"]) {
+            let condition = match matcher.as_str() {
+                "ratio" => "of: [Select], per_logical_loc_gte: 0.5",
+                _ => "pattern: x",
+            };
+            rules.push(format!("any: [{{ match: {matcher}, {condition} }}]"));
+        }
+
+        for rule in rules {
+            let complexity = format!(
+                "version: 0.1.0\n\
+                 file_levels:\n  \
+                   medium: {{ any: [{{ metric: m, gte: 2 }}] }}\n  \
+                   high: {{ any: [{{ metric: m, gte: 3 }}] }}\n\
+                 metric_definitions: {{ m: M }}\n\
+                 traits: [{{ id: t, label: {{ en: X, fr: X }}, description: X, {rule} }}]\n"
+            );
+            let document = parse(COMPLEXITY_FILE, &complexity).expect("valid YAML");
+            assert_eq!(
+                validate(COMPLEXITY_FILE, &document, COMPLEXITY_SCHEMA),
+                Ok(Vec::new()),
+                "{rule}"
+            );
+            let loaded = RuleSet::load(&RulesSources {
+                complexity: &complexity,
+                ..RulesSources::EMBEDDED
+            });
+            assert!(loaded.is_ok(), "{rule}: {loaded:?}");
+        }
     }
 }

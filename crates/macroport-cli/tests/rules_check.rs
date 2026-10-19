@@ -10,10 +10,10 @@ use std::process::{Command, Output};
 const FILE_STAGE: &str = " (regexes, ids and references are not checked yet)";
 
 /// Every rules file that `rules check` reads.
-const RULES_FILES: [&str; 2] = ["families.yaml", "security.yaml"];
+const RULES_FILES: [&str; 3] = ["families.yaml", "security.yaml", "complexity.yaml"];
 
 /// What `rules check` prints when the rules are valid.
-const ALL_OK: &str = "families.yaml: ok\nsecurity.yaml: ok\n";
+const ALL_OK: &str = "families.yaml: ok\nsecurity.yaml: ok\ncomplexity.yaml: ok\n";
 
 fn macro_port<S: AsRef<OsStr>>(args: impl IntoIterator<Item = S>) -> Output {
     Command::new(env!("CARGO_BIN_EXE_macro-port"))
@@ -39,7 +39,7 @@ fn rules_dir(name: &str) -> PathBuf {
         fs::remove_dir_all(&dir).expect("old rules directory removed");
     }
     fs::create_dir_all(&dir).expect("rules directory created");
-    for kind in ["families", "security"] {
+    for kind in ["families", "security", "complexity"] {
         let valid = fixtures(kind).join("valid-minimal.yaml");
         fs::copy(valid, dir.join(format!("{kind}.yaml"))).expect("valid fixture copied");
     }
@@ -73,6 +73,13 @@ fn check_families(fixture: &str) -> Output {
 fn check_security(fixture: &str) -> Output {
     let dir = rules_dir(&format!("security-{fixture}"));
     use_fixture(&dir, "security", fixture);
+    check_dir(&dir)
+}
+
+/// Runs `rules check` on valid rules but for `complexity.yaml`, a fixture.
+fn check_complexity(fixture: &str) -> Output {
+    let dir = rules_dir(&format!("complexity-{fixture}"));
+    use_fixture(&dir, "complexity", fixture);
     check_dir(&dir)
 }
 
@@ -481,9 +488,10 @@ fn required_families_must_exist() {
 #[test]
 fn core_problems_of_every_file_are_reported_together() {
     // The family that security.yaml names is checked though families.yaml has problems.
-    let dir = rules_dir("both-core-problems");
+    let dir = rules_dir("core-problems-of-every-file");
     use_fixture(&dir, "families", "invalid-regex");
     use_fixture(&dir, "security", "unknown-family");
+    use_fixture(&dir, "complexity", "duplicate-trait-id");
     let output = check_dir(&dir);
 
     assert_eq!(output.status.code(), Some(1), "{output:?}");
@@ -495,15 +503,18 @@ fn core_problems_of_every_file_are_reported_together() {
          (at /families/0/signals/3/pattern/1)\n\
          security.yaml: sec.very-hidden: unknown family '01-mise-en-forme' \
          (at /signals/3/requires_family)\n\
-         3 problems found\n"
+         complexity.yaml: trivial: duplicate trait id, first defined at /traits/1 \
+         (at /traits/3/id)\n\
+         4 problems found\n"
     );
 }
 
 #[test]
 fn file_problems_of_every_file_are_reported_together() {
-    let dir = rules_dir("both-files-invalid");
+    let dir = rules_dir("file-problems-of-every-file");
     use_fixture(&dir, "families", "invalid-yaml");
     fs::write(dir.join("security.yaml"), b"").expect("security.yaml emptied");
+    use_fixture(&dir, "complexity", "unknown-structural");
     let output = check_dir(&dir);
 
     assert_eq!(output.status.code(), Some(1), "{output:?}");
@@ -513,7 +524,10 @@ fn file_problems_of_every_file_are_reported_together() {
             "families.yaml: invalid YAML: mismatched bracket '[' closed by '}}' \
              at line 13, column 55\n\
              security.yaml: empty document\n\
-             2 problems found{FILE_STAGE}\n"
+             complexity.yaml: possibly_unused: 'unused' is not one of: udf_candidate, \
+             event_handler, auto_exec, chr_obfuscation, long_hex_or_base64_literal, \
+             nested_loop_compare, possibly_unused, parse_recovered (at /traits/2/structural)\n\
+             3 problems found{FILE_STAGE}\n"
         )
     );
 }
@@ -562,6 +576,22 @@ fn the_core_checks_no_file_until_every_file_passes_the_file_stage() {
             "security.yaml: sec.shell: 'membre' is not one of: member, chain, call, progid, \
              procedure_name, module_type, reference, regex, string, comment, structural \
              (at /signals/1/match)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+
+    // And for complexity.yaml to match its schema.
+    let dir = rules_dir("complexity-schema-first");
+    use_fixture(&dir, "families", "invalid-regex");
+    use_fixture(&dir, "complexity", "unknown-matcher");
+    let output = check_dir(&dir);
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: recorded_macro: 'commentaire' is not one of: comment, \
+             procedure_name, ratio (at /traits/0/any/0/match)\n\
              1 problem found{FILE_STAGE}\n"
         )
     );
@@ -698,6 +728,163 @@ fn chain_terms_are_signal_ids_or_any_lists() {
              security.yaml: sec.chain.autoexec-execution: [\"sec.declare\"] is not of types \
              \"string\", \"object\" (at /chains/0/all/2)\n\
              3 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_complexity_keys_are_rejected_at_every_level() {
+    let output = check_complexity("unknown-keys");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: unknown key 'author' (at /author)\n\
+             complexity.yaml: unknown key 'low' (at /file_levels/low)\n\
+             complexity.yaml: unknown key 'note' (at /file_levels/medium/any/0/note)\n\
+             complexity.yaml: recorded_macro: unknown key 'note' (at /traits/0/any/0/note)\n\
+             complexity.yaml: recorded_macro: unknown key 'note' (at /traits/0/any/2/note)\n\
+             complexity.yaml: recorded_macro: unknown key 'de' (at /traits/0/label/de)\n\
+             complexity.yaml: recorded_macro: unknown key 'weight' (at /traits/0/weight)\n\
+             complexity.yaml: trivial: unknown key 'note' (at /traits/1/all/0/note)\n\
+             8 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn metrics_must_be_defined_in_metric_definitions() {
+    let output = check_complexity("unknown-metric");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        "complexity.yaml: metric 'max_cyclomatic' is not defined in metric_definitions \
+         (at /file_levels/medium/any/1/metric)\n\
+         complexity.yaml: trivial: metric 'loc' is not defined in metric_definitions \
+         (at /traits/1/all/0/metric)\n\
+         2 problems found\n"
+    );
+}
+
+#[test]
+fn metric_conditions_take_exactly_one_bound() {
+    let output = check_complexity("metric-bounds");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: needs exactly one of: gte, lte (at /file_levels/medium/any/1)\n\
+             complexity.yaml: trivial: needs exactly one of: gte, lte (at /traits/1/all/0)\n\
+             2 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn traits_take_exactly_one_rule() {
+    let output = check_complexity("trait-rules");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: trivial: needs exactly one of: any, all, structural (at /traits/1)\n\
+             complexity.yaml: possibly_unused: needs exactly one of: any, all, structural \
+             (at /traits/2)\n\
+             2 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn trait_structural_predicate_outside_the_closed_list_is_rejected() {
+    let output = check_complexity("unknown-structural");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: possibly_unused: 'unused' is not one of: udf_candidate, \
+             event_handler, auto_exec, chr_obfuscation, long_hex_or_base64_literal, \
+             nested_loop_compare, possibly_unused, parse_recovered (at /traits/2/structural)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn invalid_trait_regexes_are_rejected() {
+    let output = check_complexity("invalid-regex");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        "complexity.yaml: recorded_macro: invalid regex '(macro recorded': unclosed group \
+         (at /traits/0/any/0/pattern)\n\
+         complexity.yaml: recorded_macro: invalid regex '[Macro': unclosed character class \
+         (at /traits/0/any/1/pattern/1)\n\
+         2 problems found\n"
+    );
+}
+
+#[test]
+fn trait_ids_are_unique() {
+    let output = check_complexity("duplicate-trait-id");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        "complexity.yaml: trivial: duplicate trait id, first defined at /traits/1 \
+         (at /traits/3/id)\n\
+         1 problem found\n"
+    );
+}
+
+#[test]
+fn trait_labels_need_english_and_french() {
+    let output = check_complexity("missing-label");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: recorded_macro: missing key 'fr' (at /traits/0/label)\n\
+             complexity.yaml: trivial: missing key 'label' (at /traits/1)\n\
+             complexity.yaml: possibly_unused: missing key 'en' (at /traits/2/label)\n\
+             3 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn condition_lists_are_never_empty() {
+    let output = check_complexity("empty-conditions");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: [] has less than 1 item (at /file_levels/high/any)\n\
+             complexity.yaml: trivial: [] has less than 1 item (at /traits/1/all)\n\
+             2 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_condition_matcher_is_rejected() {
+    let output = check_complexity("unknown-matcher");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: recorded_macro: 'commentaire' is not one of: comment, \
+             procedure_name, ratio (at /traits/0/any/0/match)\n\
+             1 problem found{FILE_STAGE}\n"
         )
     );
 }

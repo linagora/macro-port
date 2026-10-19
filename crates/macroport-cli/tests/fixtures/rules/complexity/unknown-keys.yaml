@@ -1,0 +1,32 @@
+# Invalid: unknown keys at every level.
+version: 0.1.0
+author: someone
+
+file_levels:
+  medium:
+    any:
+      - { metric: logical_loc, gte: 150, note: Calibrated on the corpus }
+      - { metric: forms, gte: 1 }
+  high:
+    any:
+      - { metric: logical_loc, gte: 1000 }
+  low:
+    any:
+      - { metric: logical_loc, lte: 10 }
+
+metric_definitions:
+  logical_loc: "Non-blank, non-comment lines, after joining line continuations."
+  forms: "Number of UserForm modules."
+
+traits:
+  - { id: recorded_macro, description: "Typical of the macro recorder.", weight: 2,
+      label: { en: "Recorded macro style", fr: "Macro enregistrée", de: "Aufgezeichnetes Makro" },
+      any: [{ match: comment, pattern: 'macro recorded', note: Recorder header },
+            { match: procedure_name, pattern: ['^Macro\d+$'] },
+            { match: ratio, of: [Select, ActiveCell], per_logical_loc_gte: 0.3, note: Calibrated on the corpus }] }
+  - { id: trivial, description: "At most 3 logical lines.",
+      label: { en: "Trivial", fr: "Trivial" },
+      all: [{ metric: logical_loc, lte: 3, note: Calibrated on the corpus }] }
+  - { id: possibly_unused, description: "Never referenced from the project.",
+      label: { en: "Possibly unused", fr: "Possiblement inutilisée" },
+      structural: possibly_unused }
