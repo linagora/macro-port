@@ -48,7 +48,7 @@ Rules may be tuned to reach these numbers, but each tuning commit must state the
 ## A6. CLI
 
 - `macro-port scan corpus/ -o out --format json,html,csv` completes with exit code 0 (or 1 if malformed fixtures are included) and writes `report.json`, `report.html`, `files.csv`, `procedures.csv`.
-- `--redact` output follows the redaction table of SPEC section 8: no `snippet` field, no `errors[].message`, no clear-text path or root (test: none of the corpus file paths, and none of the string literals of the corpus, appear in the output); with `--redact-identifiers`, no module or procedure name appears either. The same `--redact-key` gives identical output across runs; no key gives different hashes across runs.
+- `--redact` output follows the redaction table of SPEC section 8: no `snippet` field, every `errors[].message` equal to `[redacted]`, no clear-text path or root (test: none of the corpus file paths, and none of the string literals of the corpus, appear in the output); with `--redact-identifiers`, no module or procedure name appears either. The same `--redact-key` gives identical output across runs; no key gives different hashes across runs.
 - `macro-port rules check` rejects a rules file with an unknown key, an invalid regex or a duplicate signal id.
 - Performance: 1,000 files (corpus replicated with varied names, including the 3,600-line 10-06 sample) analysed in under 60 seconds on a 4-core laptop with `--jobs 4`; peak memory under 1 GB.
 - Binaries built in CI for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `aarch64-apple-darwin`, `x86_64-apple-darwin`.

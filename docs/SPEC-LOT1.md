@@ -236,7 +236,7 @@ Rules are YAML 1.2 files. In the first PR (M0), write `schema/rules/families.sch
 | --- | --- |
 | `files[].path`, `scan.roots[]` | `hmac(path)` + original extension |
 | `snippet` (all evidence) | removed |
-| `errors[].message` | removed (code kept) |
+| `errors[].message` | the fixed text `[redacted]` (code kept) |
 | `vba_project.name` | `hmac(name)` |
 | `references[]` | kept (library display names), paths already stripped |
 | module and procedure names | kept by default (needed for review); hashed with `--redact-identifiers` |
