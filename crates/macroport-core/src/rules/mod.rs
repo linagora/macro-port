@@ -9,6 +9,7 @@
 
 mod families;
 mod matcher;
+mod security;
 mod yaml;
 
 use std::collections::BTreeMap;
@@ -19,22 +20,31 @@ use serde::Deserialize;
 
 pub use families::{Families, Family, FamilySignal, Scoring};
 pub use matcher::{Matcher, ModuleType, Scope, StructuralPredicate, TextMode};
+pub use security::{
+    ChainTerm, ContainerIndicator, Security, SecurityChain, SecuritySignal, Severity,
+};
 pub use yaml::parse_value;
 
 /// File name of the usage families rules.
 pub const FAMILIES_FILE: &str = "families.yaml";
+
+/// File name of the security rules.
+pub const SECURITY_FILE: &str = "security.yaml";
 
 /// The text of each rules file.
 #[derive(Debug, Clone, Copy)]
 pub struct RulesSources<'a> {
     /// Content of `families.yaml`.
     pub families: &'a str,
+    /// Content of `security.yaml`.
+    pub security: &'a str,
 }
 
 impl RulesSources<'static> {
     /// The rules shipped in `rules/`, embedded at build time.
     pub const EMBEDDED: Self = Self {
         families: include_str!("../../../../rules/families.yaml"),
+        security: include_str!("../../../../rules/security.yaml"),
     };
 }
 
@@ -43,6 +53,8 @@ impl RulesSources<'static> {
 pub struct RuleSet {
     /// Usage families and their signals.
     pub families: Families,
+    /// Security signals, chains and container indicators.
+    pub security: Security,
 }
 
 impl RuleSet {
@@ -50,10 +62,20 @@ impl RuleSet {
     ///
     /// # Errors
     ///
-    /// Every problem found, in document order.
+    /// Every problem found in every file: those of `families.yaml` first.
     pub fn load(sources: &RulesSources<'_>) -> Result<Self, Vec<Problem>> {
-        let families = families::load(sources.families)?;
-        Ok(Self { families })
+        match (
+            families::load(sources.families),
+            security::load(sources.security),
+        ) {
+            (Ok(families), Ok(security)) => Ok(Self { families, security }),
+            (families, security) => Err(families
+                .err()
+                .into_iter()
+                .chain(security.err())
+                .flatten()
+                .collect()),
+        }
     }
 }
 
