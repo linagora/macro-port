@@ -342,32 +342,40 @@ mod tests {
         }
     }
 
-    /// What both rules files share has one definition, copied in both
-    /// schemas: every top-level key and definition of the same name, but the
-    /// signals, whose keys and conditions of the same name are.
+    /// The pointers to the members of `parent` in `families` that `copy` also has.
+    fn in_both(families: &Value, copy: &Value, parent: &str) -> Vec<String> {
+        let members = families.pointer(parent).and_then(Value::as_object);
+        members
+            .expect(parent)
+            .keys()
+            .map(|name| format!("{parent}/{name}"))
+            .filter(|pointer| copy.pointer(pointer).is_some())
+            .collect()
+    }
+
+    /// Asserts that `copy` has at `copied_at` the definition of `families` at `at`.
+    fn assert_copied(families: &Value, at: &str, copy: &Value, copied_at: &str) {
+        let definition = families.pointer(at);
+        assert!(definition.is_some(), "{at}");
+        assert_eq!(definition, copy.pointer(copied_at), "{copied_at}");
+    }
+
+    /// What the rules files share has one definition, that of
+    /// `families.schema.json`, copied in the other schemas.
     #[test]
     fn shared_definitions_are_identical() {
         let families = json(FAMILIES_SCHEMA);
+
+        // Every top-level key and definition of the same name, but the
+        // signals, whose keys and conditions of the same name are.
         let security = json(SECURITY_SCHEMA);
-        // The pointers to the members of `parent` that both schemas have.
-        let in_both = |parent: &str| -> Vec<String> {
-            let members = families.pointer(parent).and_then(Value::as_object);
-            members
-                .expect(parent)
-                .keys()
-                .map(|name| format!("{parent}/{name}"))
-                .filter(|pointer| security.pointer(pointer).is_some())
-                .collect()
-        };
-        let mut shared = in_both("/properties");
-        shared.extend(in_both("/$defs"));
+        let mut shared = in_both(&families, &security, "/properties");
+        shared.extend(in_both(&families, &security, "/$defs"));
         shared.retain(|pointer| pointer != "/$defs/signal");
-        shared.extend(in_both("/$defs/signal/properties"));
+        shared.extend(in_both(&families, &security, "/$defs/signal/properties"));
         shared.push("/$defs/signal/allOf".to_owned());
         for pointer in shared {
-            let definition = families.pointer(&pointer);
-            assert!(definition.is_some(), "{pointer}");
-            assert_eq!(definition, security.pointer(&pointer), "{pointer}");
+            assert_copied(&families, &pointer, &security, &pointer);
         }
     }
 
