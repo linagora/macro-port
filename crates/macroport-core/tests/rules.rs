@@ -671,6 +671,57 @@ fn problems_of_every_file_are_reported_together() {
 }
 
 #[test]
+fn the_rules_version_is_the_version_that_the_files_share() {
+    let rules = RuleSet::load(&RulesSources {
+        families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"])
+            .replace("0.1.0", "0.2.0"),
+        security: &security_yaml(&[], &[], &[]).replace("0.1.0", "0.2.0"),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]).replace("0.1.0", "0.2.0"),
+    })
+    .expect("the rules load");
+
+    assert_eq!(rules.version(), "0.2.0");
+}
+
+#[test]
+fn rules_files_with_differing_versions_are_refused() {
+    let problems = RuleSet::load(&RulesSources {
+        families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
+        security: &security_yaml(&[], &[], &[]).replace("0.1.0", "0.2.0"),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]).replace("0.1.0", "0.1.1"),
+    })
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            "security.yaml: version '0.2.0' differs from version '0.1.0' of families.yaml \
+             (at /version)",
+            "complexity.yaml: version '0.1.1' differs from version '0.1.0' of families.yaml \
+             (at /version)",
+        ]
+    );
+}
+
+#[test]
+fn versions_are_compared_once_every_file_loads() {
+    let problems = RuleSet::load(&RulesSources {
+        families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
+        security: &security_yaml(&[], &[], &[]).replace("0.1.0", "0.2.0"),
+        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH, &[]),
+    })
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: metric 'lines' is not defined in metric_definitions \
+          (at /file_levels/medium/any/0/metric)"
+        ]
+    );
+}
+
+#[test]
 fn embedded_complexity_rules_load() {
     let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
     let complexity = &rules.complexity;

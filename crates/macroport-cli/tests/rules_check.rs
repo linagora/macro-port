@@ -486,6 +486,24 @@ fn required_families_must_exist() {
 }
 
 #[test]
+fn rules_files_must_share_their_version() {
+    for (file, output) in [
+        ("security.yaml", check_security("other-version")),
+        ("complexity.yaml", check_complexity("other-version")),
+    ] {
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert_eq!(
+            stderr(&output),
+            format!(
+                "{file}: version '0.2.0' differs from version '0.1.0' of families.yaml \
+                 (at /version)\n\
+                 1 problem found\n"
+            )
+        );
+    }
+}
+
+#[test]
 fn core_problems_of_every_file_are_reported_together() {
     // The family that security.yaml names is checked though families.yaml has problems.
     let dir = rules_dir("core-problems-of-every-file");

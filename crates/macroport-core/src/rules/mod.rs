@@ -75,6 +75,7 @@ impl RuleSet {
     /// Every problem found in every file, in the order `families.yaml`,
     /// `security.yaml`, `complexity.yaml`. The families that
     /// `requires_family` names are checked only when `families.yaml` parses.
+    /// The three files share one version, compared once every file loads.
     pub fn load(sources: &RulesSources<'_>) -> Result<Self, Vec<Problem>> {
         let parsed = families::parse(sources.families);
         let family_ids = parsed.as_ref().ok().map(families::RawFamilies::family_ids);
@@ -82,11 +83,19 @@ impl RuleSet {
         let families = parsed.and_then(families::check);
         let complexity = complexity::load(sources.complexity);
         match (families, security, complexity) {
-            (Ok(families), Ok(security), Ok(complexity)) => Ok(Self {
-                families,
-                security,
-                complexity,
-            }),
+            (Ok(families), Ok(security), Ok(complexity)) => {
+                let rules = Self {
+                    families,
+                    security,
+                    complexity,
+                };
+                let problems = rules.version_problems();
+                if problems.is_empty() {
+                    Ok(rules)
+                } else {
+                    Err(problems)
+                }
+            }
             (families, security, complexity) => Err(families
                 .err()
                 .into_iter()
@@ -95,6 +104,33 @@ impl RuleSet {
                 .flatten()
                 .collect()),
         }
+    }
+
+    /// The version that the three rules files share: the `tool.rules_version`
+    /// of reports.
+    pub fn version(&self) -> &str {
+        &self.families.version
+    }
+
+    /// A problem for each file whose version differs from that of
+    /// `families.yaml`.
+    fn version_problems(&self) -> Vec<Problem> {
+        [
+            (SECURITY_FILE, &self.security.version),
+            (COMPLEXITY_FILE, &self.complexity.version),
+        ]
+        .into_iter()
+        .filter(|(_, version)| version.as_str() != self.version())
+        .map(|(file, version)| Problem {
+            file,
+            rule: None,
+            location: "/version".to_owned(),
+            message: format!(
+                "version '{version}' differs from version '{}' of {FAMILIES_FILE}",
+                self.version()
+            ),
+        })
+        .collect()
     }
 }
 
