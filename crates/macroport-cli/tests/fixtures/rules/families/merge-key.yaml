@@ -1,0 +1,14 @@
+# Invalid: a merge key, which the rules dialect does not have (ADR-0002).
+version: 0.1.0
+scoring:
+  min_score: 3
+  secondary_ratio: 0.6
+  default_max_hits_per_procedure: 3
+
+families:
+  - id: 01-formatting
+    corpus_slug: 01-mise-en-forme
+    label: { en: "Formatting and layout", fr: "Mise en forme" }
+    signals:
+      - &cell { id: fmt.cell-style, match: member, pattern: [Interior, Borders], weight: 1 }
+      - { <<: *cell, id: fmt.visibility }

@@ -1,0 +1,20 @@
+# Invalid: two signals share an id, in different families.
+version: 0.1.0
+scoring:
+  min_score: 3
+  secondary_ratio: 0.6
+  default_max_hits_per_procedure: 3
+
+families:
+  - id: 01-formatting
+    corpus_slug: 01-mise-en-forme
+    label: { en: "Formatting and layout", fr: "Mise en forme" }
+    signals:
+      - { id: fmt.cell-style, match: member, pattern: [Interior, Borders], weight: 1 }
+      - { id: fmt.visibility, match: chain, pattern: [EntireColumn.Hidden], weight: 2, max_hits_per_procedure: 1 }
+
+  - id: 02-consolidation
+    corpus_slug: 02-consolidation
+    label: { en: "Consolidation of sheets and workbooks", fr: "Consolidation" }
+    signals:
+      - { id: fmt.cell-style, match: chain, pattern: [Workbooks.Open], weight: 3 }
