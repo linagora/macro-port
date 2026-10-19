@@ -1,0 +1,3 @@
+# Lets rustfmt run on its own (editors, hooks) format as `cargo fmt` does,
+# which takes the edition from Cargo.toml.
+edition = "2024"
