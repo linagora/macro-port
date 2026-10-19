@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! `families.yaml`: usage families and their weighted signals.
 
+use std::collections::BTreeSet;
+
 use serde::Deserialize;
 
 use super::matcher::{self, Matcher, MatcherKind, Patterns, Scope, TextMode};
@@ -50,12 +52,23 @@ pub struct FamilySignal {
     pub label: Option<Label>,
 }
 
+/// `families.yaml` as parsed, before [`check`].
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawFamilies {
+pub(super) struct RawFamilies {
     version: String,
     scoring: Scoring,
     families: Vec<RawFamily>,
+}
+
+impl RawFamilies {
+    /// The id of every family, whether [`check`] accepts it or not.
+    pub(super) fn family_ids(&self) -> BTreeSet<&str> {
+        self.families
+            .iter()
+            .map(|family| family.id.as_str())
+            .collect()
+    }
 }
 
 #[derive(Deserialize)]
@@ -88,10 +101,13 @@ struct RawSignal {
     _note: Option<String>,
 }
 
-/// Loads `families.yaml`.
-pub(super) fn load(text: &str) -> Result<Families, Vec<Problem>> {
-    let raw: RawFamilies =
-        yaml::from_str(text).map_err(|message| vec![Problem::in_file(FAMILIES_FILE, message)])?;
+/// Parses `families.yaml`.
+pub(super) fn parse(text: &str) -> Result<RawFamilies, Vec<Problem>> {
+    yaml::from_str(text).map_err(|message| vec![Problem::in_file(FAMILIES_FILE, message)])
+}
+
+/// Checks parsed `families.yaml` into typed families.
+pub(super) fn check(raw: RawFamilies) -> Result<Families, Vec<Problem>> {
     let default_max_hits = raw.scoring.default_max_hits_per_procedure;
     let mut problems = Vec::new();
     let mut family_ids = Ids::new(FAMILIES_FILE, "family id");

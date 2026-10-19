@@ -63,11 +63,14 @@ impl RuleSet {
     /// # Errors
     ///
     /// Every problem found in every file: those of `families.yaml` first.
+    /// The families that `requires_family` names are checked only when
+    /// `families.yaml` parses.
     pub fn load(sources: &RulesSources<'_>) -> Result<Self, Vec<Problem>> {
-        match (
-            families::load(sources.families),
-            security::load(sources.security),
-        ) {
+        let parsed = families::parse(sources.families);
+        let family_ids = parsed.as_ref().ok().map(families::RawFamilies::family_ids);
+        let security = security::load(sources.security, family_ids.as_ref());
+        let families = parsed.and_then(families::check);
+        match (families, security) {
             (Ok(families), Ok(security)) => Ok(Self { families, security }),
             (families, security) => Err(families
                 .err()

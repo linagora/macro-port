@@ -336,7 +336,7 @@ mod tests {
             );
             let loaded = RuleSet::load(&RulesSources {
                 families: &families,
-                ..RulesSources::EMBEDDED
+                security: "version: 0.1.0\nsignals: []\nchains: []\ncontainer_indicators: []\n",
             });
             assert!(loaded.is_ok(), "{signal}: {loaded:?}");
         }

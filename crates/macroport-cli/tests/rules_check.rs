@@ -466,10 +466,24 @@ fn chain_terms_must_name_signals() {
 }
 
 #[test]
+fn required_families_must_exist() {
+    let output = check_security("unknown-family");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        "security.yaml: sec.very-hidden: unknown family '01-mise-en-forme' \
+         (at /signals/3/requires_family)\n\
+         1 problem found\n"
+    );
+}
+
+#[test]
 fn core_problems_of_every_file_are_reported_together() {
+    // The family that security.yaml names is checked though families.yaml has problems.
     let dir = rules_dir("both-core-problems");
     use_fixture(&dir, "families", "invalid-regex");
-    use_fixture(&dir, "security", "invalid-regex");
+    use_fixture(&dir, "security", "unknown-family");
     let output = check_dir(&dir);
 
     assert_eq!(output.status.code(), Some(1), "{output:?}");
@@ -479,8 +493,8 @@ fn core_problems_of_every_file_are_reported_together() {
          (at /families/0/signals/2/pattern)\n\
          families.yaml: fmt.style-name: invalid regex '[Heading': unclosed character class \
          (at /families/0/signals/3/pattern/1)\n\
-         security.yaml: sec.declare: invalid regex '^\\s*(Declare\\s+': unclosed group \
-         (at /signals/2/pattern)\n\
+         security.yaml: sec.very-hidden: unknown family '01-mise-en-forme' \
+         (at /signals/3/requires_family)\n\
          3 problems found\n"
     );
 }
