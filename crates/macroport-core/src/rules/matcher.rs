@@ -4,6 +4,8 @@
 use regex::{Regex, RegexBuilder};
 use serde::Deserialize;
 
+use super::Problem;
+
 /// The `match` key of a signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -147,6 +149,18 @@ pub(super) struct PatternError {
     /// Location under `pattern`: empty for a single pattern, `/index` in a list.
     pub suffix: String,
     pub message: String,
+}
+
+impl PatternError {
+    /// The problem of the signal `rule` of `file`, located at `signal_at`.
+    pub(super) fn into_problem(self, file: &'static str, rule: &str, signal_at: &str) -> Problem {
+        Problem {
+            file,
+            rule: Some(rule.to_owned()),
+            location: format!("{signal_at}/pattern{}", self.suffix),
+            message: self.message,
+        }
+    }
 }
 
 /// Builds the matcher of a signal, or returns every invalid pattern.

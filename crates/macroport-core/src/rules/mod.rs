@@ -11,6 +11,8 @@ mod families;
 mod matcher;
 mod yaml;
 
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::fmt;
 
 use serde::Deserialize;
@@ -99,5 +101,40 @@ impl fmt::Display for Problem {
             write!(f, " (at {})", self.location)?;
         }
         Ok(())
+    }
+}
+
+/// The ids that share a namespace in a rules file, to report duplicates.
+struct Ids {
+    file: &'static str,
+    /// What the ids are called in messages, such as `family id`.
+    what: &'static str,
+    /// Where each id is first defined.
+    first: BTreeMap<String, String>,
+}
+
+impl Ids {
+    fn new(file: &'static str, what: &'static str) -> Self {
+        Self {
+            file,
+            what,
+            first: BTreeMap::new(),
+        }
+    }
+
+    /// Records that `id` is defined at `at`, or reports where it was first defined.
+    fn record(&mut self, id: &str, at: &str) -> Option<Problem> {
+        match self.first.entry(id.to_owned()) {
+            Entry::Vacant(entry) => {
+                entry.insert(at.to_owned());
+                None
+            }
+            Entry::Occupied(entry) => Some(Problem {
+                file: self.file,
+                rule: Some(id.to_owned()),
+                location: format!("{at}/id"),
+                message: format!("duplicate {}, first defined at {}", self.what, entry.get()),
+            }),
+        }
     }
 }

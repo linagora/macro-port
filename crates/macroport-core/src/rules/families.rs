@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //! `families.yaml`: usage families and their weighted signals.
 
-use std::collections::BTreeMap;
-use std::collections::btree_map::Entry;
-
 use serde::Deserialize;
 
 use super::matcher::{self, Matcher, MatcherKind, Patterns, Scope, TextMode};
-use super::{FAMILIES_FILE, Label, Problem, yaml};
+use super::{FAMILIES_FILE, Ids, Label, Problem, yaml};
 
 /// The content of `families.yaml`.
 #[derive(Debug, Clone)]
@@ -97,16 +94,16 @@ pub(super) fn load(text: &str) -> Result<Families, Vec<Problem>> {
         yaml::from_str(text).map_err(|message| vec![Problem::in_file(FAMILIES_FILE, message)])?;
     let default_max_hits = raw.scoring.default_max_hits_per_procedure;
     let mut problems = Vec::new();
-    let mut family_ids = BTreeMap::new();
-    let mut signal_ids = BTreeMap::new();
+    let mut family_ids = Ids::new(FAMILIES_FILE, "family id");
+    let mut signal_ids = Ids::new(FAMILIES_FILE, "signal id");
     let mut families = Vec::with_capacity(raw.families.len());
     for (family_index, family) in raw.families.into_iter().enumerate() {
         let family_at = format!("/families/{family_index}");
-        problems.extend(record_id(&mut family_ids, "family", &family.id, &family_at));
+        problems.extend(family_ids.record(&family.id, &family_at));
         let mut signals = Vec::with_capacity(family.signals.len());
         for (signal_index, signal) in family.signals.into_iter().enumerate() {
             let signal_at = format!("{family_at}/signals/{signal_index}");
-            problems.extend(record_id(&mut signal_ids, "signal", &signal.id, &signal_at));
+            problems.extend(signal_ids.record(&signal.id, &signal_at));
             match matcher::compile(signal.matcher, signal.pattern) {
                 Ok(matcher) => signals.push(FamilySignal {
                     matcher,
@@ -119,12 +116,11 @@ pub(super) fn load(text: &str) -> Result<Families, Vec<Problem>> {
                     label: signal.label,
                     id: signal.id,
                 }),
-                Err(errors) => problems.extend(errors.into_iter().map(|error| Problem {
-                    file: FAMILIES_FILE,
-                    rule: Some(signal.id.clone()),
-                    location: format!("{signal_at}/pattern{}", error.suffix),
-                    message: error.message,
-                })),
+                Err(errors) => problems.extend(
+                    errors
+                        .into_iter()
+                        .map(|error| error.into_problem(FAMILIES_FILE, &signal.id, &signal_at)),
+                ),
             }
         }
         families.push(Family {
@@ -142,26 +138,5 @@ pub(super) fn load(text: &str) -> Result<Families, Vec<Problem>> {
         })
     } else {
         Err(problems)
-    }
-}
-
-/// Records that `id` is defined at `at`, or reports where it was first defined.
-fn record_id(
-    seen: &mut BTreeMap<String, String>,
-    what: &str,
-    id: &str,
-    at: &str,
-) -> Option<Problem> {
-    match seen.entry(id.to_owned()) {
-        Entry::Vacant(entry) => {
-            entry.insert(at.to_owned());
-            None
-        }
-        Entry::Occupied(entry) => Some(Problem {
-            file: FAMILIES_FILE,
-            rule: Some(id.to_owned()),
-            location: format!("{at}/id"),
-            message: format!("duplicate {what} id, first defined at {}", entry.get()),
-        }),
     }
 }
