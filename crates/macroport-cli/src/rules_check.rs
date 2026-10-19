@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! `macro-port rules check`: each rules file is read, parsed and validated
-//! against its JSON Schema when it has one; once every file passes, the core
-//! loads the rules, which compiles the regexes, rejects duplicate ids and
-//! checks the references between rules.
+//! against its JSON Schema; once every file passes, the core loads the rules,
+//! which compiles the regexes, rejects duplicate ids and checks the
+//! references between rules.
 
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -16,25 +16,26 @@ use macroport_core::rules::{self, FAMILIES_FILE, Problem, RuleSet, RulesSources,
 use serde_json::Value;
 
 const FAMILIES_SCHEMA: &str = include_str!("../../../schema/rules/families.schema.json");
+const SECURITY_SCHEMA: &str = include_str!("../../../schema/rules/security.schema.json");
 
 /// A rules file, as `rules check` sees it.
 struct RulesFile {
     name: &'static str,
-    /// Its JSON Schema, for the files that have one.
-    schema: Option<&'static str>,
+    /// Its JSON Schema.
+    schema: &'static str,
     /// The embedded file, checked when no directory is given.
     embedded: &'static str,
 }
 
 const FAMILIES: RulesFile = RulesFile {
     name: FAMILIES_FILE,
-    schema: Some(FAMILIES_SCHEMA),
+    schema: FAMILIES_SCHEMA,
     embedded: RulesSources::EMBEDDED.families,
 };
 
 const SECURITY: RulesFile = RulesFile {
     name: SECURITY_FILE,
-    schema: None,
+    schema: SECURITY_SCHEMA,
     embedded: RulesSources::EMBEDDED.security,
 };
 
@@ -123,10 +124,7 @@ fn file_stage(
             return Ok(None);
         }
     };
-    let schema_problems = match file.schema {
-        Some(schema) => validate(file.name, &document, schema)?,
-        None => Vec::new(),
-    };
+    let schema_problems = validate(file.name, &document, file.schema)?;
     if schema_problems.is_empty() {
         Ok(Some(text))
     } else {
@@ -271,8 +269,8 @@ mod tests {
 
     use super::*;
 
-    fn schema() -> Value {
-        serde_json::from_str(FAMILIES_SCHEMA).expect("the schema is JSON")
+    fn json(schema: &str) -> Value {
+        serde_json::from_str(schema).expect("the schema is JSON")
     }
 
     fn names(enumeration: &Value) -> Vec<String> {
@@ -287,7 +285,7 @@ mod tests {
     /// The closed lists of the schema are the ones the core knows.
     #[test]
     fn closed_lists_match_the_core() {
-        let schema = schema();
+        let schema = json(FAMILIES_SCHEMA);
 
         let predicates: Vec<&str> = StructuralPredicate::ALL
             .into_iter()
@@ -302,7 +300,7 @@ mod tests {
     /// Every matcher, scope and text mode that the schema allows loads in the core.
     #[test]
     fn the_core_loads_every_keyword_of_the_schema() {
-        let schema = schema();
+        let schema = json(FAMILIES_SCHEMA);
         let signal = &schema["$defs"]["signal"]["properties"];
         let mut signals = Vec::new();
         for matcher in names(&signal["match"]) {
@@ -339,6 +337,61 @@ mod tests {
                 security: "version: 0.1.0\nsignals: []\nchains: []\ncontainer_indicators: []\n",
             });
             assert!(loaded.is_ok(), "{signal}: {loaded:?}");
+        }
+    }
+
+    /// What both rules files share has one definition, copied in both
+    /// schemas: every top-level key and definition of the same name, but the
+    /// signals, whose keys and conditions of the same name are.
+    #[test]
+    fn shared_definitions_are_identical() {
+        let families = json(FAMILIES_SCHEMA);
+        let security = json(SECURITY_SCHEMA);
+        // The pointers to the members of `parent` that both schemas have.
+        let in_both = |parent: &str| -> Vec<String> {
+            let members = families.pointer(parent).and_then(Value::as_object);
+            members
+                .expect(parent)
+                .keys()
+                .map(|name| format!("{parent}/{name}"))
+                .filter(|pointer| security.pointer(pointer).is_some())
+                .collect()
+        };
+        let mut shared = in_both("/properties");
+        shared.extend(in_both("/$defs"));
+        shared.retain(|pointer| pointer != "/$defs/signal");
+        shared.extend(in_both("/$defs/signal/properties"));
+        shared.push("/$defs/signal/allOf".to_owned());
+        for pointer in shared {
+            let definition = families.pointer(&pointer);
+            assert!(definition.is_some(), "{pointer}");
+            assert_eq!(definition, security.pointer(&pointer), "{pointer}");
+        }
+    }
+
+    /// Every severity that the schema allows loads in the core.
+    #[test]
+    fn the_core_loads_every_severity_of_the_schema() {
+        for severity in names(&json(SECURITY_SCHEMA)["$defs"]["severity"]) {
+            let label_entry = "label: { en: X, fr: X }";
+            let security = format!(
+                "version: 0.1.0\n\
+                 signals: [{{ id: s, category: test, match: call, pattern: x, \
+                              severity: {severity}, {label_entry} }}]\n\
+                 chains: [{{ id: c, all: [s], severity: {severity}, {label_entry} }}]\n\
+                 container_indicators: [{{ id: i, severity: {severity}, {label_entry} }}]\n"
+            );
+            let document = parse(SECURITY_FILE, &security).expect("valid YAML");
+            assert_eq!(
+                validate(SECURITY_FILE, &document, SECURITY_SCHEMA),
+                Ok(Vec::new()),
+                "{severity}"
+            );
+            let loaded = RuleSet::load(&RulesSources {
+                families: RulesSources::EMBEDDED.families,
+                security: &security,
+            });
+            assert!(loaded.is_ok(), "{severity}: {loaded:?}");
         }
     }
 }

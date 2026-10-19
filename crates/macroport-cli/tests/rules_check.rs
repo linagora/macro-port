@@ -548,4 +548,156 @@ fn the_core_checks_no_file_until_every_file_passes_the_file_stage() {
         stderr(&output),
         format!("security.yaml: empty document\n1 problem found{FILE_STAGE}\n")
     );
+
+    // And for security.yaml to match its schema.
+    let dir = rules_dir("security-schema-first");
+    use_fixture(&dir, "families", "invalid-regex");
+    use_fixture(&dir, "security", "unknown-matcher");
+    let output = check_dir(&dir);
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.shell: 'membre' is not one of: member, chain, call, progid, \
+             procedure_name, module_type, reference, regex, string, comment, structural \
+             (at /signals/1/match)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_security_keys_are_rejected_at_every_level() {
+    let output = check_security("unknown-keys");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: unknown key 'author' (at /author)\n\
+             security.yaml: sec.chain.autoexec-execution: unknown key 'note' (at /chains/0/note)\n\
+             security.yaml: sec.source-missing: unknown key 'category' \
+             (at /container_indicators/0/category)\n\
+             security.yaml: sec.auto-exec: unknown key 'weight' (at /signals/0/weight)\n\
+             security.yaml: sec.shell: unknown key 'de' (at /signals/1/label/de)\n\
+             5 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_security_matcher_is_rejected() {
+    let output = check_security("unknown-matcher");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.shell: 'membre' is not one of: member, chain, call, progid, \
+             procedure_name, module_type, reference, regex, string, comment, structural \
+             (at /signals/1/match)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_severity_is_rejected() {
+    let output = check_security("unknown-severity");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.chain.autoexec-execution: 'critical' is not one of: info, low, \
+             medium, high (at /chains/0/severity)\n\
+             security.yaml: sec.source-missing: 'critical' is not one of: info, low, medium, \
+             high (at /container_indicators/0/severity)\n\
+             security.yaml: sec.shell: 'critical' is not one of: info, low, medium, high \
+             (at /signals/1/severity)\n\
+             3 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_security_scope_is_rejected() {
+    let output = check_security("unknown-scope");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.declare: 'workbook' is not one of: procedure, module, project \
+             (at /signals/2/scope)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn security_structural_predicate_outside_the_closed_list_is_rejected() {
+    let output = check_security("unknown-structural");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.auto-exec: 'autoexec' is not one of: udf_candidate, \
+             event_handler, auto_exec, chr_obfuscation, long_hex_or_base64_literal, \
+             nested_loop_compare, possibly_unused, parse_recovered (at /signals/0/pattern/1)\n\
+             1 problem found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn security_labels_need_english_and_french() {
+    let output = check_security("missing-label");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.chain.autoexec-execution: missing key 'en' (at /chains/0/label)\n\
+             security.yaml: sec.source-missing: missing key 'label' (at /container_indicators/0)\n\
+             security.yaml: sec.shell: missing key 'fr' (at /signals/1/label)\n\
+             3 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn chain_term_lists_are_never_empty() {
+    let output = check_security("empty-chain-terms");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.chain.autoexec-execution: [] has less than 1 item \
+             (at /chains/0/all/1/any)\n\
+             security.yaml: sec.chain.empty: [] has less than 1 item (at /chains/1/all)\n\
+             2 problems found{FILE_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn chain_terms_are_signal_ids_or_any_lists() {
+    let output = check_security("invalid-chain-term");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "security.yaml: sec.chain.autoexec-execution: missing key 'any' (at /chains/0/all/1)\n\
+             security.yaml: sec.chain.autoexec-execution: unknown key 'anyy' \
+             (at /chains/0/all/1/anyy)\n\
+             security.yaml: sec.chain.autoexec-execution: [\"sec.declare\"] is not of types \
+             \"string\", \"object\" (at /chains/0/all/2)\n\
+             3 problems found{FILE_STAGE}\n"
+        )
+    );
 }
