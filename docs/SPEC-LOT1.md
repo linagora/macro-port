@@ -175,12 +175,12 @@ The web app aggregates single-file reports into a fleet report with the same str
 
 Mini web app (`web/`), static, deployable on GitHub Pages (no custom headers available, so the policy is a `<meta http-equiv="Content-Security-Policy">`):
 
-- CSP: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'`. `connect-src 'self'` is needed to fetch the `.wasm` file; no other origin is reachable.
+- CSP: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data:; connect-src 'none'; manifest-src 'self'; base-uri 'none'; form-action 'none'`. The page fetches nothing, not even from its own origin: the `.wasm` is embedded in the JavaScript bundle and compiled from those bytes.
 - The analysis runs in a dedicated Web Worker created from a same-origin script; the worker receives the WASM module from the page (compiled `WebAssembly.Module` posted to the worker) so that it performs no fetch of its own.
-- Offline: a service worker precaches the app shell and the `.wasm` on first load.
+- Offline: a service worker precaches the app shell, whose JavaScript bundle holds the `.wasm`, on first load.
 - Features: drag and drop of files and folders (`webkitdirectory`), sequential processing with a progress bar; fleet view (totals, by complexity, by family, by severity); file view (modules, procedures, metrics, signals, evidence, source viewer with highlighted lines); filters and search; export JSON and CSV (same formats as the CLI); EN/FR switch; visible notice "Your files never leave this browser".
 - The app contains no analysis logic: it only renders report JSON from the core.
-- The end-to-end network monitor in A9 is the authoritative check that no request leaves the browser.
+- The end-to-end network monitor in A9 is the authoritative check that no request leaves the browser: a `<meta>` policy does not apply to the workers.
 
 Done when: A9 passes.
 
