@@ -428,6 +428,7 @@ dependencies = [
 name = "macroport-core"
 version = "0.1.0"
 dependencies = [
+ "macroport-testkit",
  "regex",
  "serde",
  "serde-saphyr",
