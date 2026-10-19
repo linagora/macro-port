@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `complexity.yaml`: the metric thresholds of the file complexity levels.
-//! Its traits are not read yet.
+//! `complexity.yaml`: the metric thresholds of the file complexity levels,
+//! and the traits of procedures and files.
 
 use std::collections::BTreeMap;
 
+use regex::Regex;
 use serde::Deserialize;
-use serde::de::IgnoredAny;
 
-use super::{COMPLEXITY_FILE, Problem, yaml};
+use super::matcher::{self, Patterns, StructuralPredicate};
+use super::{COMPLEXITY_FILE, Ids, Label, Problem, yaml};
 
 /// The content of `complexity.yaml`.
 #[derive(Debug, Clone)]
@@ -16,6 +17,7 @@ pub struct Complexity {
     pub file_levels: FileLevels,
     /// The metrics that conditions may name, each with its documentation.
     pub metric_definitions: BTreeMap<String, String>,
+    pub traits: Vec<Trait>,
 }
 
 /// The conditions that raise a file to each level: any one is enough.
@@ -41,15 +43,51 @@ pub enum Bound {
     AtMost(u32),
 }
 
+/// A trait of procedures and files, such as `recorded_macro`.
+#[derive(Debug, Clone)]
+pub struct Trait {
+    pub id: String,
+    pub label: Label,
+    pub description: String,
+    pub rule: TraitRule,
+}
+
+/// What gives a trait.
+#[derive(Debug, Clone)]
+pub enum TraitRule {
+    /// Any one of the conditions holds.
+    Any(Vec<Condition>),
+    /// Every condition holds.
+    All(Vec<Condition>),
+    /// The structural predicate holds.
+    Structural(StructuralPredicate),
+}
+
+/// A condition of a trait. Every regex is case-insensitive unless an inline
+/// flag says otherwise.
+#[derive(Debug, Clone)]
+pub enum Condition {
+    /// A bound on a procedure metric.
+    Metric(MetricCondition),
+    /// Regexes on comment text.
+    Comment(Vec<Regex>),
+    /// Regexes on the procedure name.
+    ProcedureName(Vec<Regex>),
+    /// The occurrences of these members or chains, divided by the
+    /// procedure's `logical_loc`, reach `per_logical_loc_gte`.
+    Ratio {
+        of: Vec<String>,
+        per_logical_loc_gte: f64,
+    },
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawComplexity {
     version: String,
     file_levels: RawFileLevels,
     metric_definitions: BTreeMap<String, String>,
-    /// Not read yet.
-    #[serde(rename = "traits")]
-    _traits: IgnoredAny,
+    traits: Vec<RawTrait>,
 }
 
 #[derive(Deserialize)]
@@ -75,13 +113,71 @@ struct RawMetricCondition {
     lte: Option<u32>,
 }
 
-/// Loads `complexity.yaml`. Problems come in the order of the file levels.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTrait {
+    id: String,
+    label: Label,
+    description: String,
+    any: Option<Vec<RawCondition>>,
+    all: Option<Vec<RawCondition>>,
+    structural: Option<String>,
+}
+
+/// A trait condition as written, told apart by its keys.
+#[derive(Deserialize)]
+#[serde(
+    untagged,
+    expecting = "invalid condition, expected { metric, gte | lte }, \
+                 { match: comment | procedure_name, pattern } \
+                 or { match: ratio, of, per_logical_loc_gte }"
+)]
+enum RawCondition {
+    Metric(RawMetricCondition),
+    Pattern(RawPatternCondition),
+    Ratio(RawRatioCondition),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPatternCondition {
+    #[serde(rename = "match")]
+    matcher: PatternMatch,
+    pattern: Patterns,
+}
+
+/// The `match` key of a condition on patterns.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PatternMatch {
+    Comment,
+    ProcedureName,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRatioCondition {
+    /// Always `ratio`.
+    #[serde(rename = "match")]
+    _matcher: RatioMatch,
+    of: Vec<String>,
+    per_logical_loc_gte: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RatioMatch {
+    Ratio,
+}
+
+/// Loads `complexity.yaml`. Problems come in the order of the file levels,
+/// then the traits.
 pub(super) fn load(text: &str) -> Result<Complexity, Vec<Problem>> {
     let RawComplexity {
         version,
         file_levels,
         metric_definitions,
-        ..
+        traits: raw_traits,
     } = yaml::from_str(text).map_err(|message| vec![Problem::in_file(COMPLEXITY_FILE, message)])?;
     let mut checker = Checker {
         metrics: &metric_definitions,
@@ -91,12 +187,20 @@ pub(super) fn load(text: &str) -> Result<Complexity, Vec<Problem>> {
         medium: checker.level(file_levels.medium, "/file_levels/medium"),
         high: checker.level(file_levels.high, "/file_levels/high"),
     };
+    let mut ids = Ids::new(COMPLEXITY_FILE, "trait id");
+    let mut traits = Vec::with_capacity(raw_traits.len());
+    for (index, raw) in raw_traits.into_iter().enumerate() {
+        let at = format!("/traits/{index}");
+        checker.problems.extend(ids.record(&raw.id, &at));
+        traits.extend(checker.checked_trait(raw, &at));
+    }
     let Checker { problems, .. } = checker;
     if problems.is_empty() {
         Ok(Complexity {
             version,
             file_levels,
             metric_definitions,
+            traits,
         })
     } else {
         Err(problems)
@@ -115,23 +219,92 @@ impl Checker<'_> {
     /// The conditions of a file level, at `at`.
     fn level(&mut self, level: RawLevel, at: &str) -> Vec<MetricCondition> {
         let at = format!("{at}/any");
-        self.not_empty(&level.any, &at);
+        self.not_empty(None, &level.any, &at);
         level
             .any
             .into_iter()
             .enumerate()
-            .filter_map(|(index, raw)| self.metric(raw, &format!("{at}/{index}")))
+            .filter_map(|(index, raw)| self.metric(None, raw, &format!("{at}/{index}")))
             .collect()
     }
 
-    /// The metric condition at `at`.
-    fn metric(&mut self, raw: RawMetricCondition, at: &str) -> Option<MetricCondition> {
+    /// The trait at `at`. Every rule it has is checked, so that one run
+    /// reports every problem.
+    fn checked_trait(&mut self, raw: RawTrait, at: &str) -> Option<Trait> {
+        let RawTrait {
+            id,
+            label,
+            description,
+            any,
+            all,
+            structural,
+        } = raw;
+        let given = [any.is_some(), all.is_some(), structural.is_some()];
+        if given.into_iter().filter(|is_given| *is_given).count() != 1 {
+            let message = "needs exactly one of: any, all, structural".to_owned();
+            self.push(Some(&id), at.to_owned(), message);
+        }
+        let any = any.map(|list| TraitRule::Any(self.conditions(&id, list, &format!("{at}/any"))));
+        let all = all.map(|list| TraitRule::All(self.conditions(&id, list, &format!("{at}/all"))));
+        let structural = structural.and_then(|name| match matcher::structural_predicate(&name) {
+            Ok(predicate) => Some(TraitRule::Structural(predicate)),
+            Err(message) => {
+                self.push(Some(&id), format!("{at}/structural"), message);
+                None
+            }
+        });
+        let rule = any.or(all).or(structural)?;
+        Some(Trait {
+            id,
+            label,
+            description,
+            rule,
+        })
+    }
+
+    /// The conditions of the list at `at` in the rule `rule`.
+    fn conditions(&mut self, rule: &str, list: Vec<RawCondition>, at: &str) -> Vec<Condition> {
+        self.not_empty(Some(rule), &list, at);
+        let mut conditions = Vec::with_capacity(list.len());
+        for (index, raw) in list.into_iter().enumerate() {
+            let at = format!("{at}/{index}");
+            match raw {
+                RawCondition::Metric(raw) => {
+                    conditions.extend(self.metric(Some(rule), raw, &at).map(Condition::Metric));
+                }
+                RawCondition::Pattern(raw) => match matcher::regexes(raw.pattern) {
+                    Ok(regexes) => conditions.push(match raw.matcher {
+                        PatternMatch::Comment => Condition::Comment(regexes),
+                        PatternMatch::ProcedureName => Condition::ProcedureName(regexes),
+                    }),
+                    Err(errors) => self.problems.extend(
+                        errors
+                            .into_iter()
+                            .map(|error| error.into_problem(COMPLEXITY_FILE, rule, &at)),
+                    ),
+                },
+                RawCondition::Ratio(raw) => conditions.push(Condition::Ratio {
+                    of: raw.of,
+                    per_logical_loc_gte: raw.per_logical_loc_gte,
+                }),
+            }
+        }
+        conditions
+    }
+
+    /// The metric condition at `at`, in the rule `rule` if any.
+    fn metric(
+        &mut self,
+        rule: Option<&str>,
+        raw: RawMetricCondition,
+        at: &str,
+    ) -> Option<MetricCondition> {
         let bound = match (raw.gte, raw.lte) {
             (Some(value), None) => Some(Bound::AtLeast(value)),
             (None, Some(value)) => Some(Bound::AtMost(value)),
             _ => {
                 let message = "needs exactly one of: gte, lte".to_owned();
-                self.push(at.to_owned(), message);
+                self.push(rule, at.to_owned(), message);
                 None
             }
         };
@@ -140,7 +313,7 @@ impl Checker<'_> {
                 "metric '{}' is not defined in metric_definitions",
                 raw.metric
             );
-            self.push(format!("{at}/metric"), message);
+            self.push(rule, format!("{at}/metric"), message);
             return None;
         }
         bound.map(|bound| MetricCondition {
@@ -149,18 +322,19 @@ impl Checker<'_> {
         })
     }
 
-    /// Reports the list at `at` if it is empty: an empty `any` would never hold.
-    fn not_empty<T>(&mut self, list: &[T], at: &str) {
+    /// Reports the list at `at` if it is empty: an empty `any` would never
+    /// hold, an empty `all` always would.
+    fn not_empty<T>(&mut self, rule: Option<&str>, list: &[T], at: &str) {
         if list.is_empty() {
             let message = "empty list of conditions".to_owned();
-            self.push(at.to_owned(), message);
+            self.push(rule, at.to_owned(), message);
         }
     }
 
-    fn push(&mut self, location: String, message: String) {
+    fn push(&mut self, rule: Option<&str>, location: String, message: String) {
         self.problems.push(Problem {
             file: COMPLEXITY_FILE,
-            rule: None,
+            rule: rule.map(str::to_owned),
             location,
             message,
         });

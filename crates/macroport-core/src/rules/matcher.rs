@@ -185,8 +185,13 @@ pub(super) fn compile(kind: MatcherKind, patterns: Patterns) -> Result<Matcher, 
     }
 }
 
+/// Compiles the regexes of a `pattern` key, or returns every invalid one.
+pub(super) fn regexes(patterns: Patterns) -> Result<Vec<Regex>, Vec<PatternError>> {
+    each(numbered(patterns), regex)
+}
+
 /// Finds a predicate in the closed list.
-fn structural_predicate(name: &str) -> Result<StructuralPredicate, String> {
+pub(super) fn structural_predicate(name: &str) -> Result<StructuralPredicate, String> {
     closed(
         "structural predicate",
         name,
