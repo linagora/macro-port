@@ -57,7 +57,7 @@ Rules may be tuned to reach these numbers, but each tuning commit must state the
 
 - Single file, opens from `file://` with no network request (test with a headless browser and network disabled; zero requests besides the file itself).
 - Shows fleet totals, distribution by family, complexity and severity, and per-file drill-down with evidence lines.
-- Injection tests: with the injection fixture (SPEC section 8), the HTML report executes no script (headless browser, no dialog, no console error from injected code) and every CSV cell starting with `=`, `+`, `-` or `@` is prefixed with `'`.
+- Injection tests: with the injection fixture (SPEC section 8), the HTML report executes no script (headless browser, no dialog, no console error from injected code) and every CSV cell starting with `=`, `+`, `-`, `@`, tab or carriage return is prefixed with `'`.
 - Fully available in English and French (`--lang fr`): no missing Fluent key in either language (test).
 
 ## A8. Privacy and safety
