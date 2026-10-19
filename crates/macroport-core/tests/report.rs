@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The report model.
+//! The report model and the empty fleet report.
 
 use macroport_core::report::{
     Container, Lang, Level, ProcedureKind, Report, SCHEMA_VERSION, Status, Visibility,
 };
-use macroport_core::rules::{ModuleType, Severity};
+use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity};
 use macroport_testkit::report_problems;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -12,6 +12,7 @@ use serde_json::Value;
 
 const EXAMPLE: &str = include_str!("../../../schema/examples/report.example.json");
 const REPORT_SCHEMA: &str = include_str!("../../../schema/report.schema.json");
+const GENERATED_AT: &str = "2026-10-19T08:30:00Z";
 
 /// The example report, its summary emptied, then given one count per key of
 /// `statuses` and `families`, inserted in their order.
@@ -157,4 +158,96 @@ fn module_types_are_written_under_their_rules_names() {
             module_type.name()
         );
     }
+}
+
+#[test]
+fn the_empty_report_validates_against_the_report_schema() {
+    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+    let report = Report::empty(&rules, GENERATED_AT.to_owned(), Lang::En);
+
+    let json = report.to_json().expect("the report serialises");
+
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+}
+
+#[test]
+fn the_empty_report_covers_zero_files() {
+    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+    let report = Report::empty(&rules, GENERATED_AT.to_owned(), Lang::Fr);
+
+    let json = report.to_json().expect("the report serialises");
+
+    let expected = format!(
+        r#"{{
+  "schema_version": "{SCHEMA_VERSION}",
+  "tool": {{
+    "name": "macro-port",
+    "version": "{}",
+    "rules_version": "{}"
+  }},
+  "generated_at": "{GENERATED_AT}",
+  "redacted": false,
+  "lang": "fr",
+  "scan": {{
+    "files_total": 0,
+    "files_with_macros": 0,
+    "files_failed": 0
+  }},
+  "files": [],
+  "summary": {{
+    "by_status": {{}},
+    "by_family": {{}},
+    "by_complexity": {{}},
+    "by_severity": {{}},
+    "totals": {{
+      "modules": 0,
+      "procedures": 0,
+      "logical_loc": 0,
+      "possibly_unused_procedures": 0
+    }}
+  }}
+}}
+"#,
+        env!("CARGO_PKG_VERSION"),
+        rules.version(),
+    );
+    assert_eq!(json, expected);
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+    // The core reads no clock: the same values give the same bytes.
+    let again = Report::empty(&rules, GENERATED_AT.to_owned(), Lang::Fr);
+    assert_eq!(again.to_json().expect("the report serialises"), json);
+}
+
+#[test]
+fn generated_at_comes_from_the_caller() {
+    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+
+    for generated_at in ["2026-10-19T08:30:00Z", "1999-12-31T23:59:59+01:00"] {
+        let report = Report::empty(&rules, generated_at.to_owned(), Lang::En);
+        assert_eq!(report.generated_at, generated_at);
+    }
+}
+
+#[test]
+fn the_rules_version_is_the_version_of_the_rules_files() {
+    let shipped = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+    let shipped_line = format!("version: {}", shipped.version());
+    let [families, security, complexity] = [
+        RulesSources::EMBEDDED.families,
+        RulesSources::EMBEDDED.security,
+        RulesSources::EMBEDDED.complexity,
+    ]
+    .map(|text| text.replacen(&shipped_line, "version: 9.9.9", 1));
+    let rules = RuleSet::load(&RulesSources {
+        families: &families,
+        security: &security,
+        complexity: &complexity,
+    })
+    .expect("the rules load");
+
+    let report = Report::empty(&rules, GENERATED_AT.to_owned(), Lang::En);
+
+    assert_ne!(shipped.version(), "9.9.9");
+    assert_eq!(report.tool.rules_version, "9.9.9");
+    assert_eq!(report.tool.version, env!("CARGO_PKG_VERSION"));
 }
