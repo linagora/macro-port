@@ -93,6 +93,7 @@ fn check(dir: Option<&Path>) -> Result<Outcome, String> {
     match RuleSet::load(&RulesSources {
         families: &families,
         security: &security,
+        complexity: RulesSources::EMBEDDED.complexity,
     }) {
         Ok(_) => Ok(Outcome::Valid),
         Err(problems) => Ok(Outcome::CoreProblems(problems)),
@@ -335,6 +336,7 @@ mod tests {
             let loaded = RuleSet::load(&RulesSources {
                 families: &families,
                 security: "version: 0.1.0\nsignals: []\nchains: []\ncontainer_indicators: []\n",
+                complexity: RulesSources::EMBEDDED.complexity,
             });
             assert!(loaded.is_ok(), "{signal}: {loaded:?}");
         }
@@ -388,8 +390,8 @@ mod tests {
                 "{severity}"
             );
             let loaded = RuleSet::load(&RulesSources {
-                families: RulesSources::EMBEDDED.families,
                 security: &security,
+                ..RulesSources::EMBEDDED
             });
             assert!(loaded.is_ok(), "{severity}: {loaded:?}");
         }
