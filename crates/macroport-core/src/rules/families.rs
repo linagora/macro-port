@@ -26,6 +26,7 @@ pub struct Scoring {
     /// Secondary families score at least this ratio of the primary score.
     pub secondary_ratio: f64,
     /// Cap on the hits counted per signal and procedure, unless the signal sets its own.
+    #[serde(deserialize_with = "yaml::whole_number")]
     pub default_max_hits_per_procedure: u32,
 }
 
@@ -76,7 +77,9 @@ struct RawSignal {
     #[serde(rename = "match")]
     matcher: MatcherKind,
     pattern: Patterns,
+    #[serde(deserialize_with = "yaml::whole_number")]
     weight: u32,
+    #[serde(default, deserialize_with = "yaml::optional_whole_number")]
     max_hits_per_procedure: Option<u32>,
     #[serde(default)]
     scope: Scope,
