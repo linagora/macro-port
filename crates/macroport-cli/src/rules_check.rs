@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `macro-port rules check`: each rules file is validated against its JSON
-//! Schema; once every file passes, the core loads the rules, which compiles
-//! the regexes and rejects duplicate ids.
+//! `macro-port rules check`: each rules file is read, parsed and validated
+//! against its JSON Schema when it has one; once every file passes, the core
+//! loads the rules, which compiles the regexes, rejects duplicate ids and
+//! checks the references between rules.
 
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -11,13 +12,35 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use jsonschema::error::ValidationErrorKind;
-use macroport_core::rules::{self, FAMILIES_FILE, Problem, RuleSet, RulesSources};
+use macroport_core::rules::{self, FAMILIES_FILE, Problem, RuleSet, RulesSources, SECURITY_FILE};
 use serde_json::Value;
 
 const FAMILIES_SCHEMA: &str = include_str!("../../../schema/rules/families.schema.json");
 
+/// A rules file, as `rules check` sees it.
+struct RulesFile {
+    name: &'static str,
+    /// Its JSON Schema, for the files that have one.
+    schema: Option<&'static str>,
+    /// The embedded file, checked when no directory is given.
+    embedded: &'static str,
+}
+
+const FAMILIES: RulesFile = RulesFile {
+    name: FAMILIES_FILE,
+    schema: Some(FAMILIES_SCHEMA),
+    embedded: RulesSources::EMBEDDED.families,
+};
+
+const SECURITY: RulesFile = RulesFile {
+    name: SECURITY_FILE,
+    schema: None,
+    embedded: RulesSources::EMBEDDED.security,
+};
+
 /// Rules files above this size are refused.
 const MAX_FILE_MIB: u64 = 1;
+const MAX_FILE_BYTES: u64 = MAX_FILE_MIB << 20;
 
 /// Exit code when the rules have problems.
 const PROBLEMS_FOUND: u8 = 1;
@@ -25,61 +48,90 @@ const PROBLEMS_FOUND: u8 = 1;
 /// Exit code of a fatal error (SPEC M4).
 const FATAL: u8 = 3;
 
-/// How a check ends.
+/// How a check that could run ends.
 enum Outcome {
     /// Every rules file is valid.
     Valid,
-    /// Problems with a rules file, or found by the core.
-    Problems(Vec<Problem>),
-    /// Problems found by the schemas: the core has not loaded the rules yet.
-    SchemaProblems(Vec<Problem>),
-    /// The check could not run.
-    Fatal(String),
+    /// Problems found by the core.
+    CoreProblems(Vec<Problem>),
+    /// Problems found before the core loads the rules: size, encoding, YAML
+    /// or schema.
+    FileProblems(Vec<Problem>),
 }
 
 /// Checks the rules of `dir`, or the embedded rules, and prints the outcome.
 pub fn run(dir: Option<&Path>) -> ExitCode {
     match check(dir) {
-        Outcome::Valid => {
-            println!("{FAMILIES_FILE}: ok");
+        Ok(Outcome::Valid) => {
+            for file in [FAMILIES, SECURITY] {
+                println!("{}: ok", file.name);
+            }
             ExitCode::SUCCESS
         }
-        Outcome::Problems(problems) => print_problems(&problems, ""),
-        Outcome::SchemaProblems(problems) => print_problems(
+        Ok(Outcome::CoreProblems(problems)) => print_problems(&problems, ""),
+        Ok(Outcome::FileProblems(problems)) => print_problems(
             &problems,
-            " (regexes and duplicate ids are checked once every file matches its schema)",
+            " (regexes, ids and references are not checked yet)",
         ),
-        Outcome::Fatal(message) => {
+        Err(message) => {
             eprintln!("error: {message}");
             ExitCode::from(FATAL)
         }
     }
 }
 
-fn check(dir: Option<&Path>) -> Outcome {
-    let families = match dir.map(|dir| read(dir, FAMILIES_FILE)).transpose() {
-        Ok(families) => families,
-        Err(outcome) => return outcome,
+/// `Err` when the check cannot run: a rules file cannot be read, or an
+/// embedded schema is broken.
+fn check(dir: Option<&Path>) -> Result<Outcome, String> {
+    let mut problems = Vec::new();
+    let families = file_stage(dir, &FAMILIES, &mut problems)?;
+    let security = file_stage(dir, &SECURITY, &mut problems)?;
+    let (Some(families), Some(security)) = (families, security) else {
+        return Ok(Outcome::FileProblems(problems));
     };
-    let sources = match &families {
-        Some(families) => RulesSources {
-            families,
-            ..RulesSources::EMBEDDED
-        },
-        None => RulesSources::EMBEDDED,
-    };
-    let document = match parse(FAMILIES_FILE, sources.families) {
-        Ok(document) => document,
-        Err(problem) => return Outcome::Problems(vec![problem]),
-    };
-    match validate(FAMILIES_FILE, &document, FAMILIES_SCHEMA) {
-        Ok(problems) if problems.is_empty() => {}
-        Ok(problems) => return Outcome::SchemaProblems(problems),
-        Err(message) => return Outcome::Fatal(message),
+    match RuleSet::load(&RulesSources {
+        families: &families,
+        security: &security,
+    }) {
+        Ok(_) => Ok(Outcome::Valid),
+        Err(problems) => Ok(Outcome::CoreProblems(problems)),
     }
-    match RuleSet::load(&sources) {
-        Ok(_) => Outcome::Valid,
-        Err(problems) => Outcome::Problems(problems),
+}
+
+/// The text of `file` if it passes the checks that come before the core.
+/// Otherwise adds its problems to `problems` and returns `None`.
+fn file_stage(
+    dir: Option<&Path>,
+    file: &RulesFile,
+    problems: &mut Vec<Problem>,
+) -> Result<Option<String>, String> {
+    let text = match dir {
+        Some(dir) => decode(file.name, read(dir, file.name)?),
+        None => Ok(file.embedded.to_owned()),
+    };
+    let text = match text {
+        Ok(text) => text,
+        Err(problem) => {
+            problems.push(problem);
+            return Ok(None);
+        }
+    };
+    let document = match parse(file.name, &text) {
+        Ok(document) => document,
+        Err(problem) => {
+            problems.push(problem);
+            return Ok(None);
+        }
+    };
+    let schema_problems = match file.schema {
+        Some(schema) => validate(file.name, &document, schema)?,
+        None => Vec::new(),
+    };
+    if schema_problems.is_empty() {
+        Ok(Some(text))
+    } else {
+        problems.extend(schema_problems);
+        Ok(None)
     }
 }
 
@@ -192,19 +244,25 @@ fn pointer_order(a: &str, b: &str) -> Ordering {
     segments(a).cmp(&segments(b))
 }
 
-/// Reads one rules file of `dir`, or returns how the check ends.
-fn read(dir: &Path, file: &'static str) -> Result<String, Outcome> {
+/// Reads one rules file of `dir`, at most one byte past the size limit.
+fn read(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
     let path = dir.join(file);
-    let max_bytes = MAX_FILE_MIB << 20;
     let mut bytes = Vec::new();
     File::open(&path)
-        .and_then(|handle| handle.take(max_bytes + 1).read_to_end(&mut bytes))
-        .map_err(|error| Outcome::Fatal(format!("cannot read {}: {error}", path.display())))?;
-    let problem = |message: String| Outcome::Problems(vec![Problem::in_file(file, message)]);
-    if bytes.len() as u64 > max_bytes {
-        return Err(problem(format!("larger than {MAX_FILE_MIB} MiB")));
+        .and_then(|handle| handle.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    Ok(bytes)
+}
+
+/// The text of a rules file, if it is small enough and UTF-8.
+fn decode(file: &'static str, bytes: Vec<u8>) -> Result<String, Problem> {
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err(Problem::in_file(
+            file,
+            format!("larger than {MAX_FILE_MIB} MiB"),
+        ));
     }
-    String::from_utf8(bytes).map_err(|error| problem(format!("not UTF-8: {error}")))
+    String::from_utf8(bytes).map_err(|error| Problem::in_file(file, format!("not UTF-8: {error}")))
 }
 
 #[cfg(test)]

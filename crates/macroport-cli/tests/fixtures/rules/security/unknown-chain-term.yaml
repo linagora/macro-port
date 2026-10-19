@@ -1,0 +1,20 @@
+# Invalid: chain terms name no signal, one at the top of the chain, one in its `any` list.
+version: 0.1.0
+
+signals:
+  - { id: sec.auto-exec, category: auto_exec, match: structural, pattern: auto_exec, severity: medium,
+      label: { en: "Runs automatically", fr: "S'exécute automatiquement" } }
+  - { id: sec.shell, category: execution, match: call, pattern: [Shell], severity: medium,
+      label: { en: "Launches an external program", fr: "Lance un programme externe" } }
+  - { id: sec.declare, category: system, match: regex, pattern: '^\s*Declare\s+', severity: low, scope: module,
+      label: { en: "Calls native Windows APIs", fr: "Appelle des API Windows natives" } }
+  - { id: sec.very-hidden, category: concealment, match: regex, pattern: '\bxlSheetVeryHidden\b', severity: low, requires_family: 01-formatting,
+      label: { en: "Makes sheets very hidden", fr: "Masque des feuilles en mode très masqué" } }
+
+chains:
+  - { id: sec.chain.autoexec-execution, all: [sec.autoexec, { any: [sec.shell, sec.powershell] }], severity: high,
+      label: { en: "Auto-execution combined with program launch", fr: "Exécution automatique combinée au lancement d'un programme" } }
+
+container_indicators:
+  - { id: sec.source-missing, severity: high,
+      label: { en: "VBA source missing while compiled code is present", fr: "Source VBA absente alors que du code compilé est présent" } }
