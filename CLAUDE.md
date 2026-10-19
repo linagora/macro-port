@@ -108,7 +108,7 @@ wasm-pack build crates/macroport-wasm --target web
 ## Changing contracts
 
 - `schema/report.schema.json`: bump `schema_version` (minor for additive, major for breaking), update the example, write an ADR.
-- `rules/*.yaml`: bump the file `version`, report before and after A4/A5 metrics in the PR, no sample-specific patterns.
+- `rules/*.yaml`: bump `version` in the three files together, even when only one changes: they share it, reports give it as `tool.rules_version`, and `rules check` rejects differing versions. Report before and after A4/A5 metrics in the PR, no sample-specific patterns.
 
 ## Pull requests (the owner reviews alone: make reviews cheap)
 
