@@ -154,6 +154,7 @@ macro-port schema
 - Files considered: extensions `xlsm xltm xlam xlsb xls xlt xla xlsx xltx bas cls frm` (case-insensitive). Recursive walk, symlinks not followed by default. Text modules go through the text entry point.
 - Outputs in `out_dir`: `report.json` (fleet report, validates against the schema), `report.html` (single self-contained file), `files.csv`, `procedures.csv`, `signals.csv`.
 - CSV columns: `files.csv` = path, container, status, complexity_level, primary_family, max_severity, modules, procedures, logical_loc, xlm_present, vba_project_protected; `procedures.csv` = path, module, procedure, kind, primary_family, secondary_families, logical_loc, cyclomatic, signals, traits; `signals.csv` = path, module, procedure, signal_id, severity, line. UTF-8 with BOM (for Excel), comma separator, RFC 4180 quoting.
+- `scan --rules dir` checks the rules as `rules check` does (JSON Schemas, then the core) and stops with exit code 3 on any problem.
 - `generated_at` and `scan.duration_ms` are injected by the CLI (with `--deterministic`, `generated_at` = `1970-01-01T00:00:00Z` and `duration_ms` omitted, for tests).
 - Exit codes: 0 success, 1 completed with at least one file in `corrupted`, `error`, `suspicious_archive` or `too_large`, 2 usage error, 3 fatal error.
 - Parallel analysis with `rayon`, bounded by `--jobs`; progress on stderr only.
