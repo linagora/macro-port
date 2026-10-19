@@ -189,6 +189,14 @@ fn validate(file: &'static str, document: &Value, schema: &str) -> Result<Vec<Pr
                 );
                 vec![(at.to_owned(), message)]
             }
+            ValidationErrorKind::OneOfNotValid { .. }
+            | ValidationErrorKind::OneOfMultipleValid { .. } => {
+                let message = exactly_one_of(&schema, error.schema_path().as_str()).map_or_else(
+                    || error.to_string(),
+                    |keys| format!("needs exactly one of: {}", keys.join(", ")),
+                );
+                vec![(at.to_owned(), message)]
+            }
             _ => vec![(at.to_owned(), error.to_string())],
         };
         problems.extend(found.into_iter().map(|(location, message)| Problem {
@@ -202,6 +210,24 @@ fn validate(file: &'static str, document: &Value, schema: &str) -> Result<Vec<Pr
         pointer_order(&a.location, &b.location).then_with(|| a.message.cmp(&b.message))
     });
     Ok(problems)
+}
+
+/// The keys of the `oneOf` at `schema_path` in `schema` when each of its
+/// alternatives only requires one key: the keys of which a rule needs exactly
+/// one.
+fn exactly_one_of<'a>(schema: &'a Value, schema_path: &str) -> Option<Vec<&'a str>> {
+    let alternatives = schema.pointer(schema_path)?.as_array()?;
+    alternatives
+        .iter()
+        .map(|alternative| {
+            let alternative = alternative.as_object()?;
+            let required = alternative.get("required")?.as_array()?;
+            match (alternative.len(), required.as_slice()) {
+                (1, [key]) => key.as_str(),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// A JSON value as text, strings without their quotes.
@@ -403,5 +429,35 @@ mod tests {
             });
             assert!(loaded.is_ok(), "{severity}: {loaded:?}");
         }
+    }
+
+    /// A failed `oneOf` whose alternatives each require one key names the
+    /// keys; any other keeps the message of the validator.
+    #[test]
+    fn failed_one_of_names_the_keys_to_choose_from() {
+        let schema = r#"{
+            "properties": {
+                "rule": { "oneOf": [{ "required": ["a"] }, { "required": ["b"] }] },
+                "value": { "oneOf": [{ "type": "string" }, { "type": "integer" }] }
+            }
+        }"#;
+        let messages = |document: Value| -> Vec<String> {
+            let problems = validate("test.yaml", &document, schema).expect("a valid schema");
+            problems.iter().map(ToString::to_string).collect()
+        };
+
+        let needs_one = ["test.yaml: needs exactly one of: a, b (at /rule)"];
+        assert_eq!(messages(serde_json::json!({ "rule": {} })), needs_one);
+        assert_eq!(
+            messages(serde_json::json!({ "rule": { "a": 1, "b": 2 } })),
+            needs_one
+        );
+        assert_eq!(
+            messages(serde_json::json!({ "value": [] })),
+            [
+                "test.yaml: [] is not valid under any of the schemas listed in the 'oneOf' \
+              keyword (at /value)"
+            ]
+        );
     }
 }
