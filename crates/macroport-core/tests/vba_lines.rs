@@ -22,8 +22,9 @@ fn skipped(source: &str) -> Vec<(u32, u32, SkipKind)> {
 }
 
 /// One string per logical line: its physical lines (`3`, or `3-4` when it
-/// spans several), `comment` for a comment alone, its text, and ` // comment`
-/// with the comment's line when that differs.
+/// spans several), a `:` when it follows a separator, `label` or `comment` for
+/// those kinds, its text, and ` // comment` with the comment's line when that
+/// differs.
 fn shape(source: &str) -> Vec<String> {
     lines(source).logical.iter().map(describe).collect()
 }
@@ -34,8 +35,10 @@ fn describe(line: &LogicalLine) -> String {
     } else {
         format!("{}-{}", line.line, line.end_line)
     };
+    let separator = if line.after_separator { ":" } else { "" };
     let kind = match line.kind {
         LogicalKind::Code => "",
+        LogicalKind::Label => "label ",
         LogicalKind::CommentOnly => "comment ",
     };
     let comment = line.comment.as_ref().map_or(String::new(), |comment| {
@@ -46,7 +49,7 @@ fn describe(line: &LogicalLine) -> String {
         };
         format!(" // {}{at}", comment.text)
     });
-    format!("{span} {kind}{}{comment}", line.text)
+    format!("{span}{separator} {kind}{}{comment}", line.text)
 }
 
 // Physical lines
@@ -135,6 +138,84 @@ fn a_continuation_with_nothing_to_join_ends_the_statement() {
     assert_eq!(shape("x = 1 + _\n\ny = 2"), ["1-2 x = 1 +", "3 y = 2"]);
 }
 
+// Separators
+
+#[test]
+fn a_colon_splits_statements_on_the_same_line() {
+    assert_eq!(
+        shape("a = 1: b = 2 :c = 3"),
+        ["1 a = 1", "1: b = 2", "1: c = 3"]
+    );
+}
+
+#[test]
+fn a_colon_inside_a_string_a_bracket_or_a_comment_does_not_split() {
+    assert_eq!(
+        shape("MsgBox \"a:b\": x = 1"),
+        ["1 MsgBox \"a:b\"", "1: x = 1"]
+    );
+    assert_eq!(shape("[a:b].Value = 1"), ["1 [a:b].Value = 1"]);
+    assert_eq!(shape("x = 1 ' a: b"), ["1 x = 1 // a: b"]);
+}
+
+#[test]
+fn a_colon_inside_a_time_literal_does_not_split() {
+    assert_eq!(
+        shape("t = #12:30:00 PM#: x = 1"),
+        ["1 t = #12:30:00 PM#", "1: x = 1"]
+    );
+}
+
+#[test]
+fn a_hash_after_a_name_or_before_a_file_number_is_not_a_date() {
+    assert_eq!(shape("x# = 1: y = 2"), ["1 x# = 1", "1: y = 2"]);
+    assert_eq!(shape("x#1:2#"), ["1 x#1", "1: 2#"]);
+    assert_eq!(
+        shape("Print #1, 2: Close #1"),
+        ["1 Print #1, 2", "1: Close #1"]
+    );
+}
+
+#[test]
+fn a_colon_that_begins_a_named_argument_does_not_split() {
+    assert_eq!(
+        shape("Foo Type:=8, Default:=\"'\""),
+        ["1 Foo Type:=8, Default:=\"'\""]
+    );
+}
+
+#[test]
+fn empty_statements_are_dropped() {
+    assert_eq!(shape("a = 1::b = 2"), ["1 a = 1", "1: b = 2"]);
+    assert_eq!(shape(": a = 1 :"), ["1: a = 1"]);
+    assert!(shape(":::").is_empty());
+}
+
+#[test]
+fn a_statement_split_over_a_continuation_keeps_its_own_lines() {
+    assert_eq!(shape("a = 1: b = _\n 2"), ["1 a = 1", "1-2: b = 2"]);
+    assert_eq!(shape("a = _\n 1: b = 2"), ["1-2 a = 1", "2: b = 2"]);
+}
+
+#[test]
+fn a_statement_after_then_and_a_colon_follows_a_separator() {
+    assert_eq!(shape("If x Then: y = 1"), ["1 If x Then", "1: y = 1"]);
+    assert_eq!(shape("If x Then\n y = 1"), ["1 If x Then", "2 y = 1"]);
+}
+
+#[test]
+fn a_text_of_more_statements_than_the_limit_is_refused() {
+    let at_limit = "x:".repeat(MAX_LINES as usize);
+    assert_eq!(lines(&at_limit).logical.len(), MAX_LINES as usize);
+    assert_eq!(
+        split_lines(&format!("{at_limit}x")).err(),
+        Some(TooManyLines)
+    );
+    // Separators with nothing between them count as well.
+    let colons = ":".repeat(MAX_LINES as usize + 1);
+    assert_eq!(split_lines(&colons).err(), Some(TooManyLines));
+}
+
 // Comments
 
 #[test]
@@ -164,6 +245,8 @@ fn rem_at_the_start_of_a_statement_starts_a_comment() {
     assert_eq!(shape("Rem note"), ["1 comment  // note"]);
     assert_eq!(shape("  rem"), ["1 comment  // "]);
     assert_eq!(shape("REM: note"), ["1 comment  // : note"]);
+    assert_eq!(shape("x = 1: Rem note"), ["1 x = 1 // note"]);
+    assert_eq!(shape("Done: Rem note"), ["1 label Done // note"]);
 }
 
 #[test]
@@ -180,6 +263,12 @@ fn a_comment_after_a_continued_statement_keeps_its_own_line() {
 }
 
 #[test]
+fn a_comment_belongs_to_the_last_statement_of_the_line() {
+    assert_eq!(shape("a = 1: b = 2 ' c"), ["1 a = 1", "1: b = 2 // c"]);
+    assert_eq!(shape("a = 1: ' c"), ["1 a = 1 // c"]);
+}
+
+#[test]
 fn a_comment_ending_with_a_continuation_mark_continues_on_the_next_line() {
     assert_eq!(
         shape("' macro _\nrecorded\nx = 1"),
@@ -189,6 +278,64 @@ fn a_comment_ending_with_a_continuation_mark_continues_on_the_next_line() {
         shape("x = 1 ' a _\n' b _\nc\ny = 2"),
         ["1-3 x = 1 // a ' b c", "4 y = 2"]
     );
+}
+
+// Labels
+
+#[test]
+fn a_name_and_a_colon_at_the_start_of_a_statement_is_a_label() {
+    assert_eq!(shape("ErrorHandler:"), ["1 label ErrorHandler"]);
+    assert_eq!(
+        shape("    Cleanup:\n    Exit Sub"),
+        ["1 label Cleanup", "2 Exit Sub"]
+    );
+    assert_eq!(shape("Done: ' cleanup"), ["1 label Done // cleanup"]);
+}
+
+#[test]
+fn a_statement_may_follow_its_label_on_the_same_line() {
+    assert_eq!(shape("Done: Exit Sub"), ["1 label Done", "1: Exit Sub"]);
+    assert_eq!(shape("Foo: Bar"), ["1 label Foo", "1: Bar"]);
+}
+
+#[test]
+fn the_colon_of_a_label_follows_its_name() {
+    // `Foo :` is a call to Foo, then a separator.
+    assert_eq!(shape("Foo : Bar"), ["1 Foo", "1: Bar"]);
+}
+
+#[test]
+fn a_reserved_word_before_a_colon_is_not_a_label() {
+    assert_eq!(shape("Else: x = 1"), ["1 Else", "1: x = 1"]);
+    assert_eq!(shape("DoEvents: x = 1"), ["1 DoEvents", "1: x = 1"]);
+    assert_eq!(shape("Randomize: x = 1"), ["1 Randomize", "1: x = 1"]);
+    assert_eq!(shape("  Do: x = 1: Loop"), ["1 Do", "1: x = 1", "1: Loop"]);
+}
+
+#[test]
+fn only_a_lone_name_before_the_colon_is_a_label() {
+    assert_eq!(shape("Case 1: x = 1"), ["1 Case 1", "1: x = 1"]);
+    assert_eq!(shape("x = y: z = 1"), ["1 x = y", "1: z = 1"]);
+    assert_eq!(shape("Foo"), ["1 Foo"]);
+    assert_eq!(shape("Foo ' not a label:"), ["1 Foo // not a label:"]);
+    assert_eq!(shape("Foo.Bar: x = 1"), ["1 Foo.Bar", "1: x = 1"]);
+}
+
+#[test]
+fn a_label_is_only_the_first_statement_of_a_chain() {
+    assert_eq!(
+        shape("x = 1: Foo: y = 2"),
+        ["1 x = 1", "1: Foo", "1: y = 2"]
+    );
+    assert_eq!(shape("x = a + _\nfoo: bar"), ["1-2 x = a + foo", "2: bar"]);
+}
+
+#[test]
+fn a_line_number_is_a_label_with_or_without_a_colon() {
+    assert_eq!(shape("10 x = 1"), ["1 label 10", "1: x = 1"]);
+    assert_eq!(shape("20:\n30"), ["1 label 20", "2 label 30"]);
+    assert_eq!(shape("40: y = 2"), ["1 label 40", "1: y = 2"]);
+    assert_eq!(shape("10x = 1"), ["1 10x = 1"]);
 }
 
 // Corpus header
@@ -357,6 +504,7 @@ fn what_is_not_an_attribute_line_stays_code() {
         "Attribute = 1",
         "Attributes X = 1",
         "' Attribute y = 2",
+        "x = 1 + _\nAttribute y = 2",
     ] {
         let split = lines(text);
         assert!(split.attributes.is_empty(), "{text:?}");
@@ -368,7 +516,10 @@ fn what_is_not_an_attribute_line_stays_code() {
 fn an_attribute_line_with_a_statement_after_the_value_stays_code() {
     let text = "Attribute VB_Name = \"M\": Shell \"calc\"";
     assert!(lines(text).attributes.is_empty());
-    assert_eq!(shape(text), ["1 Attribute VB_Name = \"M\": Shell \"calc\""]);
+    assert_eq!(
+        shape(text),
+        ["1 Attribute VB_Name = \"M\"", "1: Shell \"calc\""]
+    );
     // A colon in a string or in a comment is not a separator.
     for text in ["Attribute VB_Name = \"a:b\"", "Attribute X = 1 ' a: b"] {
         assert_eq!(lines(text).attributes.len(), 1, "{text:?}");
