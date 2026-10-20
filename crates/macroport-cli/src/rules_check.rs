@@ -62,7 +62,10 @@ fn check(dir: Option<&Path>) -> Outcome {
         Err(outcome) => return outcome,
     };
     let sources = match &families {
-        Some(families) => RulesSources { families },
+        Some(families) => RulesSources {
+            families,
+            ..RulesSources::EMBEDDED
+        },
         None => RulesSources::EMBEDDED,
     };
     let document = match parse(FAMILIES_FILE, sources.families) {
@@ -275,6 +278,7 @@ mod tests {
             );
             let loaded = RuleSet::load(&RulesSources {
                 families: &families,
+                ..RulesSources::EMBEDDED
             });
             assert!(loaded.is_ok(), "{signal}: {loaded:?}");
         }
