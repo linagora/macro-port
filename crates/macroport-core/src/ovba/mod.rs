@@ -8,10 +8,17 @@
 //! panicking.
 
 mod decompress;
+mod dir;
+mod reader;
+mod text;
 
 use crate::report::Status;
 
 pub use decompress::decompress;
+pub use dir::{DirInfo, parse_compressed_dir, parse_dir};
+
+/// The largest decompressed `dir` stream (SPEC M1).
+pub const MAX_DIR_STREAM: usize = 16 * 1024 * 1024;
 
 /// Why a stream of a VBA project could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
