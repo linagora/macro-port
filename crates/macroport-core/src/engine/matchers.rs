@@ -17,6 +17,11 @@ use super::names::{same_name, without_type_char};
 use super::unit::Unit;
 use crate::rules::{ModuleType, TextMode};
 
+mod structural;
+
+pub(super) use structural::structural;
+pub use structural::{is_auto_exec, is_event_handler};
+
 /// The `progid` pattern that stands for any ProgID.
 pub(super) const ANY_PROGID: &str = "*";
 
@@ -231,6 +236,8 @@ pub(super) fn comment<'p>(units: &[Unit<'p>], patterns: &[Regex], hits: &mut Vec
 
 #[cfg(test)]
 mod project_tests;
+#[cfg(test)]
+mod structural_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

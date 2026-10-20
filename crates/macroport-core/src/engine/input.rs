@@ -21,6 +21,7 @@
 
 use std::collections::BTreeSet;
 
+use super::names::comparable_key;
 use crate::report::ProcedureKind;
 use crate::rules::ModuleType;
 
@@ -46,21 +47,55 @@ pub struct ModuleInput {
     pub module_type: ModuleType,
     /// Names of the `WithEvents` variables declared in the module, such as
     /// `App` for `Private WithEvents App As Application`. Read by
-    /// `event_handler`.
-    pub with_events: BTreeSet<String>,
+    /// `event_handler` in a class or a document module, as SPEC section 7 says.
+    pub with_events: NameSet,
     /// Names of the controls of a form (`CommandButton1`). Empty for any other
     /// module, and for a form whose controls are not known: as specified
     /// today nothing reads them (M1 reads no form designer, and #38 skips the
     /// `Begin` blocks of a text `.frm`), so a handler named after a control is
     /// not recognised as an event handler until something fills this. Read by
     /// `event_handler`.
-    pub controls: BTreeSet<String>,
+    pub controls: NameSet,
     /// The logical lines outside any procedure, in source order: `Option`,
     /// `Declare`, `Const`, variables, `Type` and `Enum` blocks, `#If`, and
     /// the comments between procedures. Module-scope signals read them too.
     pub declarations: Vec<CodeLine>,
     /// The procedures, in source order.
     pub procedures: Vec<ProcedureInput>,
+}
+
+/// A set of names that finds a name as the matchers compare names: whatever
+/// its case, and without the type-declaration character that may end it. The
+/// parser puts the names in with the spelling of the source (collect them).
+///
+/// The set keeps each name in the form in which names are compared, so that a
+/// lookup does not read the other names: a procedure is looked up in it, and a
+/// hostile module may declare thousands of names and hold thousands of
+/// procedures.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NameSet(BTreeSet<String>);
+
+impl NameSet {
+    /// Whether `name` is one of the names of the set. A name that is empty
+    /// once its type character is gone is none of them.
+    pub fn contains(&self, name: &str) -> bool {
+        // Most modules declare none of these names: build no key for them.
+        !self.0.is_empty() && self.contains_key(&comparable_key(name))
+    }
+
+    /// Whether `key`, a name already in the form in which names are compared,
+    /// is one of the names of the set. The set holds no empty name, so an empty
+    /// key is none of them.
+    pub(super) fn contains_key(&self, key: &str) -> bool {
+        self.0.contains(key)
+    }
+}
+
+impl<S: AsRef<str>> FromIterator<S> for NameSet {
+    fn from_iter<I: IntoIterator<Item = S>>(names: I) -> Self {
+        let keys = names.into_iter().map(|name| comparable_key(name.as_ref()));
+        Self(keys.filter(|key| !key.is_empty()).collect())
+    }
 }
 
 /// A `Sub`, `Function` or `Property` procedure.
@@ -188,4 +223,29 @@ pub struct ParserPredicates {
     /// `parse_recovered` holds: the parser recovered from unbalanced blocks
     /// or an unparseable statement in the procedure.
     pub parse_recovered: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NameSet;
+
+    #[test]
+    fn a_name_set_finds_a_name_whatever_its_case_and_type_character() {
+        let names: NameSet = ["App", "Text_Box$", "Étiquette"].into_iter().collect();
+        for found in ["app", "APP%", "TEXT_BOX", "Text_Box$", "ÉTIQUETTE"] {
+            assert!(names.contains(found), "{found}");
+        }
+        for missing in ["Apps", "Text", "Box", "Text_Box_"] {
+            assert!(!names.contains(missing), "{missing}");
+        }
+        assert!(!NameSet::default().contains("App"));
+    }
+
+    #[test]
+    fn a_name_set_never_holds_nor_finds_an_empty_name() {
+        let names: NameSet = ["", "$", "App"].into_iter().collect();
+        assert_eq!(names, NameSet::from_iter(["App"]));
+        assert!(!names.contains(""));
+        assert!(!names.contains("$"));
+    }
 }

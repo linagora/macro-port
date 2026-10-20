@@ -22,5 +22,7 @@ mod unit;
 pub use eval::Evaluator;
 pub use hit::{Hit, MAX_SNIPPET_CHARS, Place};
 pub use input::{
-    CallSite, CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
+    CallSite, CodeLine, MemberUse, ModuleInput, NameSet, ParserPredicates, ProcedureInput,
+    ProjectInput,
 };
+pub use matchers::{is_auto_exec, is_event_handler};

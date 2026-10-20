@@ -2,17 +2,16 @@
 //! Projects written by hand, for the tests of the engine and of the code that
 //! builds on it.
 
-use std::collections::BTreeSet;
-
 use regex::Regex;
 
 use super::eval::Evaluator;
 use super::hit::Hit;
 use super::input::{
-    CallSite, CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
+    CallSite, CodeLine, MemberUse, ModuleInput, NameSet, ParserPredicates, ProcedureInput,
+    ProjectInput,
 };
 use crate::report::ProcedureKind;
-use crate::rules::{Matcher, ModuleType, TextMode};
+use crate::rules::{Matcher, ModuleType, StructuralPredicate, TextMode};
 
 /// A statement on the physical line `number`, whose text is the VBA `raw`.
 /// Its `code`, `comment` and `strings` are read from `raw`; the rest is empty
@@ -155,8 +154,8 @@ pub(crate) fn module(
     ModuleInput {
         name: name.to_owned(),
         module_type,
-        with_events: BTreeSet::new(),
-        controls: BTreeSet::new(),
+        with_events: NameSet::default(),
+        controls: NameSet::default(),
         declarations: Vec::new(),
         procedures,
     }
@@ -166,6 +165,18 @@ impl ModuleInput {
     /// Sets the lines outside the procedures.
     pub(crate) fn with_declarations(mut self, declarations: Vec<CodeLine>) -> Self {
         self.declarations = declarations;
+        self
+    }
+
+    /// Sets the names of the `WithEvents` variables.
+    pub(crate) fn with_events(mut self, names: &[&str]) -> Self {
+        self.with_events = names.iter().collect();
+        self
+    }
+
+    /// Sets the names of the controls of a form.
+    pub(crate) fn with_controls(mut self, names: &[&str]) -> Self {
+        self.controls = names.iter().collect();
         self
     }
 }
@@ -290,6 +301,11 @@ pub(crate) fn strings(patterns: &[&str]) -> Matcher {
 /// A `comment` matcher for these regexes.
 pub(crate) fn comments(patterns: &[&str]) -> Matcher {
     Matcher::Comment(compiled(patterns))
+}
+
+/// A `structural` matcher for these predicates.
+pub(crate) fn structurals(predicates: &[StructuralPredicate]) -> Matcher {
+    Matcher::Structural(predicates.to_vec())
 }
 
 #[cfg(test)]
