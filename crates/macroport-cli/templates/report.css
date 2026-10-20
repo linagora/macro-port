@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c1f26;
+  --muted: #5d6573;
+  --warn: #9a5b00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1c1f26;
+    --text: #e6e8ec;
+    --muted: #a1a8b5;
+    --warn: #f0b252;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0 16px 48px;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header { max-width: 72rem; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 1.5rem 0 .75rem; }
+code { font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+dl, p, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+dt { color: var(--muted); font-size: .85rem; }
+dd { margin: 0; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem 1.5rem; }
+.notice { margin-top: .75rem; padding: .5rem .75rem; border-left: 4px solid var(--warn); background: var(--surface); }

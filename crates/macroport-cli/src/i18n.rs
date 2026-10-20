@@ -43,11 +43,18 @@ impl Resource {
 
 /// Every Fluent file. To add one, put it in `i18n/en/` and `i18n/fr/` and list
 /// the pair here: the tests compare the two directories with this list.
-pub const RESOURCES: &[Resource] = &[Resource {
-    name: "report.ftl",
-    en: include_str!("../../../i18n/en/report.ftl"),
-    fr: include_str!("../../../i18n/fr/report.ftl"),
-}];
+pub const RESOURCES: &[Resource] = &[
+    Resource {
+        name: "report.ftl",
+        en: include_str!("../../../i18n/en/report.ftl"),
+        fr: include_str!("../../../i18n/fr/report.ftl"),
+    },
+    Resource {
+        name: "html.ftl",
+        en: include_str!("../../../i18n/en/html.ftl"),
+        fr: include_str!("../../../i18n/fr/html.ftl"),
+    },
+];
 
 /// The words of one language.
 ///
@@ -55,6 +62,7 @@ pub const RESOURCES: &[Resource] = &[Resource {
 /// readable, and is recorded in [`problems`](Self::problems). The tests of a
 /// renderer render a report in both languages and check that the list is empty.
 pub struct Messages {
+    lang: Lang,
     bundle: FluentBundle<FluentResource>,
     problems: RefCell<BTreeSet<String>>,
 }
@@ -78,9 +86,15 @@ impl Messages {
             bundle.add_resource_overriding(parsed);
         }
         Self {
+            lang,
             bundle,
             problems: RefCell::default(),
         }
+    }
+
+    /// The language of the words.
+    pub fn lang(&self) -> Lang {
+        self.lang
     }
 
     /// The message `id`, or `id` itself when there is none.
