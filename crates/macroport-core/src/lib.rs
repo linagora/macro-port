@@ -7,3 +7,5 @@
 //! lives in the CLI.
 
 #![forbid(unsafe_code)]
+
+pub mod rules;
