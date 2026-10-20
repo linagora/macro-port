@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Loading the rules files into typed rules.
 
-use macroport_core::rules::{Matcher, Problem, RuleSet, RulesSources, Scope, TextMode};
+use macroport_core::rules::{
+    Matcher, Problem, RuleSet, RulesSources, Scope, TextMode, parse_value,
+};
 
 /// A `families.yaml` with one family holding `signals`, one flow mapping per line.
 fn families_yaml(signals: &[&str]) -> String {
@@ -140,5 +142,116 @@ fn yaml_errors_give_their_position() {
             // The second `weight` key.
             message: "duplicate mapping key: weight at line 8, column 78".to_owned(),
         }]
+    );
+}
+
+#[test]
+fn whole_numbers_load_however_yaml_spells_them() {
+    // The schemas' `integer` accepts 2.0, 1e1, 010 and 0x10: a file that
+    // passes its schema loads with the same values.
+    let text = families_yaml(&[
+        "{ id: fmt.a, match: member, pattern: [A], weight: 3.0, max_hits_per_procedure: 1e1 }",
+        "{ id: fmt.b, match: member, pattern: [B], weight: 010, max_hits_per_procedure: 0x10 }",
+        "{ id: fmt.c, match: member, pattern: [C], weight: 1 }",
+    ])
+    .replace(
+        "default_max_hits_per_procedure: 3 }",
+        "default_max_hits_per_procedure: 2.0 }",
+    );
+    let rules = load(&text).expect("the rules load");
+
+    let numbers: Vec<(u32, u32)> = rules.families.families[0]
+        .signals
+        .iter()
+        .map(|signal| (signal.weight, signal.max_hits_per_procedure))
+        .collect();
+    assert_eq!(numbers, [(3, 10), (10, 16), (1, 2)]);
+}
+
+#[test]
+fn weights_are_whole_numbers_that_fit_32_bits() {
+    let refusals: Vec<String> = ["2.5", "-1", "4294967296", "'3'", "~"]
+        .iter()
+        .map(|weight| {
+            let signal = format!("{{ id: fmt.a, match: member, pattern: [A], weight: {weight} }}");
+            let problems = load(&families_yaml(&[&signal])).expect_err(weight);
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            problems[0].message.clone()
+        })
+        .collect();
+
+    // Each position is the `weight` key's.
+    assert_eq!(
+        refusals,
+        [
+            "invalid value: floating point `2.5`, expected a whole number at line 8, column 51",
+            "invalid value: integer `-1`, expected a whole number at line 8, column 51",
+            "invalid value: integer `4294967296`, expected a whole number at line 8, column 51",
+            "invalid type: string \"3\", expected a whole number at line 8, column 51",
+            "invalid type: unit value, expected a whole number at line 8, column 51",
+        ]
+    );
+}
+
+#[test]
+fn yaml_1_1_booleans_stay_strings() {
+    let rules = load(&families_yaml(&[
+        "{ id: fmt.words, match: member, pattern: [yes, no, on, off, y, n], weight: 1 }",
+    ]))
+    .expect("the rules load");
+
+    let matcher = &rules.families.families[0].signals[0].matcher;
+    let Matcher::Member(names) = matcher else {
+        panic!("a member matcher: {matcher:?}");
+    };
+    assert_eq!(names, &["yes", "no", "on", "off", "y", "n"]);
+    assert_eq!(
+        parse_value("pattern: [yes, no, on, off, y, n]"),
+        Ok(serde_json::json!({ "pattern": ["yes", "no", "on", "off", "y", "n"] }))
+    );
+}
+
+#[test]
+fn custom_tags_are_refused() {
+    let problems = load(&families_yaml(&[
+        "{ id: fmt.a, match: member, pattern: !include more.yaml, weight: 1 }",
+    ]))
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        problems,
+        [Problem::in_file(
+            "families.yaml",
+            // The tagged scalar.
+            "unsupported tag `!include` at line 8, column 55".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn alias_bombs_are_refused() {
+    // Ten levels of ten aliases: ten billion nodes once expanded.
+    let mut bomb = String::from("a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n");
+    for (previous, level) in (0..9).zip(1..10) {
+        let aliases = vec![format!("*a{previous}"); 10].join(", ");
+        bomb.push_str(&format!("a{level}: &a{level} [{aliases}]\n"));
+    }
+
+    let refusal = parse_value(&bomb).expect_err("the document is refused");
+    assert!(refusal.starts_with("budget breached"), "{refusal}");
+}
+
+#[test]
+fn a_second_document_is_refused() {
+    let text = families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"])
+        + "---\nversion: 0.2.0\n";
+
+    assert_eq!(
+        load(&text).expect_err("the rules are refused"),
+        [Problem::in_file(
+            "families.yaml",
+            // The first line of the second document.
+            "multiple YAML documents detected at line 10, column 1".to_owned()
+        )]
     );
 }
