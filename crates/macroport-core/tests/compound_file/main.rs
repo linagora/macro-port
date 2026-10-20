@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The reader of Compound File Binary containers: paths and malformed files.
+//! The reader of Compound File Binary containers: paths, the limits of SPEC
+//! M1 and malformed files.
 //!
 //! The containers come from three places. The `cfb` writer builds well-formed
 //! ones in memory (`support::container`, the only caller of the writer, which
@@ -19,6 +20,7 @@
 )]
 
 mod fixtures;
+mod limits;
 mod malformed;
 mod reading;
 mod support;

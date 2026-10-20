@@ -10,7 +10,7 @@ use crate::report::Status;
 mod cfb;
 mod ooxml;
 
-pub use self::cfb::CfbFile;
+pub use self::cfb::{CfbFile, MAX_DIRECTORY_ENTRIES, MAX_STORAGE_DEPTH, MAX_STREAM_SIZE};
 pub use ooxml::{OoxmlPackage, read_ooxml};
 
 /// Why a container could not be read.
