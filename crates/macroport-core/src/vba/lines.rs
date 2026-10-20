@@ -125,8 +125,9 @@ impl LogicalLine {
 pub struct SourceLines {
     /// Number of physical lines of the text.
     pub physical_lines: u32,
-    /// The runs of physical lines that are not code, in order. Blank lines
-    /// are neither skipped nor logical.
+    /// The runs of physical lines that are not code, in order. A blank line
+    /// is never a run of its own: it is skipped only inside a `Begin` block,
+    /// and otherwise neither skipped nor logical.
     pub skipped: Vec<SkippedLines>,
     /// The `Attribute` lines, in order.
     pub attributes: Vec<Attribute>,
@@ -308,7 +309,10 @@ impl<'a> Builder<'a> {
     }
 
     /// Number of lines after the `Begin` just read up to the `End` that closes
-    /// it, nested `Begin` lines included.
+    /// it, nested `Begin` lines included. `None` when the block never closes,
+    /// or when a line that a designer does not write comes first: a statement
+    /// is not part of a header, and a VBA `End` among statements is not its
+    /// end.
     fn block_size(&self) -> Option<u32> {
         let mut depth = 1u32;
         let mut size = 0u32;
@@ -322,6 +326,8 @@ impl<'a> Builder<'a> {
                 if depth == 0 {
                     return Some(size);
                 }
+            } else if !text.is_empty() && !is_designer_line(text) {
+                return None;
             }
         }
         None
@@ -534,55 +540,131 @@ fn is_version(text: &str) -> bool {
     keyword && number && class && words.next().is_none()
 }
 
-/// A `Begin` line that opens a block of the export header: `Begin {GUID}
-/// Name`, `Begin MSForms.CommandButton Name` or `BEGIN`, but not an
-/// assignment to a variable called `Begin`.
-fn is_begin(text: &str) -> bool {
-    text.get(..5)
-        .is_some_and(|word| word.eq_ignore_ascii_case("begin"))
-        && text.get(5..).is_some_and(|rest| {
-            rest.is_empty()
-                || rest.starts_with(is_space) && !rest.trim_start_matches(is_space).starts_with('=')
+/// The text after `keyword` when `text` starts with it, in any letter case.
+/// What follows decides whether it is the keyword or the start of a longer
+/// name.
+fn after_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
+    let head = text.get(..keyword.len())?;
+    head.eq_ignore_ascii_case(keyword)
+        .then(|| text.get(keyword.len()..))
+        .flatten()
+}
+
+/// A name of the designer: letters, digits and `_`.
+fn is_name(word: &str) -> bool {
+    !word.is_empty() && word.chars().all(is_ident_char)
+}
+
+/// A `{GUID}`: hexadecimal digits and hyphens between braces.
+fn is_guid(word: &str) -> bool {
+    word.strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+        .is_some_and(|guid| {
+            !guid.is_empty() && guid.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
         })
 }
 
-/// `Attribute Name = value`, where `Name` is a dotted name. A line with a
-/// statement after the value is not an attribute line: it stays code, so that
-/// the statement is read.
+/// The type of a designer block: a `{GUID}` or a dotted name.
+fn is_designer_type(word: &str) -> bool {
+    is_guid(word) || !word.is_empty() && word.chars().all(|c| is_ident_char(c) || c == '.')
+}
+
+/// A `Begin` line that opens a block of the export header: `BEGIN` alone
+/// (class settings), or `Begin` with a type and at most a name, as in
+/// `Begin {GUID} UserForm1` and `Begin MSForms.CommandButton Button1`. A
+/// comment may follow. Anything else stays code: `Begin = 1` is an
+/// assignment, and a statement is no header.
+fn is_begin(text: &str) -> bool {
+    let code = text.split_once('\'').map_or(text, |(code, _)| code);
+    let mut words = code.split(is_space).filter(|word| !word.is_empty());
+    words
+        .next()
+        .is_some_and(|word| word.eq_ignore_ascii_case("begin"))
+        && words.next().is_none_or(is_designer_type)
+        && words.next().is_none_or(is_name)
+        && words.next().is_none()
+}
+
+/// A `BeginProperty Name` line of a VB6 designer, with the `{GUID}` some of
+/// them carry.
+fn is_begin_property(text: &str) -> bool {
+    let mut words = text.split(is_space).filter(|word| !word.is_empty());
+    words
+        .next()
+        .is_some_and(|word| word.eq_ignore_ascii_case("beginproperty"))
+        && words.next().is_some_and(is_name)
+        && words.next().is_none_or(is_guid)
+        && words.next().is_none()
+}
+
+/// A property of a designer block: `Name = value`, whatever the value is.
+fn is_property(text: &str) -> bool {
+    text.split_once('=')
+        .is_some_and(|(name, _)| is_name(name.trim_matches(is_space)))
+}
+
+/// A line a designer writes inside a block, `Begin` and `End` aside: a
+/// property, the two lines around the properties of a VB6 designer, or a
+/// comment.
+fn is_designer_line(text: &str) -> bool {
+    text.starts_with('\'')
+        || text.eq_ignore_ascii_case("endproperty")
+        || is_begin_property(text)
+        || is_property(text)
+}
+
+/// `Attribute Name = value`, where `Name` is a dotted name and the value a
+/// list of literals, as VBA requires. A line that holds anything else after
+/// the `=` is not an attribute line: it stays code, so that what it holds is
+/// read.
 fn parse_attribute(text: &str, line: u32) -> Option<Attribute> {
-    if !text.get(..9)?.eq_ignore_ascii_case("attribute") {
-        return None;
-    }
-    let rest = text
-        .get(9..)?
+    let rest = after_keyword(text, "attribute")?
         .strip_prefix(is_space)?
         .trim_start_matches(is_space);
     let end = rest
         .find(|c: char| !(is_ident_char(c) || c == '.'))
         .unwrap_or(rest.len());
     let (name, after) = rest.split_at_checked(end)?;
-    let value = after.trim_start_matches(is_space).strip_prefix('=')?;
-    (!name.is_empty() && !has_separator(value)).then(|| Attribute {
+    let value = literal_list(after.trim_start_matches(is_space).strip_prefix('=')?)?;
+    (!name.is_empty()).then(|| Attribute {
         line,
         name: name.to_owned(),
-        value: value.trim_matches(is_space).to_owned(),
+        value: value.to_owned(),
     })
 }
 
-/// Whether `text` has a `:` outside strings and before any comment.
-fn has_separator(text: &str) -> bool {
-    let mut at = 0usize;
-    while let Some(rest) = text.get(at..) {
-        let Some(c) = rest.chars().next() else {
-            return false;
-        };
-        let step = match c {
-            ':' => return true,
-            '\'' => return false,
-            '"' => string_len(rest).unwrap_or(rest.len()),
-            _ => c.len_utf8(),
-        };
-        at = at.saturating_add(step);
+/// The literals of `text` as written, from the first to the last: strings,
+/// numbers, `True` and `False`, separated by commas and optionally followed
+/// by a comment. `None` for anything else, an empty list included.
+fn literal_list(text: &str) -> Option<&str> {
+    let text = text.trim_start_matches(is_space);
+    let mut next = 0usize;
+    loop {
+        let rest = text.get(next..)?.trim_start_matches(is_space);
+        let start = text.len().checked_sub(rest.len())?;
+        let end = start.checked_add(literal_len(rest)?)?;
+        let tail = text.get(end..)?.trim_start_matches(is_space);
+        match tail.chars().next() {
+            Some(',') => next = text.len().checked_sub(tail.len())?.checked_add(1)?,
+            None | Some('\'') => return text.get(..end),
+            Some(_) => return None,
+        }
     }
-    false
+}
+
+/// Bytes of the literal that `rest` starts with.
+fn literal_len(rest: &str) -> Option<usize> {
+    if rest.starts_with('"') {
+        return string_len(rest);
+    }
+    let len = rest
+        .find(|c: char| is_space(c) || c == ',' || c == '\'')
+        .unwrap_or(rest.len());
+    let word = rest.get(..len)?;
+    let number = word.starts_with(|c: char| c.is_ascii_digit() || "+-.&".contains(c))
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "+-.&#%!@^".contains(c));
+    (number || word.eq_ignore_ascii_case("true") || word.eq_ignore_ascii_case("false"))
+        .then_some(len)
 }

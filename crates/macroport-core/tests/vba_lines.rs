@@ -315,12 +315,70 @@ fn a_version_or_begin_line_with_more_on_it_is_code() {
     for text in [
         "VERSION 5.00: Shell \"x\"",
         "VERSION 5",
+        "VERSION 1.0.0",
+        "VERSION .5",
         "VERSION 1.0 CLASS 2",
+        "VERSION 1.0 FOO",
         "Begin: x = 1\nEnd",
         "Begin(1)\nEnd",
+        "Begin Sub Foo()\nEnd",
+        "Begin Shell \"calc\"\nEnd",
+        "Begin A B C\nEnd",
     ] {
-        assert!(skipped(text).is_empty(), "{text:?}");
+        let split = lines(text);
+        assert!(split.skipped.is_empty(), "{text:?}");
+        let first = split.logical.first().map(|line| line.line);
+        assert_eq!(first, Some(1), "{text:?}");
     }
+}
+
+#[test]
+fn a_begin_line_opens_a_block_with_a_type_and_a_name_at_most() {
+    for text in [
+        "BEGIN\nEND",
+        "begin\nend",
+        "Begin A\nEnd",
+        "Begin MSForms.CommandButton Button1\nEnd",
+        "Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Formulaire_Employés  'c\nEnd",
+    ] {
+        assert_eq!(skipped(text), [(1, 2, SkipKind::ExportHeader)], "{text:?}");
+    }
+}
+
+#[test]
+fn only_designer_lines_can_sit_in_a_begin_block() {
+    // A statement shows that the block is not one: it never closes, so only
+    // its first line is skipped, and the `End` after the statement is code.
+    let text = "Begin A\nSub Auto_Open()\nShell \"calc\"\nEnd\nEnd Sub\n";
+    assert_eq!(skipped(text), [(1, 1, SkipKind::ExportHeader)]);
+    assert_eq!(
+        shape(text),
+        [
+            "2 Sub Auto_Open()",
+            "3 Shell \"calc\"",
+            "4 End",
+            "5 End Sub"
+        ]
+    );
+    // `End Sub` does not close a block, and a property called `Ending` neither.
+    assert_eq!(
+        skipped("Begin A\nEnd Sub\nEnd\n"),
+        [(1, 1, SkipKind::ExportHeader)]
+    );
+    let properties = "Begin A\nEnding = 1\n\n  Name = \"x\"  'c\nEnd\n";
+    assert_eq!(skipped(properties), [(1, 5, SkipKind::ExportHeader)]);
+    // The properties of a VB6 designer and comments belong to the block too.
+    let vb6 =
+        "Begin A\n BeginProperty Font\n  Name = \"Arial\"\n EndProperty\n ' note\n Left = 1\nEnd\n";
+    assert_eq!(skipped(vb6), [(1, 7, SkipKind::ExportHeader)]);
+}
+
+#[test]
+fn the_lines_of_a_begin_block_count_against_the_limit() {
+    let block = |inside: u32| format!("Begin A\n{}End\n", "x = 1\n".repeat(inside as usize));
+    assert_eq!(lines(&block(MAX_LINES - 2)).physical_lines, MAX_LINES);
+    let error = split_lines(&block(MAX_LINES - 1)).expect_err("a line too many");
+    assert_eq!(error.code, "vba.too_many_lines");
 }
 
 // Attributes
@@ -371,6 +429,7 @@ fn what_is_not_an_attribute_line_stays_code() {
         "Attribute VB_Name",
         "Attribute = 1",
         "Attributes X = 1",
+        "AttributeX = 1",
         "' Attribute y = 2",
     ] {
         let split = lines(text);
@@ -380,14 +439,57 @@ fn what_is_not_an_attribute_line_stays_code() {
 }
 
 #[test]
-fn an_attribute_line_with_a_statement_after_the_value_stays_code() {
-    let text = "Attribute VB_Name = \"M\": Shell \"calc\"";
-    assert!(lines(text).attributes.is_empty());
-    assert_eq!(shape(text), ["1 Attribute VB_Name = \"M\": Shell \"calc\""]);
-    // A colon in a string or in a comment is not a separator.
-    for text in ["Attribute VB_Name = \"a:b\"", "Attribute X = 1 ' a: b"] {
-        assert_eq!(lines(text).attributes.len(), 1, "{text:?}");
+fn the_value_of_an_attribute_is_a_list_of_literals_that_ends_before_a_comment() {
+    for (text, value) in [
+        ("Attribute VB_Name = \"M\"", "\"M\""),
+        ("Attribute VB_Exposed = False", "False"),
+        ("Attribute VB_UserMemId = -4", "-4"),
+        ("Attribute VB_Flags = &H10", "&H10"),
+        (
+            "Attribute VB_Ext_KEY = \"Top\" ,  \"Yes\"",
+            "\"Top\" ,  \"Yes\"",
+        ),
+        (
+            "Attribute VB_Description = \"say \"\"hi\"\", a:b\"",
+            "\"say \"\"hi\"\", a:b\"",
+        ),
+        ("Attribute X = 1 ' a: b", "1"),
+    ] {
+        let split = lines(text);
+        let attribute = split.attributes.first().expect("an attribute");
+        assert_eq!(attribute.value, value, "{text:?}");
     }
+}
+
+#[test]
+fn an_attribute_line_that_holds_more_than_literals_stays_code() {
+    for text in [
+        "Attribute VB_Name =",
+        "Attribute VB_Name == \"M\"",
+        "Attribute VB_Name = Shell(\"calc\")",
+        "Attribute VB_Name = \"M\": Shell \"calc\"",
+        "Attribute VB_Name = \"M\" Shell \"calc\"",
+        "Attribute VB_Name = \"M\",",
+        "Attribute VB_Name = \"M\" _",
+        "Attribute VB_Name = \"M",
+        "Attribute VB_Name = [M]",
+        "Attribute VB_Name = M",
+    ] {
+        let split = lines(text);
+        assert!(split.attributes.is_empty(), "{text:?}");
+        assert!(split.skipped.is_empty(), "{text:?}");
+        let first = split.logical.first().map(|line| line.line);
+        assert_eq!(first, Some(1), "{text:?}");
+    }
+}
+
+#[test]
+fn attribute_finds_the_first_of_a_repeated_name_in_any_letter_case() {
+    let split = lines("Attribute VB_Name = \"A\"\nAttribute vb_name = \"B\"\n");
+    assert_eq!(split.attributes.len(), 2);
+    let found = split.attribute("VB_NAME").map(|a| a.value.as_str());
+    assert_eq!(found, Some("\"A\""));
+    assert!(split.attribute("VB_Base").is_none());
 }
 
 #[test]
