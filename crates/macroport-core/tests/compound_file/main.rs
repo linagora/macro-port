@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The reader of Compound File Binary containers: paths and malformed files.
+//! The reader of Compound File Binary containers: paths, the limits of SPEC
+//! M1 and malformed files.
 //!
 //! The containers come from three places. The `cfb` writer builds well-formed
-//! ones in memory; bytes patched by hand make the structures that no writer
-//! produces; the corpus holds what Excel wrote and the files that
-//! `make_malformed.py` broke.
+//! ones in memory (`support::container`, the only caller of the writer, which
+//! the core's `clippy.toml` bans); bytes patched by hand make the structures
+//! that no writer produces; the corpus holds what Excel wrote and the files
+//! that `make_malformed.py` broke.
 
 // The helpers build and patch bytes by hand. The lints against unwrapping,
 // indexing and unchecked arithmetic protect the code that reads hostile
@@ -18,6 +20,8 @@
 )]
 
 mod fixtures;
+mod hostile;
+mod limits;
 mod malformed;
 mod reading;
 mod support;

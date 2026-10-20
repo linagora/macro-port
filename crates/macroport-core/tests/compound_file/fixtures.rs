@@ -37,7 +37,7 @@ fn the_xls_fixtures_open_and_hold_a_workbook_stream() {
 
 /// The streams of a container, read by the crate itself: the reference for
 /// what the reader must return.
-fn reference_streams(bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
+pub fn reference_streams(bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut file = CompoundFile::open(Cursor::new(bytes)).unwrap();
     let paths: Vec<String> = file
         .walk()
