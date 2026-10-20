@@ -17,6 +17,7 @@ flate2 = "1.1.10"
 jsonschema = { version = "0.59.0", default-features = false }
 macroport-core = { path = "crates/macroport-core" }
 macroport-testkit = { path = "crates/macroport-testkit" }
+quick-xml = "0.42.0"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
