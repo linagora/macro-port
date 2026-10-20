@@ -116,8 +116,9 @@ pub struct LogicalLine {
     /// The comment that ends the physical line chain, if any. On a line cut
     /// at `:`, it belongs to the last statement.
     pub comment: Option<Comment>,
-    /// True when a `:` separator, or a label, precedes this line on the same
-    /// physical line chain. After `If x Then` it tells a single-line `If`
+    /// True when another logical line of the same chain precedes this one: a
+    /// statement before a `:`, or a label. A `:` that leads the chain has
+    /// nothing to follow. After `If x Then` it tells a single-line `If`
     /// (`If x Then: y`) from a block.
     pub after_separator: bool,
     /// Offset in `text` and physical line of each line after the first.
@@ -461,6 +462,9 @@ impl<'a> Builder<'a> {
             if statement.is_empty() {
                 continue;
             }
+            // A colon that leads the chain separates nothing: the statement it
+            // introduces follows only what the chain already gave.
+            let follows = self.out.logical.len() > before;
             let piece = |kind, text: String, offset, after_separator| {
                 logical(kind, text, offset, after_separator, &starts, first)
             };
@@ -492,7 +496,7 @@ impl<'a> Builder<'a> {
                     } else {
                         statement.to_owned()
                     };
-                    self.push(piece(LogicalKind::Code, text, offset, index > 0));
+                    self.push(piece(LogicalKind::Code, text, offset, follows));
                 }
             }
             if self.too_many {

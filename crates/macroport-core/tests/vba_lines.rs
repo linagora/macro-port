@@ -200,7 +200,7 @@ fn a_colon_that_begins_a_named_argument_does_not_split() {
 #[test]
 fn empty_statements_are_dropped() {
     assert_eq!(shape("a = 1::b = 2"), ["1 a = 1", "1: b = 2"]);
-    assert_eq!(shape(": a = 1 :"), ["1: a = 1"]);
+    assert_eq!(shape(": a = 1 :"), ["1 a = 1"]);
     assert!(shape(":::").is_empty());
 }
 
@@ -214,6 +214,16 @@ fn a_statement_split_over_a_continuation_keeps_its_own_lines() {
 fn a_statement_after_then_and_a_colon_follows_a_separator() {
     assert_eq!(shape("If x Then: y = 1"), ["1 If x Then", "1: y = 1"]);
     assert_eq!(shape("If x Then\n y = 1"), ["1 If x Then", "2 y = 1"]);
+}
+
+#[test]
+fn a_colon_that_leads_a_chain_has_nothing_to_follow() {
+    // A colon at the start of a line does not make a block If single-line.
+    assert_eq!(shape("If x Then\n: y = 1"), ["1 If x Then", "2 y = 1"]);
+    assert_eq!(shape(":: y = 1: z = 2"), ["1 y = 1", "1: z = 2"]);
+    assert_eq!(shape(": Foo: x = 1"), ["1 Foo", "1: x = 1"]);
+    // The colon that ends the `If` line does, even over a continuation.
+    assert_eq!(shape("If x Then: _\n y = 1"), ["1 If x Then", "2: y = 1"]);
 }
 
 #[test]

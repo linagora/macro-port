@@ -107,7 +107,9 @@ fn mark(flags: &mut [bool], first: u32, last: u32) {
 }
 
 /// Every physical line is blank, skipped or part of a logical line, never
-/// both skipped and part of one, and the skipped runs are ordered.
+/// both skipped and part of one, and the skipped runs are ordered. Two logical
+/// lines share a physical line only when the later follows the earlier in one
+/// chain, which `after_separator` says.
 #[test]
 fn every_physical_line_is_accounted_for() {
     for dir in ["families", "fixtures/generated"] {
@@ -122,7 +124,11 @@ fn every_physical_line_is_accounted_for() {
                 previous = run.last;
                 mark(&mut skipped, run.first, run.last);
             }
+            let mut end = 0;
             for line in &lines.logical {
+                let shares = line.line <= end;
+                assert!(!shares || line.after_separator, "{path}: {line:?}");
+                end = line.end_line;
                 mark(&mut code, line.line, line.end_line);
             }
             let flags = skipped.iter().zip(&code).zip(text.lines());
