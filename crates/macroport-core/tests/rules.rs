@@ -2,8 +2,8 @@
 //! Loading the rules files into typed rules.
 
 use macroport_core::rules::{
-    Bound, ChainTerm, FileLevels, Matcher, MetricCondition, Problem, RuleSet, RulesSources, Scope,
-    Severity, TextMode, parse_value,
+    Bound, ChainTerm, Condition, FileLevels, Matcher, MetricCondition, Problem, RuleSet,
+    RulesSources, Scope, Severity, StructuralPredicate, TextMode, TraitRule, parse_value,
 };
 
 /// A `families.yaml` with one family holding `signals`, one flow mapping per line.
@@ -31,7 +31,7 @@ fn load_families(text: &str) -> Result<RuleSet, Vec<Problem>> {
     RuleSet::load(&RulesSources {
         families: text,
         security: &security_yaml(&[], &[], &[]),
-        complexity: &complexity_yaml(MEDIUM, HIGH),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]),
     })
 }
 
@@ -75,26 +75,42 @@ fn load_security(text: &str) -> Result<RuleSet, Vec<Problem>> {
     RuleSet::load(&RulesSources {
         families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
         security: text,
-        complexity: &complexity_yaml(MEDIUM, HIGH),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]),
     })
 }
 
 /// A `complexity.yaml` whose metrics are `logical_loc` and `procedures`,
-/// with these `medium` and `high` conditions and no trait.
-fn complexity_yaml(medium: &str, high: &str) -> String {
-    format!(
+/// with these `medium` and `high` conditions and these traits, one flow
+/// mapping per line from line 7.
+fn complexity_yaml(medium: &str, high: &str, traits: &[String]) -> String {
+    let mut text = format!(
         "version: 0.1.0\n\
          file_levels:\n  \
            medium: {{ any: {medium} }}\n  \
            high: {{ any: {high} }}\n\
-         metric_definitions: {{ logical_loc: Lines, procedures: Procedures }}\n\
-         traits: []\n"
-    )
+         metric_definitions: {{ logical_loc: Lines, procedures: Procedures }}\n"
+    );
+    text.push_str(if traits.is_empty() {
+        "traits: []\n"
+    } else {
+        "traits:\n"
+    });
+    for item in traits {
+        text.push_str("  - ");
+        text.push_str(item);
+        text.push('\n');
+    }
+    text
 }
 
 /// The level conditions of the tests that do not check them.
 const MEDIUM: &str = "[{ metric: logical_loc, gte: 150 }]";
 const HIGH: &str = "[{ metric: procedures, gte: 50 }]";
+
+/// A trait with the keys that the test does not care about.
+fn complexity_trait(id: &str, keys: &str) -> String {
+    format!("{{ id: {id}, label: {{ en: X, fr: X }}, description: X, {keys} }}")
+}
 
 /// Loads `text` as `complexity.yaml`, beside a `families.yaml` whose only
 /// family is `01-formatting` and a `security.yaml` that holds no rule.
@@ -506,7 +522,7 @@ fn required_families_are_checked_against_families_with_problems() {
             &[],
             &[],
         ),
-        complexity: &complexity_yaml(MEDIUM, HIGH),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]),
     })
     .expect_err("the rules are refused");
 
@@ -533,7 +549,7 @@ fn required_families_wait_for_families_yaml_to_parse() {
             &[],
             &[],
         ),
-        complexity: &complexity_yaml(MEDIUM, HIGH),
+        complexity: &complexity_yaml(MEDIUM, HIGH, &[]),
     })
     .expect_err("the rules are refused");
 
@@ -637,7 +653,7 @@ fn problems_of_every_file_are_reported_together() {
             &[],
             &[],
         ),
-        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH),
+        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH, &[]),
     })
     .expect_err("the rules are refused");
 
@@ -667,6 +683,84 @@ fn embedded_complexity_rules_load() {
             bound: Bound::AtLeast(1),
         })
     );
+    let traits: Vec<&str> = complexity
+        .traits
+        .iter()
+        .map(|item| item.id.as_str())
+        .collect();
+    assert_eq!(
+        traits,
+        [
+            "recorded_macro",
+            "trivial",
+            "possibly_unused",
+            "compile_error_suspected",
+        ]
+    );
+    let TraitRule::All(trivial) = &complexity.traits[1].rule else {
+        panic!("all conditions: {:?}", complexity.traits[1].rule);
+    };
+    assert!(
+        matches!(
+            &trivial[1],
+            Condition::Metric(MetricCondition { metric, bound: Bound::AtMost(0) })
+                if metric == "external_dependencies"
+        ),
+        "{trivial:?}"
+    );
+    assert!(
+        matches!(
+            complexity.traits[3].rule,
+            TraitRule::Structural(StructuralPredicate::ParseRecovered)
+        ),
+        "{:?}",
+        complexity.traits[3].rule
+    );
+}
+
+#[test]
+fn trait_conditions_load_in_every_form() {
+    let rules = load_complexity(&complexity_yaml(
+        MEDIUM,
+        HIGH,
+        &[complexity_trait(
+            "t",
+            "any: [{ metric: logical_loc, lte: 3.0 }, \
+                   { match: comment, pattern: 'macro recorded' }, \
+                   { match: procedure_name, pattern: ['^Macro\\d+$', '(?-i)^Test'] }, \
+                   { match: ratio, of: [Select, ActiveWindow.ScrollRow], per_logical_loc_gte: 0.3 }]",
+        )],
+    ))
+    .expect("the rules load");
+
+    let TraitRule::Any(conditions) = &rules.complexity.traits[0].rule else {
+        panic!("any condition: {:?}", rules.complexity.traits[0].rule);
+    };
+    let [
+        Condition::Metric(metric),
+        Condition::Comment(comments),
+        Condition::ProcedureName(names),
+        Condition::Ratio {
+            of,
+            per_logical_loc_gte,
+        },
+    ] = conditions.as_slice()
+    else {
+        panic!("the four forms: {conditions:?}");
+    };
+    // Thresholds are whole numbers however YAML spells them, as in families.yaml.
+    assert_eq!(
+        metric,
+        &MetricCondition {
+            metric: "logical_loc".to_owned(),
+            bound: Bound::AtMost(3),
+        }
+    );
+    assert!(comments[0].is_match("Macro Recorded 01/02/2003"));
+    assert!(names[0].is_match("macro12"));
+    assert!(!names[1].is_match("test"));
+    assert_eq!(of, &["Select", "ActiveWindow.ScrollRow"]);
+    assert!((per_logical_loc_gte - 0.3).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -674,6 +768,7 @@ fn level_thresholds_are_whole_numbers_however_yaml_spells_them() {
     let rules = load_complexity(&complexity_yaml(
         "[{ metric: logical_loc, gte: 1.5e2 }]",
         "[{ metric: procedures, lte: 0x10 }]",
+        &[],
     ))
     .expect("the rules load");
 
@@ -697,6 +792,10 @@ fn metrics_are_those_of_metric_definitions() {
     let problems = load_complexity(&complexity_yaml(
         MEDIUM,
         "[{ metric: procedures, gte: 50 }, { metric: max_cyclomatic, gte: 25 }]",
+        &[complexity_trait(
+            "t",
+            "all: [{ metric: logical_loc, lte: 3 }, { metric: loc, lte: 3 }]",
+        )],
     ))
     .expect_err("the rules are refused");
 
@@ -704,7 +803,9 @@ fn metrics_are_those_of_metric_definitions() {
         shown(&problems),
         [
             "complexity.yaml: metric 'max_cyclomatic' is not defined in metric_definitions \
-             (at /file_levels/high/any/1/metric)"
+             (at /file_levels/high/any/1/metric)",
+            "complexity.yaml: t: metric 'loc' is not defined in metric_definitions \
+             (at /traits/0/all/1/metric)",
         ]
     );
 }
@@ -714,6 +815,7 @@ fn metric_conditions_take_exactly_one_bound() {
     let problems = load_complexity(&complexity_yaml(
         "[{ metric: logical_loc }]",
         "[{ metric: procedures, gte: 1, lte: 3 }]",
+        &[complexity_trait("t", "all: [{ metric: logical_loc }]")],
     ))
     .expect_err("the rules are refused");
 
@@ -722,24 +824,123 @@ fn metric_conditions_take_exactly_one_bound() {
         [
             "complexity.yaml: needs exactly one of: gte, lte (at /file_levels/medium/any/0)",
             "complexity.yaml: needs exactly one of: gte, lte (at /file_levels/high/any/0)",
+            "complexity.yaml: t: needs exactly one of: gte, lte (at /traits/0/all/0)",
+        ]
+    );
+}
+
+#[test]
+fn traits_take_exactly_one_rule() {
+    let problems = load_complexity(&complexity_yaml(
+        MEDIUM,
+        HIGH,
+        &[
+            "{ id: t.none, label: { en: X, fr: X }, description: X }".to_owned(),
+            complexity_trait(
+                "t.two",
+                "any: [{ metric: logical_loc, lte: 3 }], structural: possibly_unused",
+            ),
+            complexity_trait(
+                "t.three",
+                "any: [{ metric: logical_loc, lte: 3 }], all: [{ metric: loc, lte: 3 }], \
+                 structural: possibly_unused",
+            ),
+        ],
+    ))
+    .expect_err("the rules are refused");
+
+    // The lists are checked all the same.
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: t.none: needs exactly one of: any, all, structural (at /traits/0)",
+            "complexity.yaml: t.two: needs exactly one of: any, all, structural (at /traits/1)",
+            "complexity.yaml: t.three: needs exactly one of: any, all, structural (at /traits/2)",
+            "complexity.yaml: t.three: metric 'loc' is not defined in metric_definitions \
+             (at /traits/2/all/0/metric)",
         ]
     );
 }
 
 #[test]
 fn condition_lists_are_never_empty() {
-    let problems =
-        load_complexity(&complexity_yaml("[]", HIGH)).expect_err("the rules are refused");
+    let problems = load_complexity(&complexity_yaml(
+        "[]",
+        HIGH,
+        &[
+            complexity_trait("t.any", "any: []"),
+            complexity_trait("t.all", "all: []"),
+        ],
+    ))
+    .expect_err("the rules are refused");
+
+    // An empty `all` would give the trait to every procedure.
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: empty list of conditions (at /file_levels/medium/any)",
+            "complexity.yaml: t.any: empty list of conditions (at /traits/0/any)",
+            "complexity.yaml: t.all: empty list of conditions (at /traits/1/all)",
+        ]
+    );
+}
+
+#[test]
+fn trait_ids_are_unique() {
+    let rule = "structural: possibly_unused";
+    let problems = load_complexity(&complexity_yaml(
+        MEDIUM,
+        HIGH,
+        &[
+            complexity_trait("t.a", rule),
+            complexity_trait("t.b", rule),
+            complexity_trait("t.a", rule),
+        ],
+    ))
+    .expect_err("the rules are refused");
 
     assert_eq!(
         shown(&problems),
-        ["complexity.yaml: empty list of conditions (at /file_levels/medium/any)"]
+        ["complexity.yaml: t.a: duplicate trait id, first defined at /traits/0 (at /traits/2/id)"]
+    );
+}
+
+#[test]
+fn invalid_trait_patterns_are_problems() {
+    let problems = load_complexity(&complexity_yaml(
+        MEDIUM,
+        HIGH,
+        &[
+            complexity_trait(
+                "t.regex",
+                "any: [{ match: comment, pattern: '(macro' }, \
+                       { match: procedure_name, pattern: ['^Macro', '[Macro'] }]",
+            ),
+            complexity_trait("t.structural", "structural: unused"),
+        ],
+    ))
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: t.regex: invalid regex '(macro': unclosed group \
+             (at /traits/0/any/0/pattern)",
+            "complexity.yaml: t.regex: invalid regex '[Macro': unclosed character class \
+             (at /traits/0/any/1/pattern/1)",
+            "complexity.yaml: t.structural: unknown structural predicate 'unused', expected one \
+             of: udf_candidate, event_handler, auto_exec, chr_obfuscation, \
+             long_hex_or_base64_literal, nested_loop_compare, possibly_unused, parse_recovered \
+             (at /traits/1/structural)",
+        ]
     );
 }
 
 #[test]
 fn malformed_complexity_rules_are_refused() {
-    let no_trait = complexity_yaml(MEDIUM, HIGH);
+    let any = "any: [{ metric: logical_loc, lte: 3 }]";
+    let no_trait = complexity_yaml(MEDIUM, HIGH, &[]);
+    let one_trait = |keys: &str| complexity_yaml(MEDIUM, HIGH, &[complexity_trait("t", keys)]);
     let texts = [
         no_trait.replace("traits: []", "traits: []\nthresholds: {}"),
         no_trait.replace(
@@ -747,8 +948,12 @@ fn malformed_complexity_rules_are_refused() {
             "",
         ),
         no_trait.replace("  high:", "  low: { any: [] }\n  high:"),
-        complexity_yaml("[{ metric: logical_loc, gte: 150, note: x }]", HIGH),
-        complexity_yaml("[{ metric: logical_loc, gte: -1 }]", HIGH),
+        complexity_yaml("[{ metric: logical_loc, gte: 150, note: x }]", HIGH, &[]),
+        complexity_yaml("[{ metric: logical_loc, gte: -1 }]", HIGH, &[]),
+        one_trait(&format!("{any}, weight: 1")),
+        one_trait("any: [{ match: membre, pattern: x }]"),
+        one_trait("any: [{ metric: logical_loc, lte: 3, note: x }]"),
+        one_trait(any).replace("{ en: X, fr: X }", "{ en: X }"),
     ];
 
     let refusals: Vec<String> = texts
@@ -760,8 +965,12 @@ fn malformed_complexity_rules_are_refused() {
         })
         .collect();
 
-    // Each position is that of the value or key at fault, or of the last key
-    // of the mapping that misses one.
+    // Each position is that of the value or key at fault, of the condition
+    // that has none of the three forms, or of the last key of the mapping
+    // that misses one.
+    let condition = "complexity.yaml: invalid condition, expected { metric, gte | lte }, \
+                     { match: comment | procedure_name, pattern } \
+                     or { match: ratio, of, per_logical_loc_gte } at line 7, column 61";
     assert_eq!(
         refusals,
         [
@@ -774,6 +983,11 @@ fn malformed_complexity_rules_are_refused() {
              at line 3, column 52",
             "complexity.yaml: invalid value: integer `-1`, expected a whole number \
              at line 3, column 42",
+            "complexity.yaml: unknown field `weight`, expected one of id, label, description, \
+             any, all, structural at line 7, column 95",
+            condition,
+            condition,
+            "complexity.yaml: missing field `fr` at line 7, column 23",
         ]
     );
 }

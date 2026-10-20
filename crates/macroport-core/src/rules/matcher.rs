@@ -152,12 +152,13 @@ pub(super) struct PatternError {
 }
 
 impl PatternError {
-    /// The problem of the signal `rule` of `file`, located at `signal_at`.
-    pub(super) fn into_problem(self, file: &'static str, rule: &str, signal_at: &str) -> Problem {
+    /// The problem of the rule `rule` of `file`, whose `pattern` key is in
+    /// the mapping at `at`.
+    pub(super) fn into_problem(self, file: &'static str, rule: &str, at: &str) -> Problem {
         Problem {
             file,
             rule: Some(rule.to_owned()),
-            location: format!("{signal_at}/pattern{}", self.suffix),
+            location: format!("{at}/pattern{}", self.suffix),
             message: self.message,
         }
     }
@@ -165,14 +166,7 @@ impl PatternError {
 
 /// Builds the matcher of a signal, or returns every invalid pattern.
 pub(super) fn compile(kind: MatcherKind, patterns: Patterns) -> Result<Matcher, Vec<PatternError>> {
-    let patterns: Vec<(String, String)> = match patterns {
-        Patterns::One(pattern) => vec![(String::new(), pattern)],
-        Patterns::Many(list) => list
-            .into_iter()
-            .enumerate()
-            .map(|(index, pattern)| (format!("/{index}"), pattern))
-            .collect(),
-    };
+    let patterns = numbered(patterns);
     match kind {
         MatcherKind::Member => Ok(Matcher::Member(texts(patterns))),
         MatcherKind::Chain => Ok(Matcher::Chain(texts(patterns))),
@@ -187,15 +181,34 @@ pub(super) fn compile(kind: MatcherKind, patterns: Patterns) -> Result<Matcher, 
         MatcherKind::Regex => each(patterns, regex).map(Matcher::Regex),
         MatcherKind::String => each(patterns, regex).map(Matcher::String),
         MatcherKind::Comment => each(patterns, regex).map(Matcher::Comment),
-        MatcherKind::Structural => each(patterns, |name| {
-            closed(
-                "structural predicate",
-                name,
-                StructuralPredicate::ALL,
-                StructuralPredicate::name,
-            )
-        })
-        .map(Matcher::Structural),
+        MatcherKind::Structural => each(patterns, structural_predicate).map(Matcher::Structural),
+    }
+}
+
+/// Compiles the regexes of a `pattern` key, or returns every invalid one.
+pub(super) fn regexes(patterns: Patterns) -> Result<Vec<Regex>, Vec<PatternError>> {
+    each(numbered(patterns), regex)
+}
+
+/// Finds a predicate in the closed list.
+pub(super) fn structural_predicate(name: &str) -> Result<StructuralPredicate, String> {
+    closed(
+        "structural predicate",
+        name,
+        StructuralPredicate::ALL,
+        StructuralPredicate::name,
+    )
+}
+
+/// Each pattern with its location under `pattern`.
+fn numbered(patterns: Patterns) -> Vec<(String, String)> {
+    match patterns {
+        Patterns::One(pattern) => vec![(String::new(), pattern)],
+        Patterns::Many(list) => list
+            .into_iter()
+            .enumerate()
+            .map(|(index, pattern)| (format!("/{index}"), pattern))
+            .collect(),
     }
 }
 
