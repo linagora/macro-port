@@ -381,6 +381,38 @@ fn the_lines_of_a_begin_block_count_against_the_limit() {
     assert_eq!(error.code, "vba.too_many_lines");
 }
 
+#[test]
+fn a_reference_to_a_control_library_is_part_of_the_export_header() {
+    let text = "VERSION 5.00\n\
+                Object = \"{831FDD16-0C5C-11D2-A9FC-0000F8754DA1}#2.2#0\"; \"MSCOMCTL.OCX\"\n\
+                Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} F\n\
+                \x20  Caption = \"F\"\n\
+                End\n\
+                Attribute VB_Name = \"F\"\n\
+                Option Explicit\n";
+    assert_eq!(
+        skipped(text),
+        [(1, 5, SkipKind::ExportHeader), (6, 6, SkipKind::Attribute)]
+    );
+    assert_eq!(shape(text), ["7 Option Explicit"]);
+}
+
+#[test]
+fn an_object_line_is_a_header_only_before_the_first_code_and_with_two_strings() {
+    for text in [
+        "Option Explicit\nObject = \"x\"; \"y\"\n",
+        "Object = \"x\"\n",
+        "Object = \"x\"; \"y\"; \"z\"\n",
+        "Object = \"x\"; Shell \"y\"\n",
+        "Object = \"x\"; \"y\": z = 1\n",
+        "Object = \"x\"; \"y\" z\n",
+        "Object = 1; 2\n",
+        "Objects = \"x\"; \"y\"\n",
+    ] {
+        assert!(skipped(text).is_empty(), "{text:?}");
+    }
+}
+
 // Attributes
 
 #[test]

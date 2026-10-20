@@ -38,8 +38,9 @@ fn too_many_lines() -> VbaError {
 pub enum SkipKind {
     /// The provenance block at the top of a corpus sample.
     CorpusHeader,
-    /// The `VERSION` line and the `Begin` ... `End` block (class settings or
-    /// form designer) of an exported module.
+    /// The `VERSION` line, the `Object` lines that name control libraries
+    /// and the `Begin` ... `End` block (class settings or form designer) of
+    /// an exported module.
     ExportHeader,
     /// `Attribute` lines: module-level, procedure-level and variable-level.
     Attribute,
@@ -289,7 +290,7 @@ impl<'a> Builder<'a> {
             if text.is_empty() {
                 continue;
             }
-            if !code_seen && is_version(text) {
+            if !code_seen && (is_version(text) || is_library_reference(text)) {
                 self.mark_skipped(number, number, SkipKind::ExportHeader);
             } else if !code_seen && may_open_block && is_begin(text) {
                 // A block that never closes hides nothing but its first line:
@@ -550,6 +551,14 @@ fn after_keyword<'a>(text: &'a str, keyword: &str) -> Option<&'a str> {
         .flatten()
 }
 
+/// The text after the string literal that `text` starts with.
+fn after_string(text: &str) -> Option<&str> {
+    if !text.starts_with('"') {
+        return None;
+    }
+    text.get(string_len(text)?..)
+}
+
 /// A name of the designer: letters, digits and `_`.
 fn is_name(word: &str) -> bool {
     !word.is_empty() && word.chars().all(is_ident_char)
@@ -611,6 +620,17 @@ fn is_designer_line(text: &str) -> bool {
         || text.eq_ignore_ascii_case("endproperty")
         || is_begin_property(text)
         || is_property(text)
+}
+
+/// `Object = "{GUID}#2.2#0"; "MSCOMCTL.OCX"`: the reference to a control
+/// library that the export of a form carries before its `Begin` line.
+fn is_library_reference(text: &str) -> bool {
+    after_keyword(text, "object")
+        .and_then(|rest| rest.trim_start_matches(is_space).strip_prefix('='))
+        .and_then(|rest| after_string(rest.trim_start_matches(is_space)))
+        .and_then(|rest| rest.trim_start_matches(is_space).strip_prefix(';'))
+        .and_then(|rest| after_string(rest.trim_start_matches(is_space)))
+        .is_some_and(|rest| rest.trim_matches(is_space).is_empty())
 }
 
 /// `Attribute Name = value`, where `Name` is a dotted name and the value a
