@@ -1,7 +1,8 @@
 # The core is pure (CLAUDE.md): no file system, network, console,
 # environment, clock, randomness, threads or processes. These are the
-# standard library's ways in; Cargo.toml turns the bans into errors, and the
-# wasm32 build rejects the APIs of a single operating system.
+# standard library's ways in, and the helpers of the `zip` crate that extract
+# to disk; Cargo.toml turns the bans into errors, and the wasm32 build rejects
+# the APIs of a single operating system.
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
@@ -81,4 +82,8 @@ disallowed-methods = [
     { path = "std::thread::sleep", reason = "the core starts no thread: the CLI parallelises" },
     { path = "std::thread::spawn", reason = "the core starts no thread: the CLI parallelises" },
     { path = "std::time::SystemTime::elapsed", reason = "the core reads no clock: the caller injects time values" },
+    { path = "zip::ZipArchive::extract", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::ZipArchive::extract_unwrapped_root_dir", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::ZipArchive::extract_with_options", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::unstable::stream::ZipStreamReader::extract", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
 ]
