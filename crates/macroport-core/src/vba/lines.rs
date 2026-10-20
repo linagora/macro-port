@@ -260,15 +260,15 @@ impl<'a> Builder<'a> {
     }
 
     /// The corpus header block (SPEC section 5): provenance lines at the top
-    /// of the file, closed by a line holding only `'`. Without that closing
-    /// line they are plain comments.
+    /// of the file, closed by a line holding a single `'` and nothing else.
+    /// Without that closing line they are plain comments.
     fn corpus_header(&mut self) {
         let mut ahead = self.rest.clone();
         let mut provenance = 0u32;
         let closed = loop {
             match ahead.next() {
                 Some(line) if is_provenance(line) => provenance = provenance.saturating_add(1),
-                Some(line) => break provenance > 0 && line.trim_end_matches(is_space) == "'",
+                Some(line) => break provenance > 0 && line == "'",
                 None => break false,
             }
         };

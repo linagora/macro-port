@@ -234,12 +234,22 @@ fn the_corpus_header_needs_its_closing_quote_line() {
         ]
     );
     assert!(skipped("'\nOption Explicit\n").is_empty());
+    // The closing line is a single quote and nothing else.
+    for closing in [" '", "' ", "''", "' x"] {
+        let text = format!("' Source: x\n{closing}\nOption Explicit\n");
+        assert!(skipped(&text).is_empty(), "{closing:?}");
+    }
+    // A text that ends inside the provenance lines has no header.
+    assert!(skipped("' Source: x\n").is_empty());
+    assert!(skipped("' Source: x\n' Author: y").is_empty());
 }
 
 #[test]
 fn the_corpus_header_only_matches_its_own_keys_at_the_top() {
     assert!(skipped("' Source: x\n' Note: y\n'\nOption Explicit\n").is_empty());
     assert!(skipped("' source: x\n'\nOption Explicit\n").is_empty());
+    assert!(skipped("' Sourcex: x\n'\nOption Explicit\n").is_empty());
+    assert!(skipped("'Source: x\n'\nOption Explicit\n").is_empty());
     let later = format!("Option Explicit\n{}'\n", provenance("Source"));
     assert!(skipped(&later).is_empty());
 }
