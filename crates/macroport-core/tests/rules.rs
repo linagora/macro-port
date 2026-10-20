@@ -433,6 +433,85 @@ fn chain_terms_name_signals() {
 }
 
 #[test]
+fn required_families_exist() {
+    let problems = load_security(&security_yaml(
+        &[
+            signal(
+                "sec.a",
+                "match: call, pattern: [Shell], requires_family: 01-formatting",
+            ),
+            signal(
+                "sec.b",
+                "match: call, pattern: [Shell], requires_family: 01-mise-en-forme",
+            ),
+        ],
+        &[],
+        &[],
+    ))
+    .expect_err("the rules are refused");
+
+    // A corpus slug is not a family id.
+    assert_eq!(
+        shown(&problems),
+        ["security.yaml: sec.b: unknown family '01-mise-en-forme' (at /signals/1/requires_family)"]
+    );
+}
+
+#[test]
+fn required_families_are_checked_against_families_with_problems() {
+    let problems = RuleSet::load(&RulesSources {
+        families: &families_yaml(&["{ id: fmt.loop, match: regex, pattern: '(For', weight: 1 }"]),
+        security: &security_yaml(
+            &[
+                signal(
+                    "sec.a",
+                    "match: call, pattern: [Shell], requires_family: 01-formatting",
+                ),
+                signal(
+                    "sec.b",
+                    "match: call, pattern: [Shell], requires_family: 01-mise-en-forme",
+                ),
+            ],
+            &[],
+            &[],
+        ),
+    })
+    .expect_err("the rules are refused");
+
+    // 01-formatting exists, though one of its signals is invalid.
+    assert_eq!(
+        shown(&problems),
+        [
+            "families.yaml: fmt.loop: invalid regex '(For': unclosed group \
+             (at /families/0/signals/0/pattern)",
+            "security.yaml: sec.b: unknown family '01-mise-en-forme' (at /signals/1/requires_family)",
+        ]
+    );
+}
+
+#[test]
+fn required_families_wait_for_families_yaml_to_parse() {
+    let problems = RuleSet::load(&RulesSources {
+        families: "version: 0.1.0\n",
+        security: &security_yaml(
+            &[signal(
+                "sec.a",
+                "match: call, pattern: [Shell], requires_family: 01-formatting",
+            )],
+            &[],
+            &[],
+        ),
+    })
+    .expect_err("the rules are refused");
+
+    // Whether 01-formatting exists is unknown: no problem about it.
+    assert_eq!(
+        shown(&problems),
+        ["families.yaml: missing field `scoring` at line 1, column 1"]
+    );
+}
+
+#[test]
 fn malformed_security_rules_are_refused() {
     let call = "match: call, pattern: [Shell]";
     let one_signal = |keys: &str| security_yaml(&[signal("sec.a", keys)], &[], &[]);

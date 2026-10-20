@@ -127,8 +127,13 @@ struct RawAny {
 }
 
 /// Loads `security.yaml`. Problems come in the order of the signals, then
-/// the chains, then the container indicators.
-pub(super) fn load(text: &str) -> Result<Security, Vec<Problem>> {
+/// the chains, then the container indicators. `requires_family` is checked
+/// against `family_ids`, the families of `families.yaml`, unless that file
+/// does not parse.
+pub(super) fn load(
+    text: &str,
+    family_ids: Option<&BTreeSet<&str>>,
+) -> Result<Security, Vec<Problem>> {
     let raw: RawSecurity =
         yaml::from_str(text).map_err(|message| vec![Problem::in_file(SECURITY_FILE, message)])?;
     let mut problems = Vec::new();
@@ -140,6 +145,16 @@ pub(super) fn load(text: &str) -> Result<Security, Vec<Problem>> {
     for (index, signal) in raw.signals.into_iter().enumerate() {
         let at = format!("/signals/{index}");
         problems.extend(ids.record(&signal.id, &at));
+        if let (Some(required), Some(family_ids)) = (&signal.requires_family, family_ids)
+            && !family_ids.contains(required.as_str())
+        {
+            problems.push(Problem {
+                file: SECURITY_FILE,
+                rule: Some(signal.id.clone()),
+                location: format!("{at}/requires_family"),
+                message: format!("unknown family '{required}'"),
+            });
+        }
         match matcher::compile(signal.matcher, signal.pattern) {
             Ok(matcher) => signals.push(SecuritySignal {
                 category: signal.category,
