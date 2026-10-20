@@ -104,3 +104,21 @@ fn storages_and_streams_are_told_apart() {
     assert!(!file.has_storage("dir/stream"));
     assert!(!file.has_storage("dir//stream"));
 }
+
+#[test]
+fn an_encrypted_package_holds_both_of_its_streams_at_the_root() {
+    let cases: [(&[&str], bool); 6] = [
+        (&["EncryptionInfo", "EncryptedPackage"], true),
+        (&["encryptioninfo", "ENCRYPTEDPACKAGE"], true),
+        (&["EncryptionInfo"], false),
+        (&["EncryptedPackage"], false),
+        (&["Dir/EncryptionInfo", "Dir/EncryptedPackage"], false),
+        (&["Workbook"], false),
+    ];
+    for (paths, expected) in cases {
+        let streams: Vec<(&str, &[u8])> = paths.iter().map(|&path| (path, &b"data"[..])).collect();
+        let bytes = container(Version::V3, &streams);
+
+        assert_eq!(open(&bytes).is_encrypted_package(), expected, "{paths:?}");
+    }
+}

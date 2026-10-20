@@ -134,6 +134,18 @@ impl<'a> CfbFile<'a> {
     pub fn has_storage(&self, path: &str) -> bool {
         lookup_path(path).is_some_and(|lookup| self.file.is_storage(lookup))
     }
+
+    /// Whether this is an encrypted OOXML package (MS-OFFCRYPTO): the zip of
+    /// an `.xlsx`, `.xlsm` or `.xlsb` that a password protects sits in an
+    /// `EncryptedPackage` stream, described by an `EncryptionInfo` stream.
+    ///
+    /// These streams do not tell whether the password is the default one,
+    /// `VelvetSweatshop`: that takes the key derivation and the decryption of
+    /// the verifier, which Lot 1 does not do. A package is never noted
+    /// `encrypted_default_password_possible`.
+    pub fn is_encrypted_package(&self) -> bool {
+        self.has_stream("EncryptionInfo") && self.has_stream("EncryptedPackage")
+    }
 }
 
 /// Checks that `bytes` start with the signature and hold a whole header. The

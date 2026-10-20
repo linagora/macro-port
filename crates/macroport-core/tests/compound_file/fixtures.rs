@@ -32,7 +32,18 @@ fn the_xls_fixtures_open_and_hold_a_workbook_stream() {
             !name.ends_with("/xlm-01-macrosheet.xls"),
             "{name}"
         );
+        // The workbook with a FILEPASS record is not an encrypted package.
+        assert!(!file.is_encrypted_package(), "{name}");
     }
+}
+
+#[test]
+fn an_encrypted_ooxml_package_is_recognised() {
+    let bytes = corpus::read("fixtures/generated/enc-01-open-password.xlsm");
+    let file = open(&bytes);
+
+    assert!(file.is_encrypted_package());
+    assert!(!file.has_stream("Workbook"));
 }
 
 /// The streams of a container, read by the crate itself: the reference for
