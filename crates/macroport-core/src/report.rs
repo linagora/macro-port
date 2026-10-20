@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::rules::{ModuleType, Severity};
+use crate::rules::{ModuleType, RuleSet, Severity};
 
 /// The `schema_version` of the reports that this model writes.
 pub const SCHEMA_VERSION: &str = "0.1.0";
@@ -38,6 +38,44 @@ pub struct Report {
 }
 
 impl Report {
+    /// The fleet report on zero files. `generated_at` is an RFC 3339
+    /// date-time that the caller reads from its clock or fixes for tests;
+    /// `tool.build` is left for the caller to set.
+    pub fn empty(rules: &RuleSet, generated_at: String, lang: Lang) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            tool: Tool {
+                name: "macro-port".to_owned(),
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                rules_version: rules.version().to_owned(),
+                build: None,
+            },
+            generated_at,
+            redacted: false,
+            lang: Some(lang),
+            scan: Scan {
+                roots: None,
+                files_total: 0,
+                files_with_macros: 0,
+                files_failed: 0,
+                duration_ms: None,
+            },
+            files: Vec::new(),
+            summary: Summary {
+                by_status: BTreeMap::new(),
+                by_family: BTreeMap::new(),
+                by_complexity: BTreeMap::new(),
+                by_severity: BTreeMap::new(),
+                totals: Some(Totals {
+                    modules: Some(0),
+                    procedures: Some(0),
+                    logical_loc: Some(0),
+                    possibly_unused_procedures: Some(0),
+                }),
+            },
+        }
+    }
+
     /// The report as the text of a JSON file: indented by two spaces like the
     /// example report of the schema, and ending with a newline.
     ///
