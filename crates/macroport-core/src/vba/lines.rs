@@ -10,11 +10,11 @@
 //! into statements, labels are told apart, and comments are cut off and kept
 //! apart. Nothing here evaluates anything: the text is only cut.
 
-use std::fmt;
-
+use super::VbaError;
 use super::scan::{
     bracket_len, date_literal_len, is_ident_char, is_ident_start, is_reserved, is_space, string_len,
 };
+use crate::report::Status;
 
 /// The most lines that [`split_lines`] accepts, counted twice: the physical
 /// lines of a text, and the logical lines it is cut into, since `:` makes many
@@ -29,17 +29,15 @@ use super::scan::{
 /// splits several modules bounds their sum itself.
 pub const MAX_LINES: u32 = 250_000;
 
-/// The text has more than [`MAX_LINES`] physical or logical lines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TooManyLines;
-
-impl fmt::Display for TooManyLines {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "more than {MAX_LINES} lines")
-    }
+/// The error of a text of more than [`MAX_LINES`] physical or logical lines:
+/// the file is too large to analyse, not corrupted.
+fn too_many_lines() -> VbaError {
+    VbaError::new(
+        Status::TooLarge,
+        "vba.too_many_lines",
+        format!("more than {MAX_LINES} lines"),
+    )
 }
-
-impl std::error::Error for TooManyLines {}
 
 /// Why physical lines are not code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +101,8 @@ pub struct Comment {
 /// cut off.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogicalLine {
-    /// First physical line, 1-based.
+    /// Physical line where the text starts, 1-based. A line holding nothing
+    /// but a continuation mark has no text, so the statement starts below it.
     pub line: u32,
     /// Last physical line the logical line occupies, its comment included.
     pub end_line: u32,
@@ -159,8 +158,9 @@ impl SourceLines {
 ///
 /// Physical lines end at CR LF, CR, LF, U+2028 or U+2029, and a final
 /// terminator opens no line. A byte order mark at the start is not part of
-/// the first line. Fails only on a text of more than [`MAX_LINES`] lines.
-pub fn split_lines(text: &str) -> Result<SourceLines, TooManyLines> {
+/// the first line. Fails only on a text of more than [`MAX_LINES`] lines, with
+/// the code `vba.too_many_lines`.
+pub fn split_lines(text: &str) -> Result<SourceLines, VbaError> {
     let mut builder = Builder {
         rest: Physical::new(text),
         consumed: 0,
@@ -172,7 +172,7 @@ pub fn split_lines(text: &str) -> Result<SourceLines, TooManyLines> {
     builder.corpus_header();
     builder.body();
     if builder.too_many {
-        return Err(TooManyLines);
+        return Err(too_many_lines());
     }
     builder.out.physical_lines = builder.consumed;
     Ok(builder.out)
@@ -564,27 +564,35 @@ fn append(joined: &mut String, text: &str) {
     joined.push_str(text);
 }
 
-/// Where the continuation mark of `line` is: a final `_` after whitespace,
-/// or alone. MS-VBAL forbids whitespace after the `_`; it is accepted.
+/// Where the continuation mark of `line` is: a `_` that ends the line, right
+/// after whitespace (MS-VBAL `line-continuation`). A `_` that something
+/// follows, or that touches a name, is not one.
 fn marker(line: &str) -> Option<usize> {
-    let before = line.trim_end_matches(is_space).strip_suffix('_')?;
-    (before.is_empty() || before.ends_with(is_space)).then_some(before.len())
+    let before = line.strip_suffix('_')?;
+    before.ends_with(is_space).then_some(before.len())
 }
 
 /// Reads `line` left to right: the statement separators go to `seps` (byte
 /// offsets in `line`, at most [`MAX_LINES`] and one more), a comment ends the
 /// code, and a `_` ends the line as a continuation unless it is inside a
-/// string.
+/// string. In a string that never closes, the `_` is text and the next line a
+/// statement of its own: joined to the unclosed string, its code would be
+/// read as text.
 ///
 /// `at_start` tells whether the statement being read has no token yet, which
-/// is where `Rem` starts a comment; it carries over to a continuation line.
+/// is where `Rem` starts a comment; it carries over to a continuation line,
+/// the mark of which is no token.
 fn scan(line: &str, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
     seps.clear();
+    let mark = marker(line);
     let mut at = 0usize;
     let mut brackets = true;
     let mut open_string = false;
     let mut comment = None;
     while let Some(rest) = line.get(at..) {
+        if mark == Some(at) {
+            break;
+        }
         let Some(c) = rest.chars().next() else { break };
         let mut step = c.len_utf8();
         let mut start = is_space(c) && *at_start;
@@ -625,11 +633,11 @@ fn scan(line: &str, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
         *at_start = start;
         at = at.saturating_add(step);
     }
-    let marker = marker(line).filter(|_| !open_string);
+    let continued = mark.filter(|_| !open_string);
     Scan {
-        code_end: comment.map_or(marker.unwrap_or(line.len()), |(start, _)| start),
+        code_end: comment.map_or(continued.unwrap_or(line.len()), |(start, _)| start),
         comment_text: comment.map(|(_, text)| text),
-        marker,
+        marker: continued,
     }
 }
 

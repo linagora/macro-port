@@ -4,8 +4,9 @@
 // clippy.toml excuses `expect` in the `#[test]` functions only, not in helpers.
 #![allow(clippy::expect_used)]
 
+use macroport_core::report::Status;
 use macroport_core::vba::{
-    LogicalKind, LogicalLine, MAX_LINES, SkipKind, SourceLines, TooManyLines, split_lines,
+    LogicalKind, LogicalLine, MAX_LINES, SkipKind, SourceLines, split_lines,
 };
 
 fn lines(source: &str) -> SourceLines {
@@ -80,7 +81,11 @@ fn a_text_of_more_lines_than_the_limit_is_refused() {
     let at_limit = "a\n".repeat(MAX_LINES as usize);
     assert_eq!(lines(&at_limit).physical_lines, MAX_LINES);
     let over = format!("{at_limit}a");
-    assert_eq!(split_lines(&over).err(), Some(TooManyLines));
+    let error = split_lines(&over).expect_err("a line too many");
+    assert_eq!(
+        (error.status, error.code),
+        (Status::TooLarge, "vba.too_many_lines")
+    );
 }
 
 #[test]
@@ -119,10 +124,18 @@ fn a_line_knows_the_physical_line_of_each_offset() {
 }
 
 #[test]
-fn a_continuation_mark_follows_whitespace_and_may_be_followed_by_some() {
+fn a_continuation_mark_ends_the_line_and_follows_whitespace() {
     assert_eq!(shape("foo_\nbar"), ["1 foo_", "2 bar"]);
-    assert_eq!(shape("x = 1 + _\n_\n2"), ["1-3 x = 1 + 2"]);
-    assert_eq!(shape("x = 1 + _ \t \n2"), ["1-2 x = 1 + 2"]);
+    // Alone at the start of a line, or followed by anything, `_` is text.
+    assert_eq!(shape("x = 1 + _\n_\ny"), ["1-2 x = 1 + _", "3 y"]);
+    assert_eq!(shape("x = 1 + _ \t \ny"), ["1 x = 1 + _", "2 y"]);
+}
+
+#[test]
+fn a_line_of_only_a_continuation_mark_holds_no_text_and_no_token() {
+    assert_eq!(shape(" _\nx = 1"), ["2 x = 1"]);
+    // `Rem` is still the first word of its statement.
+    assert_eq!(shape(" _\nRem note"), ["2 comment  // note"]);
 }
 
 #[test]
@@ -207,13 +220,11 @@ fn a_statement_after_then_and_a_colon_follows_a_separator() {
 fn a_text_of_more_statements_than_the_limit_is_refused() {
     let at_limit = "x:".repeat(MAX_LINES as usize);
     assert_eq!(lines(&at_limit).logical.len(), MAX_LINES as usize);
-    assert_eq!(
-        split_lines(&format!("{at_limit}x")).err(),
-        Some(TooManyLines)
-    );
+    let code = |text: &str| split_lines(text).err().map(|error| error.code);
+    assert_eq!(code(&format!("{at_limit}x")), Some("vba.too_many_lines"));
     // Separators with nothing between them count as well.
     let colons = ":".repeat(MAX_LINES as usize + 1);
-    assert_eq!(split_lines(&colons).err(), Some(TooManyLines));
+    assert_eq!(code(&colons), Some("vba.too_many_lines"));
 }
 
 // Comments
@@ -234,6 +245,8 @@ fn a_quote_inside_a_string_or_a_bracketed_name_is_not_a_comment() {
         shape("x = \"say \"\"hi\"\" ' no\" ' yes"),
         ["1 x = \"say \"\"hi\"\" ' no\" // yes"]
     );
+    // A string that never closes holds the rest of its line.
+    assert_eq!(shape("x = \"a ' b"), ["1 x = \"a ' b"]);
     assert_eq!(
         shape("[a'b].Value = 1 ' real"),
         ["1 [a'b].Value = 1 // real"]
