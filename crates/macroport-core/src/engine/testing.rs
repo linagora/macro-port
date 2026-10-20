@@ -6,24 +6,76 @@ use std::collections::BTreeSet;
 
 use regex::Regex;
 
+use super::eval::Evaluator;
 use super::hit::Hit;
 use super::input::{
     CallSite, CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
 };
 use crate::report::ProcedureKind;
-use crate::rules::{Matcher, ModuleType};
+use crate::rules::{Matcher, ModuleType, TextMode};
 
-/// A statement on the physical line `number`, with nothing found in it yet:
-/// the builder methods add what the parser would have found.
+/// A statement on the physical line `number`, whose text is the VBA `raw`.
+/// Its `code`, `comment` and `strings` are read from `raw`; the rest is empty
+/// and the builder methods add what the parser would have found.
 pub(crate) fn line(number: u32, raw: &str) -> CodeLine {
-    CodeLine {
+    let mut line = CodeLine {
         line: number,
         raw: raw.to_owned(),
         ..CodeLine::default()
+    };
+    read_text(&mut line);
+    line
+}
+
+/// Fills `code`, `comment` and `strings` from `raw`. This is a simplified
+/// reading for the hand-made lines of the tests, not the lexer of M2: a string
+/// literal becomes `""` in the code and an entry of `strings`, a doubled quote
+/// inside a literal is one quote, and a `'` outside a literal, or a statement
+/// that starts with the word `Rem`, starts the comment, which runs to the end
+/// of the line. A test gives one statement per line, with no continuation.
+fn read_text(line: &mut CodeLine) {
+    if let Some(comment) = rem_comment(&line.raw) {
+        line.comment = Some(comment.to_owned());
+        return;
+    }
+    let mut chars = line.raw.chars().peekable();
+    while let Some(next) = chars.next() {
+        match next {
+            '"' => {
+                let mut literal = String::new();
+                while let Some(inner) = chars.next() {
+                    if inner == '"' && chars.next_if_eq(&'"').is_none() {
+                        break;
+                    }
+                    literal.push(inner);
+                }
+                line.code.push_str("\"\"");
+                line.strings.push(literal);
+            }
+            '\'' => line.comment = Some(chars.by_ref().collect()),
+            _ => line.code.push(next),
+        }
     }
 }
 
+/// The text after `Rem` when the statement is a `Rem` comment. `Rem` is a word
+/// of its own: `Remark = 1` is not a comment.
+fn rem_comment(statement: &str) -> Option<&str> {
+    let statement = statement.trim_start();
+    let word = statement.get(..3)?;
+    let rest = statement.get(3..)?;
+    let own_word = rest.is_empty() || rest.starts_with([' ', '\t']);
+    (word.eq_ignore_ascii_case("rem") && own_word).then_some(rest)
+}
+
 impl CodeLine {
+    /// Replaces the string literals by the values that the parser would give
+    /// after folding, as in `"WScr" & "ipt.Shell"`.
+    pub(crate) fn with_strings(mut self, folded: &[&str]) -> Self {
+        self.strings = folded.iter().map(|value| (*value).to_owned()).collect();
+        self
+    }
+
     /// Adds an identifier used as a member or as a standalone name.
     pub(crate) fn member(mut self, name: &str) -> Self {
         self.members.push(MemberUse {
@@ -168,6 +220,43 @@ pub(crate) fn progids(patterns: &[&str]) -> Matcher {
     Matcher::ProgId(owned(patterns))
 }
 
+/// The physical lines of the hits that have one.
+pub(crate) fn lines_of(hits: &[Hit<'_>]) -> Vec<u32> {
+    hits.iter()
+        .filter_map(|hit| hit.place)
+        .map(|place| place.line)
+        .collect()
+}
+
+/// The module and the line of each hit that has a place.
+pub(crate) fn places(hits: &[Hit<'_>]) -> Vec<(usize, u32)> {
+    hits.iter()
+        .filter_map(|hit| hit.place)
+        .map(|place| (place.module, place.line))
+        .collect()
+}
+
+/// The snippet of each hit.
+pub(crate) fn snippets(hits: &[Hit<'_>]) -> Vec<String> {
+    hits.iter().map(Hit::snippet).collect()
+}
+
+/// The lines of the hits of `matcher` in a procedure whose body is `body`,
+/// with the `text` key of the signal.
+pub(crate) fn lines_hit_with_text(
+    body: &[CodeLine],
+    matcher: &Matcher,
+    text: TextMode,
+) -> Vec<u32> {
+    let project = project_of(body);
+    lines_of(&Evaluator::new(&project).procedure_hits(0, 0, matcher, text))
+}
+
+/// The lines of the hits of `matcher` in a procedure whose body is `body`.
+pub(crate) fn lines_hit(body: &[CodeLine], matcher: &Matcher) -> Vec<u32> {
+    lines_hit_with_text(body, matcher, TextMode::Code)
+}
+
 /// The regexes of a rule, as the matchers receive them. The rules loader makes
 /// them case-insensitive and the matchers add nothing to them: a test that
 /// needs the case ignored says `(?i)`.
@@ -188,15 +277,50 @@ pub(crate) fn references(patterns: &[&str]) -> Matcher {
     Matcher::Reference(compiled(patterns))
 }
 
-/// The module and the line of each hit that has a place.
-pub(crate) fn places(hits: &[Hit<'_>]) -> Vec<(usize, u32)> {
-    hits.iter()
-        .filter_map(|hit| hit.place)
-        .map(|place| (place.module, place.line))
-        .collect()
+/// A `regex` matcher for these regexes.
+pub(crate) fn regexes(patterns: &[&str]) -> Matcher {
+    Matcher::Regex(compiled(patterns))
 }
 
-/// The snippet of each hit.
-pub(crate) fn snippets(hits: &[Hit<'_>]) -> Vec<String> {
-    hits.iter().map(Hit::snippet).collect()
+/// A `string` matcher for these regexes.
+pub(crate) fn strings(patterns: &[&str]) -> Matcher {
+    Matcher::String(compiled(patterns))
+}
+
+/// A `comment` matcher for these regexes.
+pub(crate) fn comments(patterns: &[&str]) -> Matcher {
+    Matcher::Comment(compiled(patterns))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_is_read_into_its_code_its_strings_and_its_comment() {
+        // An apostrophe in a literal does not start the comment, and a doubled
+        // quote in a literal is one quote.
+        let read = line(1, r#"x = "a ' b" & "c""d" ' end"#);
+        assert_eq!(read.code, r#"x = "" & "" "#);
+        assert_eq!(read.strings, ["a ' b", r#"c"d"#]);
+        assert_eq!(read.comment.as_deref(), Some(" end"));
+        let apostrophe = line(1, r#"x = "it's""#);
+        assert_eq!(apostrophe.strings, ["it's"]);
+        assert_eq!(apostrophe.comment, None);
+        let plain = line(1, "x = 1");
+        assert_eq!(plain.code, "x = 1");
+        assert!(plain.strings.is_empty());
+        assert_eq!(plain.comment, None);
+    }
+
+    #[test]
+    fn rem_starts_a_comment_only_as_a_word_of_its_own() {
+        let note = line(1, "  rem a note");
+        assert_eq!(note.comment.as_deref(), Some(" a note"));
+        assert_eq!(note.code, "");
+        assert_eq!(line(1, "REM").comment.as_deref(), Some(""));
+        let word = line(1, "Remark = 1");
+        assert_eq!(word.comment, None);
+        assert_eq!(word.code, "Remark = 1");
+    }
 }

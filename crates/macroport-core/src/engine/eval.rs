@@ -14,8 +14,8 @@ use crate::rules::{Families, Matcher, TextMode};
 /// A module-scope or project-scope signal is evaluated once, not once per
 /// procedure: callers keep the result and give it to each procedure.
 ///
-/// `member`, `chain`, `call`, `progid`, `procedure_name`, `module_type` and
-/// `reference` are implemented so far: the other matchers give no hit yet.
+/// Every matcher is implemented but the `structural` one, which gives no hit
+/// yet.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'p> {
     project: &'p ProjectInput,
@@ -96,14 +96,11 @@ impl<'p> Evaluator<'p> {
                     matchers::reference(&self.project.references, patterns, &mut hits);
                 }
             }
-            // The other matchers arrive with the next changes. `text` is for
-            // `regex`, and is unread until then.
-            Matcher::Regex(_)
-            | Matcher::String(_)
-            | Matcher::Comment(_)
-            | Matcher::Structural(_) => {
-                let _ = text;
-            }
+            Matcher::Regex(patterns) => matchers::regex(&units, patterns, text, &mut hits),
+            Matcher::String(patterns) => matchers::string(&units, patterns, &mut hits),
+            Matcher::Comment(patterns) => matchers::comment(&units, patterns, &mut hits),
+            // The structural predicates arrive with the next change.
+            Matcher::Structural(_) => {}
         }
         // Declarations and procedures interleave in the source.
         hits.sort_by_key(|hit| hit.place);
