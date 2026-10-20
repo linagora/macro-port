@@ -9,5 +9,6 @@
 #![forbid(unsafe_code)]
 
 pub mod container;
+pub mod ovba;
 pub mod report;
 pub mod rules;
