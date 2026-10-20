@@ -66,7 +66,8 @@ pub struct Attribute {
     /// The dotted name left of the `=`, as written: `VB_Name`,
     /// `Foo.VB_Description`.
     pub name: String,
-    /// What follows the `=`, trimmed and not interpreted: `"Module1"`.
+    /// The literals that follow the `=`, as written and not interpreted, a
+    /// trailing comment left out: `"Module1"`.
     pub value: String,
 }
 
