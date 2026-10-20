@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The matchers of SPEC section 7, each over the lines of a few units.
+//! The matchers of SPEC section 7, each over a few units. Most read the lines
+//! of the units, the others the procedure and the module that a unit stands
+//! for.
 //!
 //! A matcher pushes one hit per match, in the order it finds them. The
 //! evaluator sorts the hits.
 
+use std::collections::BTreeSet;
+
+use regex::Regex;
+
 use super::glob::glob_matches;
 use super::hit::{Hit, Place};
-use super::input::{CallSite, CodeLine, MemberUse};
-use super::names::same_name;
+use super::input::{CallSite, CodeLine, MemberUse, ProcedureInput};
+use super::names::{same_name, without_type_char};
 use super::unit::Unit;
+use crate::rules::ModuleType;
 
 /// The `progid` pattern that stands for any ProgID.
 pub(super) const ANY_PROGID: &str = "*";
@@ -17,16 +24,27 @@ pub(super) const ANY_PROGID: &str = "*";
 fn lines<'a, 'p>(units: &'a [Unit<'p>]) -> impl Iterator<Item = (usize, &'p CodeLine)> + 'a {
     units
         .iter()
-        .flat_map(|unit| unit.lines.iter().map(move |line| (unit.module, line)))
+        .flat_map(|unit| unit.lines().iter().map(move |line| (unit.module, line)))
+}
+
+/// A hit at `line` of the module `module`, quoting `text`.
+fn hit_at(module: usize, line: u32, text: &str) -> Hit<'_> {
+    Hit::new(Some(Place { module, line }), text)
 }
 
 /// A hit that quotes the statement of `line`.
 fn statement_hit<'p>(module: usize, line: &'p CodeLine) -> Hit<'p> {
-    let place = Place {
-        module,
-        line: line.line,
-    };
-    Hit::new(Some(place), &line.raw)
+    hit_at(module, line.line, &line.raw)
+}
+
+/// A hit about the whole of `procedure`: it cites the declaration, which it
+/// quotes. A procedure that the parser gave no line is quoted by its name.
+fn declaration_hit<'p>(module: usize, procedure: &'p ProcedureInput) -> Hit<'p> {
+    let declaration = procedure
+        .lines
+        .first()
+        .map_or(procedure.name.as_str(), |line| line.raw.as_str());
+    hit_at(module, procedure.start_line, declaration)
 }
 
 /// A hit for each item that `fits`, among the items of each line that `items`
@@ -126,5 +144,58 @@ fn is_progid(text: &str) -> bool {
         && !text.ends_with('.')
 }
 
+/// Whether one of the regexes finds a match in `subject`.
+fn any_match(patterns: &[Regex], subject: &str) -> bool {
+    patterns.iter().any(|pattern| pattern.is_match(subject))
+}
+
+/// `procedure_name`: a regex on the name of a procedure, without the
+/// type-declaration character that may end it. One hit per procedure, at its
+/// declaration. The declarations of a module have no name to match.
+pub(super) fn procedure_name<'p>(units: &[Unit<'p>], patterns: &[Regex], hits: &mut Vec<Hit<'p>>) {
+    for unit in units {
+        if let Some(procedure) = unit.procedure
+            && any_match(patterns, without_type_char(&procedure.name))
+        {
+            hits.push(declaration_hit(unit.module, procedure));
+        }
+    }
+}
+
+/// `module_type`: a module of one of the types. The type belongs to the module
+/// as a whole, so there is one hit per module, whatever the units that cover
+/// it. Over a module or a project the hit is at the first line of the module
+/// and quotes its name. Over one procedure it is at the declaration of the
+/// procedure, which is in the procedure.
+pub(super) fn module_type<'p>(units: &[Unit<'p>], types: &[ModuleType], hits: &mut Vec<Hit<'p>>) {
+    let mut seen = BTreeSet::new();
+    for unit in units {
+        if !types.contains(&unit.owner.module_type) {
+            continue;
+        }
+        // One hit per module: the first of its units speaks for the others.
+        if !seen.insert(unit.module) {
+            continue;
+        }
+        hits.push(match unit.procedure {
+            Some(procedure) => declaration_hit(unit.module, procedure),
+            None => hit_at(unit.module, 1, &unit.owner.name),
+        });
+    }
+}
+
+/// `reference`: a regex on the display name of a reference of the project. One
+/// hit per reference, with no place: a reference is not in the source of a
+/// module, so the caller cites the line of its choice.
+pub(super) fn reference<'p>(references: &'p [String], patterns: &[Regex], hits: &mut Vec<Hit<'p>>) {
+    for name in references {
+        if any_match(patterns, name) {
+            hits.push(Hit::new(None, name));
+        }
+    }
+}
+
+#[cfg(test)]
+mod project_tests;
 #[cfg(test)]
 mod tests;

@@ -39,7 +39,8 @@ pub struct ProjectInput {
 /// A module of the project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleInput {
-    /// The module name. Read by `module_type`, whose hits quote it.
+    /// The module name. Read by `module_type`, whose hits over a module or a
+    /// project quote it.
     pub name: String,
     /// Read by `module_type`, `auto_exec` and `event_handler`.
     pub module_type: ModuleType,

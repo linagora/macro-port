@@ -14,8 +14,8 @@ use crate::rules::{Families, Matcher, TextMode};
 /// A module-scope or project-scope signal is evaluated once, not once per
 /// procedure: callers keep the result and give it to each procedure.
 ///
-/// `member`, `chain`, `call` and `progid` are implemented so far: the other
-/// matchers give no hit yet.
+/// `member`, `chain`, `call`, `progid`, `procedure_name`, `module_type` and
+/// `reference` are implemented so far: the other matchers give no hit yet.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'p> {
     project: &'p ProjectInput,
@@ -84,12 +84,21 @@ impl<'p> Evaluator<'p> {
                 let catch_all = |progid: &str| self.unclaimed(progid);
                 matchers::progid(&units, patterns, catch_all, &mut hits);
             }
+            Matcher::ProcedureName(patterns) => {
+                matchers::procedure_name(&units, patterns, &mut hits);
+            }
+            Matcher::ModuleType(types) => matchers::module_type(&units, types, &mut hits),
+            // The references belong to the project, not to a module: they are
+            // the same whatever the scope, once the procedure or the module
+            // exists, that is, has a unit.
+            Matcher::Reference(patterns) => {
+                if matches!(target, Target::Project) || !units.is_empty() {
+                    matchers::reference(&self.project.references, patterns, &mut hits);
+                }
+            }
             // The other matchers arrive with the next changes. `text` is for
             // `regex`, and is unread until then.
-            Matcher::ProcedureName(_)
-            | Matcher::ModuleType(_)
-            | Matcher::Reference(_)
-            | Matcher::Regex(_)
+            Matcher::Regex(_)
             | Matcher::String(_)
             | Matcher::Comment(_)
             | Matcher::Structural(_) => {
@@ -124,13 +133,9 @@ impl<'p> Evaluator<'p> {
 
     /// The unit of a procedure, if both indexes are in range.
     fn procedure_unit(&self, module: usize, procedure: usize) -> Option<Unit<'p>> {
-        let found = self
-            .project
-            .modules
-            .get(module)?
-            .procedures
-            .get(procedure)?;
-        Some(Unit::of_procedure(module, found))
+        let owner = self.project.modules.get(module)?;
+        let found = owner.procedures.get(procedure)?;
+        Some(Unit::of_procedure(module, owner, found))
     }
 
     /// The units of a module, if the index is in range.
@@ -168,7 +173,9 @@ fn claimed_patterns(families: &Families) -> impl Iterator<Item = &str> {
 mod tests {
     use super::*;
     use crate::engine::CodeLine;
-    use crate::engine::testing::{line, members, module, procedure, project};
+    use crate::engine::testing::{
+        line, members, module, places, procedure, procedure_names, project, references,
+    };
     use crate::rules::ModuleType;
 
     fn foo(number: u32) -> CodeLine {
@@ -199,14 +206,6 @@ mod tests {
 
     fn matcher() -> Matcher {
         members(&["Foo"])
-    }
-
-    /// The module and the line of each hit.
-    fn places(hits: &[Hit<'_>]) -> Vec<(usize, u32)> {
-        hits.iter()
-            .filter_map(|hit| hit.place)
-            .map(|place| (place.module, place.line))
-            .collect()
     }
 
     #[test]
@@ -272,11 +271,47 @@ mod tests {
         let project = sample();
         let evaluator = Evaluator::new(&project);
         let text = TextMode::Code;
-        assert!(evaluator.procedure_hits(0, 2, &matcher(), text).is_empty());
-        assert!(evaluator.procedure_hits(2, 0, &matcher(), text).is_empty());
-        assert!(evaluator.module_hits(2, &matcher(), text).is_empty());
+        // A matcher of the lines, one of the names of the procedures and one of
+        // the types of the modules: each finds something in the sample.
+        let matchers = [
+            matcher(),
+            procedure_names(&["^Second$"]),
+            Matcher::ModuleType(vec![ModuleType::Standard]),
+        ];
+        for each in &matchers {
+            assert!(!evaluator.module_hits(0, each, text).is_empty());
+            assert!(evaluator.procedure_hits(0, 2, each, text).is_empty());
+            assert!(evaluator.procedure_hits(2, 0, each, text).is_empty());
+            assert!(evaluator.module_hits(2, each, text).is_empty());
+        }
         let empty = ProjectInput::default();
         let evaluator = Evaluator::new(&empty);
-        assert!(evaluator.project_hits(&matcher(), text).is_empty());
+        for each in &matchers {
+            assert!(evaluator.project_hits(each, text).is_empty());
+        }
+    }
+
+    #[test]
+    fn an_index_out_of_range_gives_no_reference_either() {
+        // A reference belongs to the project, but a procedure or a module that
+        // does not exist has nothing to be matched in.
+        let project = sample().with_references(&["Microsoft Outlook 16.0 Object Library"]);
+        let evaluator = Evaluator::new(&project);
+        let text = TextMode::Code;
+        let matcher = references(&["Outlook"]);
+        assert_eq!(evaluator.procedure_hits(1, 0, &matcher, text).len(), 1);
+        assert_eq!(evaluator.module_hits(1, &matcher, text).len(), 1);
+        assert!(evaluator.procedure_hits(1, 1, &matcher, text).is_empty());
+        assert!(evaluator.procedure_hits(2, 0, &matcher, text).is_empty());
+        assert!(evaluator.module_hits(2, &matcher, text).is_empty());
+    }
+
+    #[test]
+    fn a_project_with_no_module_still_has_its_references() {
+        let project =
+            project(Vec::new()).with_references(&["Microsoft Outlook 16.0 Object Library"]);
+        let matcher = references(&["Outlook"]);
+        let hits = Evaluator::new(&project).project_hits(&matcher, TextMode::Code);
+        assert_eq!(hits.len(), 1);
     }
 }
