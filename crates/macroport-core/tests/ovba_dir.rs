@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The `dir` stream: the project information of the MS-OVBA examples, the
-//! quirks that it tolerates, its limits and hostile input.
+//! The `dir` stream: the records of the MS-OVBA examples, the quirks that it
+//! tolerates, its limits and hostile input.
 
 // The helpers build their own inputs: a panic in one is a failed test.
 #![allow(clippy::unwrap_used)]
 
 mod ovba_common;
 
-use macroport_core::ovba::{DirInfo, MAX_DIR_STREAM, parse_compressed_dir, parse_dir};
+use macroport_core::ovba::{
+    DirInfo, DirModule, MAX_DIR_STREAM, MAX_MODULES, parse_compressed_dir, parse_dir,
+};
 use macroport_core::report::Status;
 use ovba_common::Lcg;
 
 // Builders for the records of the `dir` stream. The ones that take references
-// and modules leave them empty until the readers of those arrive.
+// leave them empty until the reader of those arrives.
 
 /// A length as 4 bytes.
 fn size(data: &[u8]) -> [u8; 4] {
@@ -59,6 +61,33 @@ fn information_records(code_page: u16) -> Vec<Vec<u8>> {
     ]
 }
 
+const PROCEDURAL: u16 = 0x0021;
+const NON_PROCEDURAL: u16 = 0x0022;
+
+/// A module record in the way of the examples of the specification.
+fn module(name: &str, text_offset: u32, type_id: u16) -> Vec<u8> {
+    module_with(name, text_offset, type_id, &[])
+}
+
+/// A module record with more records between its type and its terminator.
+fn module_with(name: &str, text_offset: u32, type_id: u16, more: &[Vec<u8>]) -> Vec<u8> {
+    [
+        record(0x0019, name.as_bytes()),
+        record(0x0047, &utf16(name)),
+        record(0x001A, name.as_bytes()),
+        record(0x0032, &utf16(name)),
+        record(0x001C, b""),
+        record(0x0048, b""),
+        record(0x0031, &text_offset.to_le_bytes()),
+        record(0x001E, &0_u32.to_le_bytes()),
+        record(0x002C, &0xFFFF_u16.to_le_bytes()),
+        record(type_id, b""),
+        more.concat(),
+        record(0x002B, b""),
+    ]
+    .concat()
+}
+
 /// A whole `dir` stream.
 fn dir(information: &[Vec<u8>], references: &[Vec<u8>], modules: &[Vec<u8>]) -> Vec<u8> {
     [
@@ -76,10 +105,25 @@ fn parse(information: &[Vec<u8>], references: &[Vec<u8>], modules: &[Vec<u8>]) -
     parse_dir(&dir(information, references, modules)).unwrap()
 }
 
-/// A project with its information, to which the references and the modules
-/// are added in time.
+fn dir_module(name: &str, text_offset: u32, procedural: bool) -> DirModule {
+    DirModule {
+        name: name.to_owned(),
+        stream_name: name.to_owned(),
+        text_offset,
+        procedural,
+    }
+}
+
+/// A project with information and modules.
 fn example_stream() -> Vec<u8> {
-    dir(&information_records(1252), &[], &[])
+    dir(
+        &information_records(1252),
+        &[],
+        &[
+            module("ThisWorkbook", 0, NON_PROCEDURAL),
+            module("Module1", 815, PROCEDURAL),
+        ],
+    )
 }
 
 // The examples of the specification.
@@ -89,6 +133,26 @@ fn reads_the_project_information_of_the_specification_example() {
     let info = parse(&information_records(0x04E4), &[], &[]);
     assert_eq!(info.code_page, Some(1252));
     assert_eq!(info.project_name.as_deref(), Some("VBAProject"));
+    assert!(info.modules.is_empty());
+}
+
+#[test]
+fn reads_the_module_records_of_the_specification_examples() {
+    let modules = [
+        module("ThisWorkbook", 0, NON_PROCEDURAL),
+        // The designer module of the specification is private.
+        module_with("UserForm1", 0, NON_PROCEDURAL, &[record(0x0028, b"")]),
+        module("Module1", 815, PROCEDURAL),
+    ];
+    let info = parse(&information_records(1252), &[], &modules);
+    assert_eq!(
+        info.modules,
+        [
+            dir_module("ThisWorkbook", 0, false),
+            dir_module("UserForm1", 0, false),
+            dir_module("Module1", 815, true),
+        ]
+    );
 }
 
 // The quirks.
@@ -222,7 +286,184 @@ fn an_empty_project_name_is_no_name() {
     assert_eq!(decoded_name(Some(1252), b""), None);
 }
 
+// Module names.
+
+#[test]
+fn prefers_the_unicode_names() {
+    let module = [
+        record(0x0019, b"Old"),
+        record(0x0047, &utf16("Caf\u{e9}")),
+        record(0x001A, b"OldStream"),
+        record(0x0032, &utf16("Caf\u{e9}Stream")),
+        record(0x0021, b""),
+        record(0x002B, b""),
+    ]
+    .concat();
+    let info = parse(&information_records(1252), &[], &[module]);
+    assert_eq!(info.modules.len(), 1);
+    assert_eq!(info.modules[0].name, "Caf\u{e9}");
+    assert_eq!(info.modules[0].stream_name, "Caf\u{e9}Stream");
+}
+
+#[test]
+fn decodes_the_mbcs_names_in_the_code_page_when_there_is_no_unicode_name() {
+    let cases: [(u16, &[u8], &str); 3] = [
+        (1252, &[0x43, 0x61, 0x66, 0xE9], "Caf\u{e9}"),
+        (1251, &[0xCF, 0xF0, 0xE8], "\u{41f}\u{440}\u{438}"),
+        (932, &[0x93, 0xFA, 0x96, 0x7B], "\u{65e5}\u{672c}"),
+    ];
+    for (code_page, name, expected) in cases {
+        let module = [
+            record(0x0019, name),
+            record(0x001A, name),
+            record(0x0031, &9_u32.to_le_bytes()),
+            record(0x0021, b""),
+            record(0x002B, b""),
+        ]
+        .concat();
+        let info = parse(&information_records(code_page), &[], &[module]);
+        assert_eq!(info.modules, [dir_module(expected, 9, true)]);
+    }
+}
+
+#[test]
+fn an_unknown_code_page_decodes_the_mbcs_names_as_windows_1252() {
+    for code_page in [0, 12345] {
+        let module = [record(0x0019, &[0x43, 0xE9]), record(0x002B, b"")].concat();
+        let info = parse(&information_records(code_page), &[], &[module]);
+        assert_eq!(info.code_page, Some(code_page));
+        assert_eq!(info.modules[0].name, "C\u{e9}");
+    }
+}
+
+#[test]
+fn a_module_without_a_name_takes_the_name_of_its_stream_and_the_other_way_round() {
+    let nameless = [
+        record(0x0019, b""),
+        record(0x001A, b"Stream1"),
+        record(0x002B, b""),
+    ]
+    .concat();
+    let streamless = [record(0x0019, b"Module2"), record(0x002B, b"")].concat();
+    let info = parse(&information_records(1252), &[], &[nameless, streamless]);
+    assert_eq!(
+        info.modules,
+        [
+            dir_module("Stream1", 0, false),
+            dir_module("Module2", 0, false)
+        ]
+    );
+}
+
+#[test]
+fn drops_a_module_that_has_no_name_at_all() {
+    let module = [
+        record(0x0019, b""),
+        record(0x0031, &5_u32.to_le_bytes()),
+        record(0x002B, b""),
+    ]
+    .concat();
+    let info = parse(&information_records(1252), &[], &[module]);
+    assert!(info.modules.is_empty());
+}
+
+#[test]
+fn a_module_record_outside_a_module_belongs_to_no_module() {
+    // An offset and a type come before any module name, and again past the
+    // terminator of the first module.
+    let stray = [record(0x0031, &99_u32.to_le_bytes()), record(0x0021, b"")].concat();
+    let records = [information_records(1252), vec![stray.clone()]].concat();
+    let first = [module("A", 4, NON_PROCEDURAL), stray].concat();
+    let info = parse(&records, &[], &[first, module("B", 5, NON_PROCEDURAL)]);
+    assert_eq!(
+        info.modules,
+        [dir_module("A", 4, false), dir_module("B", 5, false)]
+    );
+}
+
+#[test]
+fn a_module_ends_at_the_next_module_name_or_the_dir_terminator() {
+    // No module terminators.
+    let stream = [
+        information_records(1252).concat(),
+        record(0x0019, b"A"),
+        record(0x0031, &1_u32.to_le_bytes()),
+        record(0x0021, b""),
+        record(0x0019, b"B"),
+        record(0x0031, &2_u32.to_le_bytes()),
+        record(0x0010, b""),
+    ]
+    .concat();
+    let info = parse_dir(&stream).unwrap();
+    assert_eq!(
+        info.modules,
+        [dir_module("A", 1, true), dir_module("B", 2, false)]
+    );
+}
+
+#[test]
+fn ignores_the_reserved_field_of_the_module_records_that_have_no_data() {
+    // The specification gives them a reserved field, ignored on read, where
+    // the others have a size. A reader that took it for a size would skip
+    // 0xEEEEEEEE bytes.
+    let reserved = |id: u16| [id.to_le_bytes().as_slice(), &[0xEE; 4]].concat();
+    let named = |name: &str| {
+        [
+            record(0x0019, name.as_bytes()),
+            reserved(0x0021),
+            reserved(0x0025),
+            reserved(0x0028),
+            reserved(0x002B),
+        ]
+        .concat()
+    };
+    let info = parse(&information_records(1252), &[], &[named("A"), named("B")]);
+    assert_eq!(
+        info.modules,
+        [dir_module("A", 0, true), dir_module("B", 0, true)]
+    );
+}
+
 // Limits.
+
+fn many_modules(count: usize) -> Vec<Vec<u8>> {
+    (0..count)
+        .map(|index| {
+            [
+                record(0x0019, format!("M{index}").as_bytes()),
+                record(0x002B, b""),
+            ]
+            .concat()
+        })
+        .collect()
+}
+
+#[test]
+fn accepts_the_most_modules() {
+    let info = parse(&information_records(1252), &[], &many_modules(MAX_MODULES));
+    assert_eq!(info.modules.len(), MAX_MODULES);
+    assert_eq!(info.modules[MAX_MODULES - 1].name, "M1999");
+}
+
+#[test]
+fn rejects_one_module_too_many() {
+    let stream = dir(
+        &information_records(1252),
+        &[],
+        &many_modules(MAX_MODULES + 1),
+    );
+    let error = parse_dir(&stream).unwrap_err();
+    assert_eq!(error.status, Status::TooLarge);
+    assert_eq!(error.code, "ovba.dir.too_many_modules");
+}
+
+#[test]
+fn counts_the_last_module_even_when_nothing_terminates_it() {
+    let mut modules = many_modules(MAX_MODULES);
+    modules.push(record(0x0019, b"Last"));
+    let error = parse_dir(&dir(&information_records(1252), &[], &modules)).unwrap_err();
+    assert_eq!(error.code, "ovba.dir.too_many_modules");
+}
 
 /// A container of raw chunks that hold `data`, the last padded with zeros.
 fn stored(data: &[u8]) -> Vec<u8> {

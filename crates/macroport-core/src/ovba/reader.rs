@@ -11,6 +11,14 @@ pub(super) fn le_u16(bytes: &[u8]) -> Option<u16> {
         .map(|bytes| u16::from_le_bytes(*bytes))
 }
 
+/// The first 4 bytes of `bytes` as a little-endian number, if there are that
+/// many.
+pub(super) fn le_u32(bytes: &[u8]) -> Option<u32> {
+    bytes
+        .first_chunk::<4>()
+        .map(|bytes| u32::from_le_bytes(*bytes))
+}
+
 /// A cursor over the stream. Every read is bounded by what is left.
 pub(super) struct Reader<'a> {
     rest: &'a [u8],

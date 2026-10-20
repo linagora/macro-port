@@ -29,10 +29,12 @@ const FLAG_BITS: [u8; 8] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80];
 
 /// Decompresses a compressed container.
 ///
-/// A container is read whole: nothing of a broken one is returned. No
-/// allocation follows a size that the input declares; the output grows with
-/// the bytes it holds, a chunk at a time, so it overshoots `max_output` by
-/// about a chunk at most before the error.
+/// A container is read whole: nothing of a broken one is returned. A chunk
+/// whose header declares more bytes than the container holds ends with the
+/// container, as section 2.4.1.3.2 reads it, unless it is a raw chunk, which
+/// needs all of its 4096 bytes. No allocation follows a size that the input
+/// declares; the output grows with the bytes it holds, a chunk at a time, so
+/// it overshoots `max_output` by about a chunk at most before the error.
 ///
 /// What section 2.4.1.1 asks of writers alone is not enforced, as the reading
 /// algorithm of section 2.4.1.3 does not: a chunk other than the last may
@@ -72,6 +74,9 @@ pub fn decompress(input: &[u8], max_output: usize) -> Result<Vec<u8>, OvbaError>
 /// A chunk of a container, without its header.
 struct Chunk<'a> {
     compressed: bool,
+    /// Whether the container ends before the chunk does: its header declares
+    /// more bytes than follow.
+    cut: bool,
     data: &'a [u8],
 }
 
@@ -90,10 +95,21 @@ fn split_chunk(input: &[u8]) -> Result<(Chunk<'_>, &[u8]), OvbaError> {
     if !compressed && size != RAW_CHUNK_SIZE {
         return Err(bad_chunk("a raw chunk is not 4096 bytes long"));
     }
-    let Some((data, tail)) = rest.split_at_checked(size.saturating_add(1)) else {
-        return Err(truncated("a chunk is longer than the container"));
-    };
-    Ok((Chunk { compressed, data }, tail))
+    // A chunk that runs past the end of the container ends with it.
+    let declared = size.saturating_add(1);
+    let (data, tail) = rest.split_at_checked(declared).unwrap_or((rest, &[]));
+    let cut = data.len() < declared;
+    if cut && !compressed {
+        return Err(truncated("a raw chunk is cut short"));
+    }
+    Ok((
+        Chunk {
+            compressed,
+            cut,
+            data,
+        },
+        tail,
+    ))
 }
 
 impl Chunk<'_> {
@@ -113,7 +129,13 @@ impl Chunk<'_> {
                     output.push(first);
                 } else {
                     let Some(second) = bytes.next() else {
-                        return Err(bad_token("a copy token is cut short"));
+                        // The end of the chunk cuts the token, or that of the
+                        // container if the chunk runs past it.
+                        return Err(if self.cut {
+                            truncated("the container ends inside a copy token")
+                        } else {
+                            bad_token("a copy token is cut short")
+                        });
                     };
                     copy(output, start, u16::from_le_bytes([first, second]))?;
                 }
