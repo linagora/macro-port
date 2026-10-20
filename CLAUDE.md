@@ -17,7 +17,7 @@ Never, in Lot 1: call an LLM, translate or convert VBA code, score compatibility
 
 ## Current state of the repository
 
-M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which so far only loads `families.yaml`, and `macroport-cli`, whose `macro-port` binary only answers `--version` and `--help`; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: `schema/rules/` and `rules check`, the loading of `security.yaml` and `complexity.yaml`, and the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
+M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which so far only loads `families.yaml`, and `macroport-cli`, whose `macro-port` binary answers `--version`, `--help` and `rules check`; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: `schema/rules/`, the loading of `security.yaml` and `complexity.yaml`, and the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
 
 ## Non-negotiable engineering rules
 
@@ -53,7 +53,7 @@ LISEZMOI-KIT.md, PROMPT-*.md  # owner-facing kit notes and prompts, in French
 - `macroport-core` pipeline: container detection (OOXML zip, CFB/BIFF8) → MS-OVBA extraction (`dir`, `PROJECT` and module streams) → lexer → structural parser (logical lines, `With` resolution, constant folding, call graph) → metrics → rule engine → `Report`. Two entry points: `analyze(bytes, file_name)` and `analyze_modules(modules, file_name)`. The second skips the container layer (`container: "text_module"`): that is how M2 and M3 run on `corpus/families/` before binary fixtures exist.
 - Everything impure lives in the CLI: directory walking, `rayon`, output files, HTML and CSV rendering, Fluent, and the injected `generated_at` and `scan.duration_ms` (`--deterministic` fixes them for tests). `macroport-wasm` wraps `analyze` for one file; the web app only renders report JSON and aggregates single-file reports into a fleet report.
 - Evidence line numbers count every physical line as the file presents it, export headers, `Attribute` lines and the corpus header block included (SPEC section 5). Never renumber after skipping them.
-- Rules are embedded at build time and overridable with `--rules`. `corpus_slug` in `families.yaml` maps a family id (`01-formatting`) to the corpus folder and manifest `family` (`01-mise-en-forme`); A4 relies on it. Family 14 has no family rules: it is only scored against `corpus/ground-truth/security-expected.yaml` (A5).
+- Rules are embedded at build time and overridable with `--rules`. `rules check` parses each file, then `macroport-core::rules` loads it into typed rules, compiling the regexes and rejecting duplicate ids. `corpus_slug` in `families.yaml` maps a family id (`01-formatting`) to the corpus folder and manifest `family` (`01-mise-en-forme`); A4 relies on it. Family 14 has no family rules: it is only scored against `corpus/ground-truth/security-expected.yaml` (A5).
 - `container_indicators` in `security.yaml` are raised by the extraction layer (M1), not by matchers; the YAML only holds their labels and severities.
 - A1 compares extracted source with Excel's own export of each module (`*.expected.bas|cls`, listed in `corpus/fixtures/fixtures.yaml`), not with the corpus text.
 
@@ -81,12 +81,17 @@ tools/ci/check-spdx.sh                       # SPDX header on every tracked sour
 cargo build -p macroport-core --target wasm32-unknown-unknown
 ```
 
+The CLI, whose tests run `rules check` on the shipped rules:
+
+```
+cargo run -p macroport-cli -- rules check [--rules dir]   # exit 0 ok, 1 problems found, 2 usage error, 3 fatal error
+```
+
 As their milestones land:
 
 ```
 cargo insta review                           # review snapshot diffs (cargo-insta)
 cargo run -p macroport-cli -- scan corpus/families -o target/out --format json,html,csv
-cargo run -p macroport-cli -- rules check
 wasm-pack build crates/macroport-wasm --target web
 (cd web && npm ci && npm run build && npm test)
 ```

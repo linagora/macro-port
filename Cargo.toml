@@ -13,6 +13,7 @@ publish = false
 # Versions and features come from docs/adr/0002-dependencies.md.
 [workspace.dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+macroport-core = { path = "crates/macroport-core" }
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
