@@ -99,21 +99,20 @@ pub(crate) fn date_literal_len(rest: &str) -> Option<usize> {
 
 /// The reserved identifiers of the MS-VBAL lexical grammar, lowercase, and
 /// `randomize`, which a statement label may not be either. Statement labels
-/// are the only use of the list: the lexer keeps its own, shorter list of
-/// keywords.
+/// are the only use of the list so far.
 const RESERVED: &str = "
     abs addressof and any array as attribute boolean byref byte byval call case cbool
     cbyte ccur cdate cdbl cdec cdecl cint circle clng clnglng clngptr close
     const csng cstr currency cvar cverr date debug decimal declare defbool
     defbyte defcur defdate defdbl defdec defint deflng deflnglng deflngptr
     defobj defsng defstr defvar dim do doevents double each else elseif empty
-    end endif enum eqv erase event exit false fix for friend function get
+    end endif enum eqv erase error event exit false fix for friend function get
     global gosub goto if imp implements in input inputb int integer is
     lbound len lenb let like lineinput lock long longlong longptr loop lset me
     mod new next not nothing null on open option optional or paramarray
     preserve print private pset public put raiseevent randomize redim rem
     resume return rset scale seek select set sgn shared single spc static stop
-    string sub tab then to true type typeof ubound unlock until variant wend
+    string sub tab then time to true type typeof ubound unlock until variant wend
     while with withevents write xor
     vb_base vb_control vb_creatable vb_customizable vb_description vb_exposed
     vb_ext_key vb_globalnamespace vb_helpid vb_invoke_func vb_invoke_property
@@ -211,7 +210,16 @@ mod tests {
 
     #[test]
     fn reserved_identifiers_ignore_case_and_leave_library_names_alone() {
-        for word in ["Else", "DOEVENTS", "randomize", "Rem", "VB_Name", "Date"] {
+        for word in [
+            "Else",
+            "DOEVENTS",
+            "randomize",
+            "Rem",
+            "VB_Name",
+            "Date",
+            "Error",
+            "TIME",
+        ] {
             assert!(is_reserved(word), "{word}");
         }
         for word in ["ErrorHandler", "Kill", "Shell", "Beep", "", "El"] {

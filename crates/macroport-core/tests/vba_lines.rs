@@ -332,6 +332,8 @@ fn a_reserved_word_before_a_colon_is_not_a_label() {
     assert_eq!(shape("Else: x = 1"), ["1 Else", "1: x = 1"]);
     assert_eq!(shape("DoEvents: x = 1"), ["1 DoEvents", "1: x = 1"]);
     assert_eq!(shape("Randomize: x = 1"), ["1 Randomize", "1: x = 1"]);
+    assert_eq!(shape("Error: x = 1"), ["1 Error", "1: x = 1"]);
+    assert_eq!(shape("time: x = 1"), ["1 time", "1: x = 1"]);
     assert_eq!(shape("  Do: x = 1: Loop"), ["1 Do", "1: x = 1", "1: Loop"]);
 }
 
