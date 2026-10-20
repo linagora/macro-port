@@ -4,8 +4,11 @@
 //!
 //! [`report_problems`] validates reports offline: jsonschema is built without
 //! its HTTP and file resolvers, and the report schema only refers to itself.
+//! [`corpus`] reads the test corpus.
 
 #![forbid(unsafe_code)]
+
+pub mod corpus;
 
 use std::sync::LazyLock;
 
