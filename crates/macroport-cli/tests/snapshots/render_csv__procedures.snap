@@ -1,0 +1,12 @@
+---
+source: crates/macroport-cli/tests/render_csv.rs
+expression: text(&procedures)
+---
+path,module,procedure,kind,primary_family,secondary_families,logical_loc,cyclomatic,signals,traits
+examples/14-01-auto-open-shell.xlsm,M_14_01,Auto_Open,sub,09-events,13-windows-api,4,1,sec.auto-exec;sec.shell,
+legacy/budget.xls,ThisWorkbook,Workbook_Open,sub,09-events,,6,2,sec.auto-exec;sec.alerts-off,
+legacy/budget.xls,Module1,FormatReport,sub,01-formatting,06-reporting,14,4,,
+legacy/budget.xls,Module1,LookupRate,function,04-lookup,,11,2,,
+legacy/budget.xls,Module1,Macro1,sub,unclassified,,6,1,,recorded_macro;possibly_unused
+legacy/budget.xls,UserForm1,CommandButton1_Click,sub,05-forms,,7,3,,
+text/Module1.bas,Module1,AskName,sub,05-forms,,7,2,,

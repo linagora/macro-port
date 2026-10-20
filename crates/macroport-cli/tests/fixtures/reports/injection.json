@@ -1,0 +1,225 @@
+{
+  "schema_version": "0.1.0",
+  "tool": {
+    "name": "macro-port",
+    "version": "0.1.0",
+    "rules_version": "0.1.0",
+    "build": "cli"
+  },
+  "generated_at": "2026-10-20T08:00:00Z",
+  "redacted": false,
+  "lang": "en",
+  "scan": {
+    "roots": [
+      "<img src=x onerror=alert(1)>"
+    ],
+    "files_total": 2,
+    "files_with_macros": 1,
+    "files_failed": 1,
+    "duration_ms": 5
+  },
+  "files": [
+    {
+      "path": "=HYPERLINK(\"http://x\")/<img src=x onerror=alert(1)>.xlsm",
+      "size": 9000,
+      "sha256": "81142b33f4567c858a8ac8c0a76a76a3d4adefda71c73c561195733d955b6968",
+      "container": "xlsm",
+      "status": "ok",
+      "vba_project": {
+        "name": "<img src=x onerror=alert(1)>",
+        "protected": false,
+        "code_page": 1252,
+        "references": [
+          "+cmd|' /C calc'!A0",
+          "</script><script>alert(1)</script>"
+        ],
+        "modules": [
+          {
+            "name": "=HYPERLINK(\"http://x\")",
+            "type": "standard",
+            "stream_name": "<img src=x onerror=alert(1)>",
+            "source_available": true,
+            "metrics": {
+              "loc": 6,
+              "logical_loc": 5,
+              "procedures": 2,
+              "cyclomatic": 1,
+              "cyclomatic_total": 2,
+              "max_nesting": 0
+            },
+            "procedures": [
+              {
+                "name": "<img src=x onerror=alert(1)>",
+                "kind": "sub",
+                "visibility": "public",
+                "is_entry_point": true,
+                "is_event_handler": false,
+                "possibly_unused": false,
+                "start_line": 1,
+                "end_line": 3,
+                "metrics": {
+                  "loc": 3,
+                  "logical_loc": 3,
+                  "cyclomatic": 1,
+                  "max_nesting": 0,
+                  "parameters": 0,
+                  "goto_count": 0
+                },
+                "calls": [
+                  "\"><script>alert(1)</script>"
+                ],
+                "apis": [
+                  {
+                    "name": "<img src=x onerror=alert(1)>",
+                    "count": 1
+                  }
+                ],
+                "primary_family": "01-formatting",
+                "secondary_families": [
+                  "05-forms"
+                ],
+                "families": [
+                  {
+                    "family": "01-formatting",
+                    "score": 3,
+                    "evidence": [
+                      {
+                        "rule_id": "x\"><b onmouseover=alert(1)>",
+                        "line": 2,
+                        "snippet": "s = \"=HYPERLINK(\"\"http://x\"\")\" & \"<img src=x onerror=alert(1)>\" & \"&amp;&#60;  \""
+                      }
+                    ]
+                  }
+                ],
+                "signals": [
+                  {
+                    "signal_id": "sec.shell",
+                    "severity": "medium",
+                    "module": "=HYPERLINK(\"http://x\")",
+                    "procedure": "<img src=x onerror=alert(1)>",
+                    "evidence": [
+                      {
+                        "rule_id": "sec.shell",
+                        "line": 2,
+                        "snippet": "Shell \"</script><script>alert(1)</script>\""
+                      }
+                    ]
+                  }
+                ],
+                "traits": [
+                  "recorded_macro"
+                ],
+                "orientation": null
+              },
+              {
+                "name": "@SUM(1+1)",
+                "kind": "function",
+                "visibility": "private",
+                "start_line": 4,
+                "end_line": 6,
+                "metrics": {
+                  "loc": 3,
+                  "logical_loc": 2,
+                  "cyclomatic": 1,
+                  "max_nesting": 0,
+                  "parameters": 0,
+                  "goto_count": 0
+                },
+                "primary_family": "unclassified",
+                "families": [],
+                "signals": [],
+                "orientation": null
+              }
+            ],
+            "signals": [
+              {
+                "signal_id": "sec.declare",
+                "severity": "low",
+                "evidence": [
+                  {
+                    "rule_id": "sec.declare",
+                    "line": 1,
+                    "snippet": "-2+3 javascript:alert(1)"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "xlm": {
+        "present": false
+      },
+      "metrics": {
+        "loc": 6,
+        "logical_loc": 5,
+        "procedures": 2,
+        "cyclomatic": 1,
+        "cyclomatic_total": 2,
+        "max_nesting": 0
+      },
+      "complexity_level": "low",
+      "primary_family": "01-formatting",
+      "families": [
+        {
+          "family": "01-formatting",
+          "score": 3
+        }
+      ],
+      "max_severity": "high",
+      "signals": [
+        {
+          "signal_id": "sec.chain.autoexec-execution",
+          "severity": "high",
+          "evidence": [
+            {
+              "rule_id": "sec.shell",
+              "line": 2,
+              "snippet": "@A1 <svg onload=alert(1)>"
+            }
+          ]
+        }
+      ],
+      "traits": [],
+      "orientation": null
+    },
+    {
+      "path": "\t=cmd|' /C calc'!A0.xlsm",
+      "size": 10,
+      "sha256": "0a19567224af6ac60254edeb9685ac94b18f153965fffcd2f510209ef16d2f68",
+      "container": "xlsm",
+      "status": "corrupted",
+      "errors": [
+        {
+          "code": "zip.truncated",
+          "message": "<img src=x onerror=alert(1)> =HYPERLINK(\"http://x\")"
+        }
+      ],
+      "vba_project": null,
+      "max_severity": null,
+      "orientation": null
+    }
+  ],
+  "summary": {
+    "by_status": {
+      "ok": 1,
+      "corrupted": 1
+    },
+    "by_family": {
+      "01-formatting": 1,
+      "unclassified": 1
+    },
+    "by_complexity": {
+      "low": 1
+    },
+    "by_severity": {
+      "high": 1
+    },
+    "totals": {
+      "modules": 1,
+      "procedures": 2,
+      "logical_loc": 5,
+      "possibly_unused_procedures": 0
+    }
+  }
+}

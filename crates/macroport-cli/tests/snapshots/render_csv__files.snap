@@ -1,0 +1,16 @@
+---
+source: crates/macroport-cli/tests/render_csv.rs
+expression: text(&files)
+---
+path,container,status,complexity_level,primary_family,max_severity,modules,procedures,logical_loc,xlm_present,vba_project_protected
+examples/14-01-auto-open-shell.xlsm,xlsm,ok,low,09-events,high,1,1,5,false,false
+legacy/budget.xls,xls,ok,medium,05-forms,medium,3,5,54,false,true
+legacy/xlm-only.xlsb,xlsb,ok,low,,medium,0,0,0,true,
+locked/payroll.xlsm,xlsm,encrypted,,,,,,,,
+broken/truncated.xlsm,xlsm,corrupted,,,,,,,,
+blank/empty.xlsx,xlsx,no_macros,low,,,0,0,0,false,
+text/Module1.bas,text_module,ok,low,05-forms,,1,1,8,,false
+bomb/zip-bomb.xlsm,xlsm,suspicious_archive,,,medium,,,,,
+huge/archive.xlsb,xlsb,too_large,,,,,,,,
+misc/not-excel.xls,unknown,unsupported,,,,,,,,
+crash/internal.xlsm,xlsm,error,,,,,,,,

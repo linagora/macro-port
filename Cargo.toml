@@ -13,6 +13,8 @@ publish = false
 # Versions and features come from docs/adr/0002-dependencies.md.
 [workspace.dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+csv = "1.4.0"
+insta = { version = "1.49.0", features = ["glob", "yaml"] }
 jsonschema = { version = "0.59.0", default-features = false }
 macroport-core = { path = "crates/macroport-core" }
 macroport-testkit = { path = "crates/macroport-testkit" }

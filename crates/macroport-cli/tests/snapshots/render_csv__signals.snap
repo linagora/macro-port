@@ -1,0 +1,15 @@
+---
+source: crates/macroport-cli/tests/render_csv.rs
+expression: text(&signals)
+---
+path,module,procedure,signal_id,severity,line
+examples/14-01-auto-open-shell.xlsm,,,sec.chain.autoexec-execution,high,4
+examples/14-01-auto-open-shell.xlsm,,,sec.chain.autoexec-execution,high,6
+examples/14-01-auto-open-shell.xlsm,M_14_01,Auto_Open,sec.auto-exec,medium,4
+examples/14-01-auto-open-shell.xlsm,M_14_01,Auto_Open,sec.shell,medium,6
+legacy/budget.xls,ThisWorkbook,Workbook_Open,sec.auto-exec,medium,8
+legacy/budget.xls,ThisWorkbook,Workbook_Open,sec.alerts-off,info,9
+legacy/budget.xls,ThisWorkbook,Workbook_Open,sec.alerts-off,info,12
+legacy/budget.xls,Module1,,sec.declare,low,2
+legacy/xlm-only.xlsb,,,sec.xlm-macrosheet,medium,
+bomb/zip-bomb.xlsm,,,sec.suspicious-archive,medium,
