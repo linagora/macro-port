@@ -28,7 +28,7 @@ Still the starter kit: no Cargo workspace yet, and `crates/`, `schema/rules/` (M
 - Deterministic output: stable ordering (`BTreeMap`, sorted vectors), no hash-map iteration order in output.
 - Family, security and complexity logic lives in `rules/*.yaml`. Rust only implements the generic matchers and the closed list of structural predicates in SPEC section 7. If a rule cannot be expressed, propose a new matcher in an ADR instead of hard-coding a family.
 - Every source file starts with `// SPDX-License-Identifier: Apache-2.0`.
-- New dependency: check licence compatibility (`cargo deny`), prefer well-maintained crates, justify any heavy one in the PR description. No HTTP client crate anywhere in the dependency tree, dev-dependencies included (watch default features: `jsonschema` needs `default-features = false`, `zip` only `deflate`).
+- New dependency: take it from `docs/adr/0002-dependencies.md`, with the features listed there; any other crate needs an ADR in the PR that adds it. No HTTP client crate anywhere in the dependency tree, dev-dependencies included; `cargo deny` enforces it.
 
 ## Repository layout
 
