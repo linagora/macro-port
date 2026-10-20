@@ -231,3 +231,56 @@ fn a_damaged_deflate_stream_is_corrupted() {
     package[data..data + 2].copy_from_slice(&[0xff, 0xff]);
     assert_fails(&package, Corrupted, "zip.inflate");
 }
+
+#[test]
+fn two_entries_of_exactly_one_name_are_ambiguous() {
+    // `ZipWriter` refuses the same name twice: the second entry is renamed
+    // once written.
+    let deflated = CompressionMethod::Deflated;
+    let mut package = zip_of(&[
+        (VBA, b"one", deflated),
+        ("xl/vbaProject.bio", b"two", deflated),
+    ]);
+    for at in 0..package.len() {
+        if package[at..].starts_with(b"xl/vbaProject.bio") {
+            package[at + 16] = b'n';
+        }
+    }
+    assert_fails(&package, Corrupted, "zip.duplicate_entry");
+}
+
+#[test]
+fn a_huge_central_directory_is_a_suspicious_archive() {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    for index in 0..65_000 {
+        writer
+            .start_file(format!("{index:0>200}"), options)
+            .unwrap();
+    }
+    let package = writer.finish().unwrap().into_inner();
+    assert_fails(&package, SuspiciousArchive, "zip.directory_too_large");
+}
+
+#[test]
+fn changed_bytes_never_panic() {
+    let workbook = fixture("generated/01-01-hide-unhide-columns-find.xlsm");
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        usize::try_from(state >> 8).unwrap()
+    };
+    for _ in 0..3000 {
+        let mut bytes = workbook.clone();
+        for _ in 0..=next() % 4 {
+            // Half of the changes are among the last bytes, where the central
+            // directory is.
+            let reach = if next() % 2 == 0 { bytes.len() } else { 2048 };
+            let at = bytes.len() - 1 - next() % reach;
+            bytes[at] = next().to_le_bytes()[0];
+        }
+        let _ = read_ooxml(&bytes);
+    }
+}
