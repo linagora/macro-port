@@ -11,18 +11,23 @@
 //! | --- | --- | --- |
 //! | `cfb.signature` | `corrupted` | the bytes do not start with the CFB signature |
 //! | `cfb.header` | `corrupted` | the header is cut short or holds unsupported values |
-//! | `cfb.fat` | `corrupted` | the (Mini)FAT or DIFAT is inconsistent, or points beyond the file, as a cut file's does |
+//! | `cfb.fat` | `corrupted` | the (Mini)FAT or DIFAT is inconsistent, larger than the file can need, or points beyond the file, as a cut file's does |
 //! | `cfb.fat_loop` | `corrupted` | a chain of sectors loops, or a sector belongs to two chains |
 //! | `cfb.directory` | `corrupted` | the directory cannot be read or its tree is not a tree |
 //! | `cfb.truncated` | `corrupted` | a sector or a stream is cut short: the data ends before its structure says |
 //! | `cfb.malformed` | `corrupted` | any other failure of the `cfb` crate |
-//! | `cfb.too_many_entries` | `corrupted` | more than [`MAX_DIRECTORY_ENTRIES`] entries in the directory tree |
+//! | `cfb.too_many_entries` | `corrupted` | more than [`MAX_DIRECTORY_ENTRIES`] entries in the directory tree, or a directory chain of more sectors than that many entries fill (500 in version 3, 63 in version 4), free entries included |
 //! | `cfb.too_deep` | `corrupted` | storages nested deeper than [`MAX_STORAGE_DEPTH`] |
 //! | `cfb.stream_too_large` | `too_large` | a stream above [`MAX_STREAM_SIZE`] |
 //!
 //! A stream above its size cap is the only limit that gives `too_large`,
 //! which SPEC M1 ties to sizes. The other limits describe a structure no
 //! Office program writes, so a file that crosses one is `corrupted`.
+//!
+//! The `cfb` crate allocates from the tables of a container before it compares
+//! them with the length of the file: `bounds` scans them first (ADR-0003).
+
+mod bounds;
 
 use std::fmt;
 use std::io::{self, Cursor, Read};
@@ -68,10 +73,12 @@ impl<'a> CfbFile<'a> {
     /// # Errors
     ///
     /// A [`ContainerError`] when the bytes are not a container, when its
-    /// structure is broken, or when it crosses a limit of SPEC M1 (see the
-    /// module documentation for the codes).
+    /// structure is broken, when it crosses a limit of SPEC M1, or when its
+    /// tables are larger than a file of that length can need (ADR-0003). See
+    /// the module documentation for the codes.
     pub fn open(bytes: &'a [u8]) -> Result<Self, ContainerError> {
         check_header(bytes)?;
+        bounds::check(bytes)?;
         let file = CompoundFile::open(Cursor::new(bytes)).map_err(container_error)?;
         check_tree_limits(&file)?;
         Ok(Self { file })
