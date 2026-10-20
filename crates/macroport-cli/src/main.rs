@@ -29,7 +29,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum RulesCommand {
-    /// Validate the rules: schemas, regexes and duplicate ids.
+    /// Validate the rules: schemas, regexes, ids and references.
     Check {
         /// Directory holding the rules files to use instead of the embedded ones.
         #[arg(long, value_name = "DIR", value_parser = existing_dir)]
