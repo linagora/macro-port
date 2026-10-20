@@ -16,6 +16,10 @@ pub(super) struct RawName {
 }
 
 impl RawName {
+    pub(super) fn is_empty(&self) -> bool {
+        self.mbcs.is_empty() && self.unicode.is_empty()
+    }
+
     /// The name as text, if it is not empty: the Unicode form when there is
     /// one, else the MBCS form decoded in the code page.
     pub(super) fn text(&self, code_page: Option<u16>) -> Option<String> {
