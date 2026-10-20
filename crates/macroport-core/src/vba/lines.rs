@@ -10,6 +10,8 @@
 //! into statements, labels are told apart, and comments are cut off and kept
 //! apart. Nothing here evaluates anything: the text is only cut.
 
+use std::borrow::Cow;
+
 use super::VbaError;
 use super::scan::{
     bracket_len, date_literal_len, is_ident_char, is_ident_start, is_reserved, is_space,
@@ -215,12 +217,13 @@ impl<'a> Iterator for Physical<'a> {
     }
 }
 
-/// The physical lines of one statement, read as its code and, at the end, a
-/// comment.
-struct Chain {
+/// The physical lines that continuation marks join, read as their code, which
+/// `:` may cut into several statements, and, at the end, a comment.
+struct Chain<'a> {
     /// The code of the physical lines, comment and continuation marks
-    /// removed, joined with single spaces.
-    code: String,
+    /// removed, joined with single spaces. A chain of one physical line
+    /// borrows its code from the line instead of copying it.
+    code: Cow<'a, str>,
     /// Offset in `code` of the code of each physical line, and its number.
     starts: Vec<(usize, u32)>,
     comment: Option<Comment>,
@@ -360,7 +363,7 @@ impl<'a> Builder<'a> {
     /// turns them into logical lines. True when one holds code.
     fn chain(&mut self, first: u32, line: &'a str) -> bool {
         let mut chain = Chain {
-            code: String::new(),
+            code: Cow::default(),
             starts: Vec::new(),
             comment: None,
             last: first,
@@ -393,16 +396,28 @@ impl<'a> Builder<'a> {
 
     /// Adds the code and the comment of a physical line to `chain`, and its
     /// separators to the chain's. True when the line is continued.
-    fn read(&mut self, chain: &mut Chain, number: u32, line: &str, at_start: &mut bool) -> bool {
+    fn read(
+        &mut self,
+        chain: &mut Chain<'a>,
+        number: u32,
+        line: &'a str,
+        at_start: &mut bool,
+    ) -> bool {
         let numbered = chain.code.is_empty();
         let scan = scan(line, numbered, at_start, &mut self.line_seps);
         let code = line.get(..scan.code_end).unwrap_or_default();
         let body = code.trim_matches(is_space);
         if !body.is_empty() {
-            if !chain.code.is_empty() {
-                chain.code.push(' ');
-            }
-            let base = chain.code.len();
+            let base = if chain.code.is_empty() {
+                chain.code = Cow::Borrowed(body);
+                0
+            } else {
+                let joined = chain.code.to_mut();
+                joined.push(' ');
+                let base = joined.len();
+                joined.push_str(body);
+                base
+            };
             // The code is trimmed on its way into the chain: the separators
             // move with it.
             let indent = code
@@ -415,7 +430,6 @@ impl<'a> Builder<'a> {
             self.seps.extend(moved);
             self.too_many |= self.seps.len() > MAX_LINES as usize;
             chain.starts.push((base, number));
-            chain.code.push_str(body);
         }
         if let Some(start) = scan.comment_text {
             let text = line.get(start..scan.marker.unwrap_or(line.len()));
@@ -440,7 +454,7 @@ impl<'a> Builder<'a> {
     /// per statement, a label and the statement after it counting as two.
     /// The comment goes to the last of them, or stands alone. True when one
     /// holds code.
-    fn emit(&mut self, chain: Chain) -> bool {
+    fn emit(&mut self, chain: Chain<'_>) -> bool {
         if self.too_many {
             return false;
         }
@@ -492,9 +506,10 @@ impl<'a> Builder<'a> {
                 }
                 None => {
                     // Without a separator the whole code is the statement:
-                    // it moves, so that a huge line is not copied again.
+                    // an owned code moves, so that a huge line is not copied
+                    // again.
                     let text = if seps.is_empty() {
-                        std::mem::take(&mut code)
+                        std::mem::take(&mut code).into_owned()
                     } else {
                         statement.to_owned()
                     };
