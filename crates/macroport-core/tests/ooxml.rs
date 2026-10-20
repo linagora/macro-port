@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The OOXML reader: the VBA part of a package, within the limits of SPEC M1.
+//! The OOXML reader: the VBA part of a package, found through its
+//! relationships, within the limits of SPEC M1.
 
 // `clippy.toml` lets `#[test]` functions panic, not the helpers they call.
 #![allow(
@@ -9,17 +10,21 @@
     clippy::unwrap_used
 )]
 
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Read, Write};
 
 use macroport_core::container::{ContainerError, read_ooxml};
 use macroport_core::report::Status::{self, Corrupted, Encrypted, SuspiciousArchive, Unsupported};
 use macroport_testkit::corpus;
 use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipWriter};
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 const CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 const MIB: usize = 1024 * 1024;
 const VBA: &str = "xl/vbaProject.bin";
+const RELS_NAMESPACE: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_DOCUMENT: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+const VBA_RELATIONSHIP: &str = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
 
 /// A zip whose entries are `(name, content, method)`.
 fn zip_of(entries: &[(&str, &[u8], CompressionMethod)]) -> Vec<u8> {
@@ -33,6 +38,36 @@ fn zip_of(entries: &[(&str, &[u8], CompressionMethod)]) -> Vec<u8> {
         writer.write_all(content).unwrap();
     }
     writer.finish().unwrap().into_inner()
+}
+
+/// A `.rels` part with these `(type, target)` relationships.
+fn rels_of(relationships: &[(&str, &str)]) -> String {
+    let relationships: String = relationships
+        .iter()
+        .enumerate()
+        .map(|(id, (kind, target))| {
+            format!(r#"<Relationship Id="r{id}" Type="{kind}" Target="{target}"/>"#)
+        })
+        .collect();
+    format!(r#"<Relationships xmlns="{RELS_NAMESPACE}">{relationships}</Relationships>"#)
+}
+
+/// A package whose workbook is `xl/workbook.xml`, with these relationships of
+/// the workbook as `(type, target)` and these other parts.
+fn workbook_package(relationships: &[(&str, &str)], parts: &[(&str, &[u8])]) -> Vec<u8> {
+    let root = rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]);
+    let workbook = rels_of(relationships);
+    let deflated = CompressionMethod::Deflated;
+    let mut entries = vec![
+        ("_rels/.rels", root.as_bytes(), deflated),
+        ("xl/_rels/workbook.xml.rels", workbook.as_bytes(), deflated),
+    ];
+    entries.extend(
+        parts
+            .iter()
+            .map(|(name, content)| (*name, *content, deflated)),
+    );
+    zip_of(&entries)
 }
 
 /// A zip with one deflated entry, the VBA part.
@@ -86,19 +121,71 @@ fn stored_blocks(content: &[u8]) -> Vec<u8> {
     stream
 }
 
+/// The paths of the generated workbooks that hold a VBA project and are
+/// readable: not the encrypted ones, nor those without macros or with Excel 4.0
+/// macros only.
+fn workbooks_with_vba() -> Vec<String> {
+    let workbooks = corpus::files("fixtures/generated", &["xlsm", "xlsb"]);
+    let with_vba = workbooks.into_iter().filter(|path| {
+        let name = path.rsplit('/').next().unwrap();
+        !matches!(name.split('-').next(), Some("enc" | "none" | "xlm"))
+    });
+    with_vba.collect()
+}
+
+/// `workbook` with its VBA part under another name, `xl/custom.dat`. The
+/// relationships keep saying `vbaProject.bin`, unless `relink` makes them say
+/// `custom.dat`.
+fn with_vba_moved(workbook: &[u8], relink: bool) -> Vec<u8> {
+    let mut source = ZipArchive::new(Cursor::new(workbook)).unwrap();
+    let mut parts = Vec::new();
+    for index in 0..source.len() {
+        let mut part = source.by_index(index).unwrap();
+        let mut content = Vec::new();
+        part.read_to_end(&mut content).unwrap();
+        let mut name = part.name().unwrap().into_owned();
+        if name == VBA {
+            name = "xl/custom.dat".to_owned();
+        } else if relink && name.ends_with(".rels") {
+            let rels = String::from_utf8(content).unwrap();
+            let moved = rels.replace(r#"Target="vbaProject.bin""#, r#"Target="custom.dat""#);
+            content = moved.into_bytes();
+        }
+        parts.push((name, content));
+    }
+    let deflated = CompressionMethod::Deflated;
+    let entries: Vec<_> = parts
+        .iter()
+        .map(|(name, content)| (name.as_str(), content.as_slice(), deflated))
+        .collect();
+    zip_of(&entries)
+}
+
 #[test]
 fn every_generated_macro_workbook_gives_its_vba_project() {
-    let mut read = 0;
-    for path in corpus::files("fixtures/generated", &["xlsm", "xlsb"]) {
-        let name = path.rsplit('/').next().unwrap();
-        if matches!(name.split('-').next(), Some("enc" | "none" | "xlm")) {
-            continue;
-        }
+    let workbooks = workbooks_with_vba();
+    assert!(workbooks.len() >= 100, "only {} workbooks", workbooks.len());
+    for path in workbooks {
         let vba = vba_of(&corpus::read(&path));
         assert!(vba.starts_with(&CFB_MAGIC), "{path}: not a compound file");
-        read += 1;
     }
-    assert!(read >= 100, "only {read} workbooks read");
+}
+
+/// The fixtures all name the VBA part by its usual name, which is where the
+/// reader looks anyway: this one moves it, so that only the relationship of the
+/// workbook (`workbook.xml.rels` in `.xlsm`, `workbook.bin.rels` in `.xlsb`)
+/// leads to it.
+#[test]
+fn every_generated_workbook_relates_to_its_vba_project() {
+    for path in workbooks_with_vba() {
+        let workbook = corpus::read(&path);
+        // Moved and not related to any more, the part is lost: otherwise its
+        // name would find it and the test would prove nothing.
+        let lost = with_vba_moved(&workbook, false);
+        assert!(read_ooxml(&lost).unwrap().vba_project.is_none(), "{path}");
+        let related = with_vba_moved(&workbook, true);
+        assert_eq!(vba_of(&related), vba_of(&workbook), "{path}");
+    }
 }
 
 #[test]
@@ -158,6 +245,123 @@ fn a_prefix_of_a_workbook_is_never_readable_and_never_panics() {
 fn the_vba_part_is_found_by_name_whatever_the_case() {
     let package = zip_of(&[("XL/VbaProject.BIN", b"vba", CompressionMethod::Deflated)]);
     assert_eq!(vba_of(&package), b"vba");
+}
+
+#[test]
+fn relationship_targets_are_resolved_as_paths() {
+    let parts: [(&str, &[u8]); 2] = [("xl/custom/p.bin", b"by relationship"), (VBA, b"by name")];
+    let found: &[&str] = &[
+        "custom/p.bin",
+        "./custom/p.bin",
+        "../xl/custom/p.bin",
+        "/xl/custom/p.bin",
+        "..\\xl\\custom\\p.bin",
+        "Custom/P.BIN",
+        "custom/p.bin#fragment",
+    ];
+    // A target that leaves the package, or names no part, leaves it to the name.
+    let not_found: &[&str] = &["../../xl/custom/p.bin", "custom/missing.bin", ""];
+    for (targets, expected) in [(found, "by relationship"), (not_found, "by name")] {
+        for target in targets {
+            let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
+            assert_eq!(vba_of(&package), expected.as_bytes(), "{target:?}");
+        }
+    }
+}
+
+#[test]
+fn a_relationship_of_another_type_does_not_name_the_vba_part() {
+    // A relationship counts by its whole type, not by what the type ends with.
+    let parts: [(&str, &[u8]); 2] = [("xl/decoy.xml", b"decoy"), (VBA, b"by name")];
+    let other = "http://example.com/relationships/vbaProject";
+    let package = workbook_package(&[(other, "decoy.xml")], &parts);
+    assert_eq!(vba_of(&package), b"by name");
+}
+
+#[test]
+fn a_relationship_of_the_package_does_not_name_the_vba_part() {
+    // Excel relates the VBA project to its workbook, as every generated fixture
+    // shows. One at the root of the package takes no precedence over it, so a
+    // decoy there cannot hide the project that the workbook names.
+    let root = rels_of(&[
+        (OFFICE_DOCUMENT, "xl/workbook.xml"),
+        (VBA_RELATIONSHIP, "xl/decoy.bin"),
+    ]);
+    let workbook = rels_of(&[(VBA_RELATIONSHIP, "custom.dat")]);
+    let deflated = CompressionMethod::Deflated;
+    let package = zip_of(&[
+        ("_rels/.rels", root.as_bytes(), deflated),
+        ("xl/_rels/workbook.xml.rels", workbook.as_bytes(), deflated),
+        ("xl/decoy.bin", b"decoy", deflated),
+        ("xl/custom.dat", b"by relationship", deflated),
+    ]);
+    assert_eq!(vba_of(&package), b"by relationship");
+}
+
+#[test]
+fn a_relationship_to_a_very_long_name_is_not_followed() {
+    for (length, expected) in [(900, "by relationship"), (2000, "by name")] {
+        let long = format!("{}.bin", "d".repeat(length));
+        let long_part = format!("xl/{long}");
+        let parts: [(&str, &[u8]); 2] = [(&long_part, b"by relationship"), (VBA, b"by name")];
+        let package = workbook_package(&[(VBA_RELATIONSHIP, &long)], &parts);
+        assert_eq!(vba_of(&package), expected.as_bytes(), "{length}");
+    }
+}
+
+#[test]
+fn a_relationship_part_that_is_not_well_formed_is_corrupted() {
+    let root = rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]);
+    let (broken, deflated) = ("<Relationships><", CompressionMethod::Deflated);
+    let in_package = zip_of(&[("_rels/.rels", broken.as_bytes(), deflated)]);
+    let in_workbook = zip_of(&[
+        ("_rels/.rels", root.as_bytes(), deflated),
+        ("xl/_rels/workbook.xml.rels", broken.as_bytes(), deflated),
+    ]);
+    for package in [in_package, in_workbook] {
+        assert_fails(&package, Corrupted, "ooxml.malformed_xml");
+    }
+}
+
+#[test]
+fn a_malformed_value_matters_only_where_the_reader_looks() {
+    // An unescaped ampersand is not valid XML. In the target of a hyperlink
+    // that the reader does not need it is ignored, in that of the VBA project
+    // it is not.
+    let parts: [(&str, &[u8]); 1] = [("xl/custom.dat", b"by relationship")];
+    let hyperlink = "http://example.com/relationships/hyperlink";
+    let ignored = [
+        (hyperlink, "http://example.com/?a=1&b=2"),
+        (VBA_RELATIONSHIP, "custom.dat"),
+    ];
+    assert_eq!(
+        vba_of(&workbook_package(&ignored, &parts)),
+        b"by relationship"
+    );
+    let read = [(VBA_RELATIONSHIP, "custom&.dat")];
+    assert_fails(
+        &workbook_package(&read, &parts),
+        Corrupted,
+        "ooxml.malformed_xml",
+    );
+}
+
+#[test]
+fn an_xml_part_over_its_cap_is_a_suspicious_archive() {
+    let stored = CompressionMethod::Stored;
+    let over = zip_of(&[("_rels/.rels", &vec![b' '; 16 * MIB + 1], stored)]);
+    assert_fails(&over, SuspiciousArchive, "zip.entry_too_large");
+    let mut rels = rels_of(&[]).into_bytes();
+    rels.resize(16 * MIB, b' ');
+    let exactly = zip_of(&[("_rels/.rels", &rels, stored)]);
+    assert!(read_ooxml(&exactly).is_ok());
+}
+
+#[test]
+fn an_xml_part_that_inflates_beyond_its_ratio_is_a_suspicious_archive() {
+    let deflated = CompressionMethod::Deflated;
+    let bomb = zip_of(&[("_rels/.rels", &vec![b' '; 20 * MIB], deflated)]);
+    assert_fails(&bomb, SuspiciousArchive, "zip.ratio");
 }
 
 #[test]
@@ -262,22 +466,65 @@ fn a_huge_central_directory_is_a_suspicious_archive() {
     assert_fails(&package, SuspiciousArchive, "zip.directory_too_large");
 }
 
-#[test]
-fn changed_bytes_never_panic() {
-    let workbook = fixture("generated/01-01-hide-unhide-columns-find.xlsm");
+/// A generator of numbers that is the same on every run (xorshift64).
+fn numbers() -> impl FnMut() -> usize {
     let mut state = 0x2545_f491_4f6c_dd1d_u64;
-    let mut next = move || {
+    move || {
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;
         usize::try_from(state >> 8).unwrap()
-    };
+    }
+}
+
+#[test]
+fn changed_xml_never_panics() {
+    let seeds = [
+        rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]),
+        rels_of(&[(VBA_RELATIONSHIP, "vbaProject.bin")]),
+    ];
+    // The characters that give XML its shape.
+    let syntax = b"<>/=\"&;'! ?-[]:";
+    let mut next = numbers();
+    for _ in 0..3000 {
+        let mut parts = seeds.clone().map(String::into_bytes);
+        let part = next() % parts.len();
+        for _ in 0..=next() % 4 {
+            let at = next() % parts[part].len();
+            parts[part][at] = match next() % 2 {
+                0 => syntax[next() % syntax.len()],
+                _ => next().to_le_bytes()[0],
+            };
+        }
+        let deflated = CompressionMethod::Deflated;
+        let package = zip_of(&[
+            ("_rels/.rels", &parts[0], deflated),
+            ("xl/_rels/workbook.xml.rels", &parts[1], deflated),
+            (VBA, b"vba", deflated),
+        ]);
+        if let Err(error) = read_ooxml(&package) {
+            assert!(
+                matches!(error.status, Corrupted | SuspiciousArchive),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn changed_bytes_never_panic() {
+    let workbook = fixture("generated/01-01-hide-unhide-columns-find.xlsm");
+    let mut next = numbers();
     for _ in 0..3000 {
         let mut bytes = workbook.clone();
         for _ in 0..=next() % 4 {
             // Half of the changes are among the last bytes, where the central
             // directory is.
-            let reach = if next() % 2 == 0 { bytes.len() } else { 2048 };
+            let reach = if next().is_multiple_of(2) {
+                bytes.len()
+            } else {
+                2048
+            };
             let at = bytes.len() - 1 - next() % reach;
             bytes[at] = next().to_le_bytes()[0];
         }
