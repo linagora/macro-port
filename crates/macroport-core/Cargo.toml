@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+cfb.workspace = true
 codepage.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
@@ -20,7 +21,6 @@ thiserror.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
-cfb.workspace = true
 macroport-testkit.workspace = true
 
 # Analysed files are hostile: no panic on input-dependent data (CLAUDE.md).
