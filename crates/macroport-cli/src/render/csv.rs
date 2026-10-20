@@ -18,7 +18,7 @@ use std::borrow::Cow;
 use ::csv::{Error, Terminator, Writer, WriterBuilder};
 use macroport_core::report::{FileReport, Report, Signal, Status};
 
-use super::wire_name;
+use crate::wire::wire_name;
 
 /// The UTF-8 encoding of U+FEFF.
 const BYTE_ORDER_MARK: [u8; 3] = [0xEF, 0xBB, 0xBF];
