@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The line splitter on the text samples of the corpus and on the exports of
-//! Excel itself: no panic, and every logical line is where it says.
+//! Excel itself: no panic, every logical line is where it says, and no
+//! physical line is lost.
 
-use macroport_core::vba::{LogicalKind, split_lines};
+use macroport_core::vba::{LogicalKind, SkipKind, split_lines};
 use macroport_testkit::corpus;
 
 fn samples(dir: &str) -> Vec<(String, String)> {
@@ -43,5 +44,73 @@ fn every_logical_line_points_to_its_first_physical_line() {
                 assert!(first.contains(word), "{path}: line {} {word:?}", line.line);
             }
         }
+    }
+}
+
+/// Every physical line is blank, skipped or part of one logical line, and the
+/// runs of skipped lines are ordered and do not overlap anything.
+#[test]
+fn every_physical_line_is_accounted_for() {
+    for dir in ["families", "fixtures/generated"] {
+        for (path, text) in samples(dir) {
+            let lines = split_lines(&text).expect("lines");
+            let mut owner = vec![0u32; lines.physical_lines as usize];
+            let mut claim = |first: u32, last: u32| {
+                for number in first..=last {
+                    let slot = owner.get_mut((number as usize).saturating_sub(1));
+                    let slot = slot.expect("a line of the text");
+                    *slot = slot.saturating_add(1);
+                }
+            };
+            let mut previous = 0;
+            for run in &lines.skipped {
+                assert!(previous < run.first && run.first <= run.last, "{path}");
+                previous = run.last;
+                claim(run.first, run.last);
+            }
+            for line in &lines.logical {
+                claim(line.line, line.end_line);
+            }
+            for (number, (count, physical)) in owner.iter().zip(text.lines()).enumerate() {
+                let blank = physical.trim().is_empty();
+                // A blank line only goes unclaimed, unless a continuation took it.
+                assert!(*count <= 1, "{path}: line {} claimed twice", number + 1);
+                assert!(*count == 1 || blank, "{path}: line {} lost", number + 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn every_sample_starts_with_its_corpus_header_and_every_form_with_its_designer() {
+    for (path, text) in samples("families") {
+        let lines = split_lines(&text).expect("lines");
+        let first = lines.skipped.first().expect("a corpus header");
+        assert_eq!(
+            (first.first, first.kind),
+            (1, SkipKind::CorpusHeader),
+            "{path}"
+        );
+        let export = lines
+            .skipped
+            .iter()
+            .any(|run| run.kind == SkipKind::ExportHeader);
+        let has_version = text.lines().any(|line| line.starts_with("VERSION "));
+        assert_eq!(export, has_version, "{path}");
+        assert!(!path.ends_with(".frm") || export, "{path}");
+    }
+}
+
+/// Excel's exports end their lines with CR LF and hold every `Attribute` line
+/// at the start of a line: the splitter finds as many as a plain search does.
+#[test]
+fn excel_exports_give_the_attributes_a_reader_counts() {
+    for (path, text) in samples("fixtures/generated") {
+        let lines = split_lines(&text).expect("lines");
+        let attributes = text
+            .lines()
+            .filter(|line| line.starts_with("Attribute "))
+            .count();
+        assert_eq!(lines.attributes.len(), attributes, "{path}");
     }
 }

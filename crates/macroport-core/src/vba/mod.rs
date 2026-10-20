@@ -8,5 +8,6 @@ mod lines;
 mod scan;
 
 pub use lines::{
-    Comment, LogicalKind, LogicalLine, MAX_LINES, SourceLines, TooManyLines, split_lines,
+    Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
+    TooManyLines, split_lines,
 };
