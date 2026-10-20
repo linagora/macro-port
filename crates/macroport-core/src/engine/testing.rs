@@ -8,7 +8,7 @@ use super::input::{
     CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
 };
 use crate::report::ProcedureKind;
-use crate::rules::ModuleType;
+use crate::rules::{Matcher, ModuleType};
 
 /// A statement on the physical line `number`, with nothing found in it yet:
 /// the builder methods add what the parser would have found.
@@ -90,4 +90,19 @@ pub(crate) fn project(modules: Vec<ModuleInput>) -> ProjectInput {
         references: Vec::new(),
         modules,
     }
+}
+
+/// A project of one standard module that holds one procedure, whose body is
+/// `body`.
+pub(crate) fn project_of(body: &[CodeLine]) -> ProjectInput {
+    project(vec![module(
+        "Module1",
+        ModuleType::Standard,
+        vec![procedure("Main", 1, body.to_vec())],
+    )])
+}
+
+/// A `member` matcher for these names.
+pub(crate) fn members(names: &[&str]) -> Matcher {
+    Matcher::Member(names.iter().map(|name| (*name).to_owned()).collect())
 }

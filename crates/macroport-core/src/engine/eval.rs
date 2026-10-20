@@ -2,8 +2,9 @@
 //! The evaluator: runs a matcher over a procedure, a module or a project.
 
 use super::hit::Hit;
-use super::input::{CodeLine, ProcedureInput, ProjectInput};
+use super::input::ProjectInput;
 use super::matchers;
+use super::unit::Unit;
 use crate::rules::{Matcher, TextMode};
 
 /// Evaluates matchers over one project.
@@ -58,7 +59,8 @@ impl<'p> Evaluator<'p> {
         let mut hits = Vec::new();
         match matcher {
             Matcher::Member(names) => matchers::member(&units, names, &mut hits),
-            // The other matchers arrive with the next changes.
+            // The other matchers arrive with the next changes. `text` is for
+            // `regex`, and is unread until then.
             Matcher::Chain(_)
             | Matcher::Call(_)
             | Matcher::ProgId(_)
@@ -80,14 +82,9 @@ impl<'p> Evaluator<'p> {
     /// The runs of lines that `target` covers.
     fn units(&self, target: Target) -> Vec<Unit<'p>> {
         match target {
-            Target::Procedure { module, procedure } => self
-                .project
-                .modules
-                .get(module)
-                .and_then(|owner| owner.procedures.get(procedure))
-                .map(|procedure| Unit::of_procedure(module, procedure))
-                .into_iter()
-                .collect(),
+            Target::Procedure { module, procedure } => {
+                self.procedure_unit(module, procedure).into_iter().collect()
+            }
             Target::Module(module) => self.module_units(module),
             Target::Project => (0..self.project.modules.len())
                 .flat_map(|module| self.module_units(module))
@@ -95,27 +92,26 @@ impl<'p> Evaluator<'p> {
         }
     }
 
-    /// The declarations of a module, then its procedures.
+    /// The unit of a procedure, if both indexes are in range.
+    fn procedure_unit(&self, module: usize, procedure: usize) -> Option<Unit<'p>> {
+        let found = self
+            .project
+            .modules
+            .get(module)?
+            .procedures
+            .get(procedure)?;
+        Some(Unit::of_procedure(module, found))
+    }
+
+    /// The units of a module, if the index is in range.
     fn module_units(&self, module: usize) -> Vec<Unit<'p>> {
-        let Some(owner) = self.project.modules.get(module) else {
-            return Vec::new();
-        };
-        let declarations = Unit {
-            module,
-            lines: &owner.declarations,
-        };
-        std::iter::once(declarations)
-            .chain(
-                owner
-                    .procedures
-                    .iter()
-                    .map(|procedure| Unit::of_procedure(module, procedure)),
-            )
-            .collect()
+        let owner = self.project.modules.get(module);
+        owner.map_or_else(Vec::new, |owner| Unit::of_module(module, owner))
     }
 }
 
-/// What a signal is evaluated over.
+/// What a signal is evaluated over: the scope of the signal, with the indexes
+/// it applies to.
 #[derive(Debug, Clone, Copy)]
 enum Target {
     Procedure { module: usize, procedure: usize },
@@ -123,27 +119,11 @@ enum Target {
     Project,
 }
 
-/// A run of logical lines: the declarations of a module, or a procedure.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct Unit<'p> {
-    /// Index of the module in the project.
-    pub module: usize,
-    pub lines: &'p [CodeLine],
-}
-
-impl<'p> Unit<'p> {
-    fn of_procedure(module: usize, procedure: &'p ProcedureInput) -> Self {
-        Self {
-            module,
-            lines: &procedure.lines,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::testing::{line, module, procedure, project};
+    use crate::engine::CodeLine;
+    use crate::engine::testing::{line, members, module, procedure, project};
     use crate::rules::ModuleType;
 
     fn foo(number: u32) -> CodeLine {
@@ -173,7 +153,7 @@ mod tests {
     }
 
     fn matcher() -> Matcher {
-        Matcher::Member(vec!["Foo".to_owned()])
+        members(&["Foo"])
     }
 
     /// The module and the line of each hit.
@@ -194,6 +174,21 @@ mod tests {
         assert_eq!(hits(0, 0), [(0, 5)]);
         assert_eq!(hits(0, 1), [(0, 9)]);
         assert_eq!(hits(1, 0), [(1, 4)]);
+    }
+
+    #[test]
+    fn a_procedure_is_read_from_its_declaration_to_its_end_line() {
+        // The type of a parameter is a member of the declaration. The `End`
+        // line has none in real code: it holds one here to show it is read.
+        let mut first = procedure("First", 4, Vec::new());
+        first.lines = vec![
+            line(4, "Sub First(f As Foo)").member("Foo"),
+            foo(5),
+            line(6, "End Sub").member("Foo"),
+        ];
+        let project = project(vec![module("Module1", ModuleType::Standard, vec![first])]);
+        let hits = Evaluator::new(&project).procedure_hits(0, 0, &matcher(), TextMode::Code);
+        assert_eq!(places(&hits), [(0, 4), (0, 5), (0, 6)]);
     }
 
     #[test]

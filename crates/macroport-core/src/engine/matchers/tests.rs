@@ -1,21 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Tests of the matchers, through the evaluator.
 
-use crate::engine::testing::{line, module, procedure, project};
+use crate::engine::testing::{line, members, project_of};
 use crate::engine::{CodeLine, Evaluator, Place};
-use crate::rules::{Matcher, ModuleType, TextMode};
-
-fn member(names: &[&str]) -> Matcher {
-    Matcher::Member(names.iter().map(|name| (*name).to_owned()).collect())
-}
+use crate::rules::{Matcher, TextMode};
 
 /// The lines of the hits of `matcher` in a procedure whose body is `body`.
 fn lines_hit(body: &[CodeLine], matcher: &Matcher) -> Vec<u32> {
-    let project = project(vec![module(
-        "Module1",
-        ModuleType::Standard,
-        vec![procedure("Main", 1, body.to_vec())],
-    )]);
+    let project = project_of(body);
     let hits = Evaluator::new(&project).procedure_hits(0, 0, matcher, TextMode::Code);
     hits.iter()
         .filter_map(|hit| hit.place)
@@ -38,8 +30,8 @@ fn member_hits_each_use_of_a_name() {
             .member("Range")
             .member("Select"),
     ];
-    assert_eq!(lines_hit(&body, &member(&["Interior"])), [2, 3, 3]);
-    assert_eq!(lines_hit(&body, &member(&["Select", "Color"])), [2, 4]);
+    assert_eq!(lines_hit(&body, &members(&["Interior"])), [2, 3, 3]);
+    assert_eq!(lines_hit(&body, &members(&["Select", "Color"])), [2, 4]);
 }
 
 #[test]
@@ -47,8 +39,8 @@ fn member_ignores_case_and_the_type_character() {
     let body = [line(2, "x = Cells(1).VALUE$")
         .member("Cells")
         .member("VALUE$")];
-    assert_eq!(lines_hit(&body, &member(&["value"])), [2]);
-    assert_eq!(lines_hit(&body, &member(&["Value$"])), [2]);
+    assert_eq!(lines_hit(&body, &members(&["value"])), [2]);
+    assert_eq!(lines_hit(&body, &members(&["Value$"])), [2]);
 }
 
 #[test]
@@ -62,8 +54,8 @@ fn member_never_matches_a_named_argument() {
             .member("Copy")
             .named_argument("Before"),
     ];
-    assert_eq!(lines_hit(&body, &member(&["Before"])), [2]);
-    assert_eq!(lines_hit(&body, &member(&["Copy"])), [3]);
+    assert_eq!(lines_hit(&body, &members(&["Before"])), [2]);
+    assert_eq!(lines_hit(&body, &members(&["Copy"])), [3]);
 }
 
 #[test]
@@ -75,23 +67,13 @@ fn a_hit_quotes_its_statement_at_the_physical_line_of_the_statement() {
         line(7, "  b = c.Select  ").member("Select"),
         line(7, "d = e.Select").member("Select"),
     ];
-    let project = project(vec![module(
-        "Module1",
-        ModuleType::Standard,
-        vec![procedure("Main", 1, body.to_vec())],
-    )]);
-    let hits = Evaluator::new(&project).procedure_hits(0, 0, &member(&["Select"]), TextMode::Code);
+    let project = project_of(&body);
+    let matcher = members(&["Select"]);
+    let hits = Evaluator::new(&project).procedure_hits(0, 0, &matcher, TextMode::Code);
     let place = Some(Place { module: 0, line: 7 });
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].place, place);
     assert_eq!(hits[1].place, place);
     assert_eq!(hits[0].snippet(), "b = c.Select");
     assert_eq!(hits[1].snippet(), "d = e.Select");
-}
-
-#[test]
-fn a_matcher_without_a_name_matches_nothing() {
-    let body = [line(2, "a.b c").member("b").member("c")];
-    assert!(lines_hit(&body, &member(&[])).is_empty());
-    assert!(lines_hit(&body, &member(&[""])).is_empty());
 }

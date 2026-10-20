@@ -15,7 +15,8 @@ mod input;
 mod matchers;
 mod names;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
+mod unit;
 
 pub use eval::Evaluator;
 pub use hit::{Hit, MAX_SNIPPET_CHARS, Place};
