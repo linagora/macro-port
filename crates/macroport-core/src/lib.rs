@@ -8,5 +8,6 @@
 
 #![forbid(unsafe_code)]
 
+pub mod container;
 pub mod report;
 pub mod rules;
