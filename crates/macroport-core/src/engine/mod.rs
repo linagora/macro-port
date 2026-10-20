@@ -10,6 +10,7 @@
 //! signals and complexity traits.
 
 mod eval;
+mod glob;
 mod hit;
 mod input;
 mod matchers;

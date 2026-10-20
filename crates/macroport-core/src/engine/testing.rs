@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use super::input::{
-    CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
+    CallSite, CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
 };
 use crate::report::ProcedureKind;
 use crate::rules::{Matcher, ModuleType};
@@ -36,6 +36,37 @@ impl CodeLine {
             name: name.to_owned(),
             named_argument: true,
         });
+        self
+    }
+
+    /// Adds a member chain, given dot-separated.
+    pub(crate) fn chain(mut self, chain: &str) -> Self {
+        self.chains
+            .push(chain.split('.').map(str::to_owned).collect());
+        self
+    }
+
+    /// Adds a name invoked on its own.
+    pub(crate) fn call(mut self, name: &str) -> Self {
+        self.calls.push(CallSite {
+            name: name.to_owned(),
+            after_dot: false,
+        });
+        self
+    }
+
+    /// Adds a name invoked after `.`.
+    pub(crate) fn call_after_dot(mut self, name: &str) -> Self {
+        self.calls.push(CallSite {
+            name: name.to_owned(),
+            after_dot: true,
+        });
+        self
+    }
+
+    /// Adds a ProgID passed to `CreateObject` or `GetObject`.
+    pub(crate) fn progid(mut self, progid: &str) -> Self {
+        self.progids.push(progid.to_owned());
         self
     }
 }
@@ -102,7 +133,26 @@ pub(crate) fn project_of(body: &[CodeLine]) -> ProjectInput {
     )])
 }
 
+fn owned(list: &[&str]) -> Vec<String> {
+    list.iter().map(|item| (*item).to_owned()).collect()
+}
+
 /// A `member` matcher for these names.
 pub(crate) fn members(names: &[&str]) -> Matcher {
-    Matcher::Member(names.iter().map(|name| (*name).to_owned()).collect())
+    Matcher::Member(owned(names))
+}
+
+/// A `chain` matcher for these dot-separated patterns.
+pub(crate) fn chains(patterns: &[&str]) -> Matcher {
+    Matcher::Chain(owned(patterns))
+}
+
+/// A `call` matcher for these names.
+pub(crate) fn calls(names: &[&str]) -> Matcher {
+    Matcher::Call(owned(names))
+}
+
+/// A `progid` matcher for these glob patterns.
+pub(crate) fn progids(patterns: &[&str]) -> Matcher {
+    Matcher::ProgId(owned(patterns))
 }
