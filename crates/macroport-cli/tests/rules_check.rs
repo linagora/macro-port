@@ -6,6 +6,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+/// Ends the count of the problems found by the schemas.
+const SCHEMA_STAGE: &str =
+    " (regexes and duplicate ids are checked once every file matches its schema)";
+
 fn macro_port<S: AsRef<OsStr>>(args: impl IntoIterator<Item = S>) -> Output {
     Command::new(env!("CARGO_BIN_EXE_macro-port"))
         .args(args)
@@ -254,5 +258,116 @@ fn rules_file_over_one_mib_is_rejected() {
     assert_eq!(
         stderr(&output),
         "families.yaml: larger than 1 MiB\n1 problem found\n"
+    );
+}
+
+#[test]
+fn unknown_keys_are_rejected_at_every_level() {
+    let output = check_families("unknown-keys");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: unknown key 'author' (at /author)\n\
+             families.yaml: 01-formatting: unknown key 'colour' (at /families/0/colour)\n\
+             families.yaml: 01-formatting: unknown key 'de' (at /families/0/label/de)\n\
+             families.yaml: fmt.cell-style: unknown key 'severity' (at /families/0/signals/0/severity)\n\
+             families.yaml: unknown key 'max_score' (at /scoring/max_score)\n\
+             5 problems found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_matcher_is_rejected() {
+    let output = check_families("unknown-matcher");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: fmt.cell-style: 'membre' is not one of: member, chain, call, progid, \
+             procedure_name, module_type, reference, regex, string, comment, structural \
+             (at /families/0/signals/0/match)\n\
+             1 problem found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn structural_predicate_outside_the_closed_list_is_rejected() {
+    let output = check_families("unknown-structural");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: fmt.magic: 'magic_predicate' is not one of: udf_candidate, \
+             event_handler, auto_exec, chr_obfuscation, long_hex_or_base64_literal, \
+             nested_loop_compare, possibly_unused, parse_recovered \
+             (at /families/0/signals/2/pattern)\n\
+             1 problem found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn unknown_module_type_is_rejected() {
+    let output = check_families("unknown-module-type");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: fmt.sheet-module: 'sheet' is not one of: standard, class, document, \
+             form (at /families/0/signals/2/pattern/1)\n\
+             1 problem found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn labels_need_english_and_french() {
+    let output = check_families("missing-label");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: 01-formatting: missing key 'fr' (at /families/0/label)\n\
+             families.yaml: fmt.cell-style: missing key 'en' (at /families/0/signals/0/label)\n\
+             2 problems found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn family_ids_follow_the_report_format() {
+    let output = check_families("family-id-format");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: Formatting: \"Formatting\" does not match \"^[0-9]{{2}}-[a-z0-9-]+$\" \
+             (at /families/0/id)\n\
+             1 problem found{SCHEMA_STAGE}\n"
+        )
+    );
+}
+
+#[test]
+fn weights_fit_32_bits() {
+    let output = check_families("weight-out-of-range");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "families.yaml: fmt.cell-style: 4294967296 is greater than the maximum of 4294967295 \
+             (at /families/0/signals/0/weight)\n\
+             1 problem found{SCHEMA_STAGE}\n"
+        )
     );
 }

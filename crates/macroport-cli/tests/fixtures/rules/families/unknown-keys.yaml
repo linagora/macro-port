@@ -1,0 +1,17 @@
+# Invalid: an unknown key at each level (root, scoring, family, label, signal).
+version: 0.1.0
+author: someone
+scoring:
+  min_score: 3
+  secondary_ratio: 0.6
+  default_max_hits_per_procedure: 3
+  max_score: 10
+
+families:
+  - id: 01-formatting
+    corpus_slug: 01-mise-en-forme
+    colour: blue
+    label: { en: "Formatting and layout", fr: "Mise en forme", de: "Formatierung" }
+    signals:
+      - { id: fmt.cell-style, match: member, pattern: [Interior, Borders], weight: 1, severity: medium }
+      - { id: fmt.visibility, match: chain, pattern: [EntireColumn.Hidden], weight: 2, max_hits_per_procedure: 1 }

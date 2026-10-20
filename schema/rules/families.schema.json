@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/linagora/macro-port/schema/rules/families.schema.json",
+  "title": "Macro-Port usage families",
+  "description": "rules/families.yaml: usage families and their weighted signals (SPEC section 7).",
+  "type": "object",
+  "required": ["version", "scoring", "families"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "scoring": {
+      "type": "object",
+      "required": ["min_score", "secondary_ratio", "default_max_hits_per_procedure"],
+      "additionalProperties": false,
+      "properties": {
+        "min_score": { "type": "number", "minimum": 0 },
+        "secondary_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "default_max_hits_per_procedure": { "$ref": "#/$defs/count" }
+      }
+    },
+    "families": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/family" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "count": {
+      "description": "A positive whole number that fits the core's 32 bits.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "label": {
+      "type": "object",
+      "required": ["en", "fr"],
+      "additionalProperties": false,
+      "properties": {
+        "en": { "type": "string", "minLength": 1 },
+        "fr": { "type": "string", "minLength": 1 }
+      }
+    },
+    "structural_predicate": {
+      "description": "The closed list of SPEC section 7.",
+      "enum": [
+        "udf_candidate",
+        "event_handler",
+        "auto_exec",
+        "chr_obfuscation",
+        "long_hex_or_base64_literal",
+        "nested_loop_compare",
+        "possibly_unused",
+        "parse_recovered"
+      ]
+    },
+    "module_type": { "enum": ["standard", "class", "document", "form"] },
+    "structural_patterns": {
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/structural_predicate" },
+      "else": { "items": { "$ref": "#/$defs/structural_predicate" } }
+    },
+    "module_type_patterns": {
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/module_type" },
+      "else": { "items": { "$ref": "#/$defs/module_type" } }
+    },
+    "family": {
+      "type": "object",
+      "required": ["id", "corpus_slug", "label", "signals"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "A family_id of the report schema.",
+          "type": "string",
+          "pattern": "^[0-9]{2}-[a-z0-9-]+$"
+        },
+        "corpus_slug": { "type": "string", "minLength": 1 },
+        "label": { "$ref": "#/$defs/label" },
+        "signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/signal" }
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "required": ["id", "match", "pattern", "weight"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "match": {
+          "enum": [
+            "member",
+            "chain",
+            "call",
+            "progid",
+            "procedure_name",
+            "module_type",
+            "reference",
+            "regex",
+            "string",
+            "comment",
+            "structural"
+          ]
+        },
+        "pattern": {
+          "type": ["string", "array"],
+          "minLength": 1,
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "weight": { "$ref": "#/$defs/count" },
+        "max_hits_per_procedure": { "$ref": "#/$defs/count" },
+        "scope": { "enum": ["procedure", "module", "project"] },
+        "text": { "enum": ["code", "raw"] },
+        "label": { "$ref": "#/$defs/label" },
+        "note": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["match"], "properties": { "match": { "const": "structural" } } },
+          "then": { "properties": { "pattern": { "$ref": "#/$defs/structural_patterns" } } }
+        },
+        {
+          "if": { "required": ["match"], "properties": { "match": { "const": "module_type" } } },
+          "then": { "properties": { "pattern": { "$ref": "#/$defs/module_type_patterns" } } }
+        }
+      ]
+    }
+  }
+}
