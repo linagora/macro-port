@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/linagora/macro-port/schema/rules/security.schema.json",
+  "title": "Macro-Port security signals",
+  "description": "rules/security.yaml: security signals, the chains that combine them and the container indicators (SPEC section 7). The definitions it shares with families.schema.json are identical.",
+  "type": "object",
+  "required": ["version", "signals", "chains", "container_indicators"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "signals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/signal" }
+    },
+    "chains": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/chain" }
+    },
+    "container_indicators": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/container_indicator" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "label": {
+      "type": "object",
+      "required": ["en", "fr"],
+      "additionalProperties": false,
+      "properties": {
+        "en": { "type": "string", "minLength": 1 },
+        "fr": { "type": "string", "minLength": 1 }
+      }
+    },
+    "structural_predicate": {
+      "description": "The closed list of SPEC section 7.",
+      "enum": [
+        "udf_candidate",
+        "event_handler",
+        "auto_exec",
+        "chr_obfuscation",
+        "long_hex_or_base64_literal",
+        "nested_loop_compare",
+        "possibly_unused",
+        "parse_recovered"
+      ]
+    },
+    "module_type": { "enum": ["standard", "class", "document", "form"] },
+    "structural_patterns": {
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/structural_predicate" },
+      "else": { "items": { "$ref": "#/$defs/structural_predicate" } }
+    },
+    "module_type_patterns": {
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/module_type" },
+      "else": { "items": { "$ref": "#/$defs/module_type" } }
+    },
+    "severity": { "enum": ["info", "low", "medium", "high"] },
+    "signal": {
+      "type": "object",
+      "required": ["id", "category", "match", "pattern", "severity", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "category": { "type": "string", "minLength": 1 },
+        "match": {
+          "enum": [
+            "member",
+            "chain",
+            "call",
+            "progid",
+            "procedure_name",
+            "module_type",
+            "reference",
+            "regex",
+            "string",
+            "comment",
+            "structural"
+          ]
+        },
+        "pattern": {
+          "type": ["string", "array"],
+          "minLength": 1,
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "severity": { "$ref": "#/$defs/severity" },
+        "scope": { "enum": ["procedure", "module", "project"] },
+        "text": { "enum": ["code", "raw"] },
+        "requires_family": {
+          "description": "The id of a family of families.yaml.",
+          "$ref": "#/$defs/id"
+        },
+        "label": { "$ref": "#/$defs/label" },
+        "note": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["match"], "properties": { "match": { "const": "structural" } } },
+          "then": { "properties": { "pattern": { "$ref": "#/$defs/structural_patterns" } } }
+        },
+        {
+          "if": { "required": ["match"], "properties": { "match": { "const": "module_type" } } },
+          "then": { "properties": { "pattern": { "$ref": "#/$defs/module_type_patterns" } } }
+        }
+      ]
+    },
+    "chain": {
+      "type": "object",
+      "required": ["id", "all", "severity", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "all": { "$ref": "#/$defs/terms" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "label": { "$ref": "#/$defs/label" }
+      }
+    },
+    "terms": {
+      "description": "At least one term: an empty `all` would match every file, an empty `any` none.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/term" }
+    },
+    "term": {
+      "description": "The id of a signal, or { any: [terms] }, which matches when one of its terms does.",
+      "type": ["string", "object"],
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/id" },
+      "else": {
+        "required": ["any"],
+        "additionalProperties": false,
+        "properties": { "any": { "$ref": "#/$defs/terms" } }
+      }
+    },
+    "container_indicator": {
+      "type": "object",
+      "required": ["id", "severity", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "label": { "$ref": "#/$defs/label" }
+      }
+    }
+  }
+}
