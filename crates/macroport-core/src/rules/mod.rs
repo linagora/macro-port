@@ -7,6 +7,7 @@
 //! JSON Schemas of `schema/rules/` belongs to the CLI; [`parse_value`] gives it
 //! the document to validate.
 
+mod complexity;
 mod families;
 mod matcher;
 mod security;
@@ -18,6 +19,7 @@ use std::fmt;
 
 use serde::Deserialize;
 
+pub use complexity::{Bound, Complexity, FileLevels, MetricCondition};
 pub use families::{Families, Family, FamilySignal, Scoring};
 pub use matcher::{Matcher, ModuleType, Scope, StructuralPredicate, TextMode};
 pub use security::{
@@ -31,6 +33,9 @@ pub const FAMILIES_FILE: &str = "families.yaml";
 /// File name of the security rules.
 pub const SECURITY_FILE: &str = "security.yaml";
 
+/// File name of the complexity rules.
+pub const COMPLEXITY_FILE: &str = "complexity.yaml";
+
 /// The text of each rules file.
 #[derive(Debug, Clone, Copy)]
 pub struct RulesSources<'a> {
@@ -38,6 +43,8 @@ pub struct RulesSources<'a> {
     pub families: &'a str,
     /// Content of `security.yaml`.
     pub security: &'a str,
+    /// Content of `complexity.yaml`.
+    pub complexity: &'a str,
 }
 
 impl RulesSources<'static> {
@@ -45,6 +52,7 @@ impl RulesSources<'static> {
     pub const EMBEDDED: Self = Self {
         families: include_str!("../../../../rules/families.yaml"),
         security: include_str!("../../../../rules/security.yaml"),
+        complexity: include_str!("../../../../rules/complexity.yaml"),
     };
 }
 
@@ -55,6 +63,8 @@ pub struct RuleSet {
     pub families: Families,
     /// Security signals, chains and container indicators.
     pub security: Security,
+    /// File complexity levels.
+    pub complexity: Complexity,
 }
 
 impl RuleSet {
@@ -62,20 +72,26 @@ impl RuleSet {
     ///
     /// # Errors
     ///
-    /// Every problem found in every file: those of `families.yaml` first.
-    /// The families that `requires_family` names are checked only when
-    /// `families.yaml` parses.
+    /// Every problem found in every file, in the order `families.yaml`,
+    /// `security.yaml`, `complexity.yaml`. The families that
+    /// `requires_family` names are checked only when `families.yaml` parses.
     pub fn load(sources: &RulesSources<'_>) -> Result<Self, Vec<Problem>> {
         let parsed = families::parse(sources.families);
         let family_ids = parsed.as_ref().ok().map(families::RawFamilies::family_ids);
         let security = security::load(sources.security, family_ids.as_ref());
         let families = parsed.and_then(families::check);
-        match (families, security) {
-            (Ok(families), Ok(security)) => Ok(Self { families, security }),
-            (families, security) => Err(families
+        let complexity = complexity::load(sources.complexity);
+        match (families, security, complexity) {
+            (Ok(families), Ok(security), Ok(complexity)) => Ok(Self {
+                families,
+                security,
+                complexity,
+            }),
+            (families, security, complexity) => Err(families
                 .err()
                 .into_iter()
                 .chain(security.err())
+                .chain(complexity.err())
                 .flatten()
                 .collect()),
         }

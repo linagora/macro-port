@@ -2,7 +2,8 @@
 //! Loading the rules files into typed rules.
 
 use macroport_core::rules::{
-    ChainTerm, Matcher, Problem, RuleSet, RulesSources, Scope, Severity, TextMode, parse_value,
+    Bound, ChainTerm, FileLevels, Matcher, MetricCondition, Problem, RuleSet, RulesSources, Scope,
+    Severity, TextMode, parse_value,
 };
 
 /// A `families.yaml` with one family holding `signals`, one flow mapping per line.
@@ -24,11 +25,13 @@ fn families_yaml(signals: &[&str]) -> String {
     text
 }
 
-/// Loads `text` as `families.yaml`, beside a `security.yaml` that holds no rule.
+/// Loads `text` as `families.yaml`, beside a `security.yaml` that holds no
+/// rule and a `complexity.yaml` that holds no trait.
 fn load_families(text: &str) -> Result<RuleSet, Vec<Problem>> {
     RuleSet::load(&RulesSources {
         families: text,
         security: &security_yaml(&[], &[], &[]),
+        complexity: &complexity_yaml(MEDIUM, HIGH),
     })
 }
 
@@ -67,11 +70,39 @@ fn indicator(id: &str) -> String {
 }
 
 /// Loads `text` as `security.yaml`, beside a `families.yaml` whose only
-/// family is `01-formatting`.
+/// family is `01-formatting` and a `complexity.yaml` that holds no trait.
 fn load_security(text: &str) -> Result<RuleSet, Vec<Problem>> {
     RuleSet::load(&RulesSources {
         families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
         security: text,
+        complexity: &complexity_yaml(MEDIUM, HIGH),
+    })
+}
+
+/// A `complexity.yaml` whose metrics are `logical_loc` and `procedures`,
+/// with these `medium` and `high` conditions and no trait.
+fn complexity_yaml(medium: &str, high: &str) -> String {
+    format!(
+        "version: 0.1.0\n\
+         file_levels:\n  \
+           medium: {{ any: {medium} }}\n  \
+           high: {{ any: {high} }}\n\
+         metric_definitions: {{ logical_loc: Lines, procedures: Procedures }}\n\
+         traits: []\n"
+    )
+}
+
+/// The level conditions of the tests that do not check them.
+const MEDIUM: &str = "[{ metric: logical_loc, gte: 150 }]";
+const HIGH: &str = "[{ metric: procedures, gte: 50 }]";
+
+/// Loads `text` as `complexity.yaml`, beside a `families.yaml` whose only
+/// family is `01-formatting` and a `security.yaml` that holds no rule.
+fn load_complexity(text: &str) -> Result<RuleSet, Vec<Problem>> {
+    RuleSet::load(&RulesSources {
+        families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
+        security: &security_yaml(&[], &[], &[]),
+        complexity: text,
     })
 }
 
@@ -475,6 +506,7 @@ fn required_families_are_checked_against_families_with_problems() {
             &[],
             &[],
         ),
+        complexity: &complexity_yaml(MEDIUM, HIGH),
     })
     .expect_err("the rules are refused");
 
@@ -501,6 +533,7 @@ fn required_families_wait_for_families_yaml_to_parse() {
             &[],
             &[],
         ),
+        complexity: &complexity_yaml(MEDIUM, HIGH),
     })
     .expect_err("the rules are refused");
 
@@ -604,6 +637,7 @@ fn problems_of_every_file_are_reported_together() {
             &[],
             &[],
         ),
+        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH),
     })
     .expect_err("the rules are refused");
 
@@ -614,6 +648,132 @@ fn problems_of_every_file_are_reported_together() {
              (at /families/0/signals/0/pattern)",
             "security.yaml: sec.loop: invalid regex '(For': unclosed group \
              (at /signals/0/pattern)",
+            "complexity.yaml: metric 'lines' is not defined in metric_definitions \
+             (at /file_levels/medium/any/0/metric)",
+        ]
+    );
+}
+
+#[test]
+fn embedded_complexity_rules_load() {
+    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+    let complexity = &rules.complexity;
+
+    assert_eq!(complexity.file_levels.medium.len(), 6);
+    assert_eq!(
+        complexity.file_levels.high.last(),
+        Some(&MetricCondition {
+            metric: "declare_count".to_owned(),
+            bound: Bound::AtLeast(1),
+        })
+    );
+}
+
+#[test]
+fn level_thresholds_are_whole_numbers_however_yaml_spells_them() {
+    let rules = load_complexity(&complexity_yaml(
+        "[{ metric: logical_loc, gte: 1.5e2 }]",
+        "[{ metric: procedures, lte: 0x10 }]",
+    ))
+    .expect("the rules load");
+
+    assert_eq!(
+        rules.complexity.file_levels,
+        FileLevels {
+            medium: vec![MetricCondition {
+                metric: "logical_loc".to_owned(),
+                bound: Bound::AtLeast(150),
+            }],
+            high: vec![MetricCondition {
+                metric: "procedures".to_owned(),
+                bound: Bound::AtMost(16),
+            }],
+        }
+    );
+}
+
+#[test]
+fn metrics_are_those_of_metric_definitions() {
+    let problems = load_complexity(&complexity_yaml(
+        MEDIUM,
+        "[{ metric: procedures, gte: 50 }, { metric: max_cyclomatic, gte: 25 }]",
+    ))
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: metric 'max_cyclomatic' is not defined in metric_definitions \
+             (at /file_levels/high/any/1/metric)"
+        ]
+    );
+}
+
+#[test]
+fn metric_conditions_take_exactly_one_bound() {
+    let problems = load_complexity(&complexity_yaml(
+        "[{ metric: logical_loc }]",
+        "[{ metric: procedures, gte: 1, lte: 3 }]",
+    ))
+    .expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            "complexity.yaml: needs exactly one of: gte, lte (at /file_levels/medium/any/0)",
+            "complexity.yaml: needs exactly one of: gte, lte (at /file_levels/high/any/0)",
+        ]
+    );
+}
+
+#[test]
+fn condition_lists_are_never_empty() {
+    let problems =
+        load_complexity(&complexity_yaml("[]", HIGH)).expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        ["complexity.yaml: empty list of conditions (at /file_levels/medium/any)"]
+    );
+}
+
+#[test]
+fn malformed_complexity_rules_are_refused() {
+    let no_trait = complexity_yaml(MEDIUM, HIGH);
+    let texts = [
+        no_trait.replace("traits: []", "traits: []\nthresholds: {}"),
+        no_trait.replace(
+            "metric_definitions: { logical_loc: Lines, procedures: Procedures }\n",
+            "",
+        ),
+        no_trait.replace("  high:", "  low: { any: [] }\n  high:"),
+        complexity_yaml("[{ metric: logical_loc, gte: 150, note: x }]", HIGH),
+        complexity_yaml("[{ metric: logical_loc, gte: -1 }]", HIGH),
+    ];
+
+    let refusals: Vec<String> = texts
+        .iter()
+        .map(|text| {
+            let problems = load_complexity(text).expect_err(text);
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            problems[0].to_string()
+        })
+        .collect();
+
+    // Each position is that of the value or key at fault, or of the last key
+    // of the mapping that misses one.
+    assert_eq!(
+        refusals,
+        [
+            "complexity.yaml: unknown field `thresholds`, expected one of version, file_levels, \
+             metric_definitions, traits at line 7, column 1",
+            "complexity.yaml: missing field `metric_definitions` at line 5, column 1",
+            "complexity.yaml: unknown field `low`, expected one of medium, high \
+             at line 4, column 3",
+            "complexity.yaml: unknown field `note`, expected one of metric, gte, lte \
+             at line 3, column 52",
+            "complexity.yaml: invalid value: integer `-1`, expected a whole number \
+             at line 3, column 42",
         ]
     );
 }
