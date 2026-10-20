@@ -12,7 +12,8 @@
 
 use super::VbaError;
 use super::scan::{
-    bracket_len, date_literal_len, is_ident_char, is_ident_start, is_reserved, is_space, string_len,
+    bracket_len, date_literal_len, is_ident_char, is_ident_start, is_reserved, is_space,
+    line_number_len, string_len,
 };
 use crate::report::Status;
 
@@ -393,7 +394,8 @@ impl<'a> Builder<'a> {
     /// Adds the code and the comment of a physical line to `chain`, and its
     /// separators to the chain's. True when the line is continued.
     fn read(&mut self, chain: &mut Chain, number: u32, line: &str, at_start: &mut bool) -> bool {
-        let scan = scan(line, at_start, &mut self.line_seps);
+        let numbered = chain.code.is_empty();
+        let scan = scan(line, numbered, at_start, &mut self.line_seps);
         let code = line.get(..scan.code_end).unwrap_or_default();
         let body = code.trim_matches(is_space);
         if !body.is_empty() {
@@ -593,10 +595,19 @@ fn marker(line: &str) -> Option<usize> {
 ///
 /// `at_start` tells whether the statement being read has no token yet, which
 /// is where `Rem` starts a comment; it carries over to a continuation line,
-/// the mark of which is no token.
-fn scan(line: &str, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
+/// the mark of which is no token. `numbered` tells that the chain has no code
+/// yet: a line number that opens `line` is a label, no token either, so `Rem`
+/// may follow it.
+fn scan(line: &str, numbered: bool, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
     seps.clear();
     let mark = marker(line);
+    let number = if numbered {
+        let code = line.trim_start_matches(is_space);
+        let indent = line.len().saturating_sub(code.len());
+        indent..indent.saturating_add(line_number_len(code).unwrap_or(0))
+    } else {
+        0..0
+    };
     let mut at = 0usize;
     let mut brackets = true;
     let mut open_string = false;
@@ -607,7 +618,7 @@ fn scan(line: &str, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
         }
         let Some(c) = rest.chars().next() else { break };
         let mut step = c.len_utf8();
-        let mut start = is_space(c) && *at_start;
+        let mut start = (is_space(c) || number.contains(&at)) && *at_start;
         match c {
             '"' => match string_len(rest) {
                 Some(len) => step = len,
@@ -676,10 +687,8 @@ fn follows_name(line: &str, at: usize) -> bool {
 /// that is not a reserved word and whose colon follows it (`attached`), or a
 /// line number, which needs no colon. What follows a line number is code.
 fn label_len(statement: &str, attached: bool) -> Option<usize> {
-    let digits = statement.bytes().take_while(u8::is_ascii_digit).count();
-    if digits > 0 {
-        let rest = statement.get(digits..)?;
-        return (rest.is_empty() || rest.starts_with(is_space)).then_some(digits);
+    if let Some(digits) = line_number_len(statement) {
+        return Some(digits);
     }
     let name = statement.starts_with(is_ident_start) && statement.chars().all(is_ident_char);
     (attached && name && !is_reserved(statement)).then_some(statement.len())

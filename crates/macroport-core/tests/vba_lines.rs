@@ -358,7 +358,50 @@ fn a_line_number_is_a_label_with_or_without_a_colon() {
     assert_eq!(shape("10 x = 1"), ["1 label 10", "1: x = 1"]);
     assert_eq!(shape("20:\n30"), ["1 label 20", "2 label 30"]);
     assert_eq!(shape("40: y = 2"), ["1 label 40", "1: y = 2"]);
-    assert_eq!(shape("10x = 1"), ["1 10x = 1"]);
+}
+
+#[test]
+fn a_comment_may_follow_a_line_number() {
+    assert_eq!(shape("10 Rem note"), ["1 label 10 // note"]);
+    assert_eq!(shape("  10   rem note"), ["1 label 10 // note"]);
+    assert_eq!(shape("10: Rem note"), ["1 label 10 // note"]);
+    assert_eq!(shape("10 x = 1 ' note"), ["1 label 10", "1: x = 1 // note"]);
+    // The mark of a continuation is no token, and neither is the number.
+    assert_eq!(shape("10 _\nRem note"), ["1-2 label 10 // note @2"]);
+    assert_eq!(shape(" _\n10 Rem note"), ["2 label 10 // note"]);
+    // Only the number that opens a chain is a line number.
+    assert_eq!(shape("x = 1: 10 Rem note"), ["1 x = 1", "1: 10 Rem note"]);
+    assert_eq!(shape("x = 1 + _\n10 Rem note"), ["1-2 x = 1 + 10 Rem note"]);
+}
+
+#[test]
+fn a_statement_glued_to_a_line_number_stays_a_statement() {
+    // Hypothesis, not checked in the VBE: the lexical grammar of MS-VBAL reads
+    // `10x` as the number 10 and a name. Reading it that way is the side that
+    // shows the statement to the parser.
+    assert_eq!(shape("10x = 1"), ["1 label 10", "1: x = 1"]);
+    assert_eq!(
+        shape("10Shell \"calc\""),
+        ["1 label 10", "1: Shell \"calc\""]
+    );
+    assert_eq!(shape("10Rem note"), ["1 label 10 // note"]);
+    assert_eq!(
+        shape("10x = 1: y = 2"),
+        ["1 label 10", "1: x = 1", "1: y = 2"]
+    );
+}
+
+#[test]
+fn a_number_that_something_else_continues_is_not_a_line_number() {
+    let kinds = |text: &str| -> Vec<LogicalKind> {
+        lines(text).logical.iter().map(|line| line.kind).collect()
+    };
+    for text in ["10.5 + x", "10% = 1", "10# + 1", "10& = 1"] {
+        assert_eq!(kinds(text), [LogicalKind::Code], "{text:?}");
+    }
+    for text in ["10", "007", "10 "] {
+        assert_eq!(kinds(text), [LogicalKind::Label], "{text:?}");
+    }
 }
 
 // Corpus header

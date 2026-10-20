@@ -25,6 +25,20 @@ pub(crate) fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// Bytes of the line number that opens `statement`: ASCII digits that end at
+/// the end of the text, at a blank or at the start of a name. `10 x = 1` and
+/// `10x = 1` both open with the line number 10, while `10.5` and `10%` are
+/// numbers.
+pub(crate) fn line_number_len(statement: &str) -> Option<usize> {
+    let digits = statement.bytes().take_while(u8::is_ascii_digit).count();
+    let ends = statement
+        .get(digits..)?
+        .chars()
+        .next()
+        .is_none_or(|c| is_space(c) || is_ident_start(c));
+    (digits > 0 && ends).then_some(digits)
+}
+
 /// Bytes of the string literal that starts `rest` (which starts with `"`),
 /// closing quote included, or `None` when it is not closed: it then reaches
 /// the end of `rest`. A doubled quote inside is a quote.
@@ -118,6 +132,17 @@ pub(crate) fn is_reserved(word: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_number_is_digits_that_a_blank_or_a_name_ends() {
+        assert_eq!(line_number_len("10"), Some(2));
+        assert_eq!(line_number_len("10 x"), Some(2));
+        assert_eq!(line_number_len("10x"), Some(2));
+        assert_eq!(line_number_len("007\t"), Some(3));
+        for text in ["", "x", "10.5", "10%", "10:", "10_", "&H10", "1,2"] {
+            assert_eq!(line_number_len(text), None, "{text}");
+        }
+    }
 
     #[test]
     fn a_string_ends_at_its_closing_quote_and_doubled_quotes_do_not_close_it() {
