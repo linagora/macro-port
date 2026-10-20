@@ -17,7 +17,7 @@ Never, in Lot 1: call an LLM, translate or convert VBA code, score compatibility
 
 ## Current state of the repository
 
-M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which loads the three rules files, and `macroport-cli`, whose `macro-port` binary answers `--version`, `--help` and `rules check`; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
+M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which loads the three rules files, and `macroport-cli`, whose `macro-port` binary answers `--version`, `--help` and `rules check`, and `macroport-testkit`, whose helper validates reports against `schema/report.schema.json` in tests; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
 
 ## Non-negotiable engineering rules
 
@@ -36,6 +36,7 @@ M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-co
 crates/macroport-core   # pure analysis library
 crates/macroport-cli    # `macro-port` binary
 crates/macroport-wasm   # wasm-bindgen bindings
+crates/macroport-testkit # test helpers (report validation), a dev-dependency only
 web/                    # mini web app (TypeScript, Vite, Preact)
 rules/                  # families.yaml, security.yaml, complexity.yaml (CC BY 4.0)
 schema/                 # report.schema.json (public contract)
@@ -100,7 +101,7 @@ wasm-pack build crates/macroport-wasm --target web
 
 - Snapshot tests (`insta`) for parser output on every corpus sample; review snapshot diffs, never accept them blindly.
 - Corpus tests compute A4 and A5 metrics and fail below thresholds; print the confusion matrix.
-- Every JSON produced in tests is validated against `schema/report.schema.json`.
+- Every JSON produced in tests is validated against `schema/report.schema.json` with `macroport_testkit::report_problems`, which asserts `format` keywords and runs offline.
 - Malformed fixtures and fuzz targets for every binary parser.
 - The purity bans of `clippy.toml` apply to the core's tests too. A core test that reads files, such as a corpus test, starts with `#![allow(clippy::disallowed_methods, clippy::disallowed_types)]`.
 - Do not edit the corpus manifests (`corpus/families/*/manifest.json` and the root `corpus/manifest.json` and `.csv` generated from them), `corpus/ground-truth/` or corpus samples to make a test pass. If you believe the ground truth is wrong, say so in the PR and let the owner decide.
