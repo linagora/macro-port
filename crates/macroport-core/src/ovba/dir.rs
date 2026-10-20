@@ -4,18 +4,21 @@
 //!
 //! The stream is a run of records, each an id (2 bytes), a size (4 bytes) and
 //! that many bytes of data, so a record that is not needed is skipped by its
-//! size. Three things depart from that pattern:
+//! size. Four things depart from that pattern:
 //!
 //! - PROJECTVERSION declares a size of 4 and is followed by 6 bytes.
 //! - Some records of a module have no data: where the others have a size,
-//!   they have a reserved field, which Office ignores.
+//!   they have a reserved field, which a reader ignores.
+//! - The size of a reference record is ignored on read, so its fields are
+//!   read one after the other (see the `reference` module).
 //! - A "reserved" marker splits some records in two, a name then its Unicode
 //!   form. The marker is the id of the second half, which is then a record in
 //!   its own right.
 
 use super::reader::{Reader, le_u16, le_u32};
+use super::reference::{self, RawReference};
 use super::text::{self, RawName};
-use super::{MAX_DIR_STREAM, MAX_MODULES, OvbaError, decompress};
+use super::{MAX_DIR_STREAM, MAX_MODULES, MAX_REFERENCES, OvbaError, decompress};
 use crate::report::Status;
 
 const PROJECT_CODE_PAGE: u16 = 0x0003;
@@ -47,6 +50,9 @@ pub struct DirInfo {
     pub code_page: Option<u16>,
     /// The name of the project.
     pub project_name: Option<String>,
+    /// The display names of the references, in the order of the stream, such
+    /// as `OLE Automation`. A path, which may name a user, is never kept.
+    pub references: Vec<String>,
     /// The modules, in the order of the stream.
     pub modules: Vec<DirModule>,
 }
@@ -80,15 +86,16 @@ pub fn parse_compressed_dir(compressed: &[u8]) -> Result<DirInfo, OvbaError> {
 /// Reads a decompressed `dir` stream.
 ///
 /// Records are taken in whatever order they come, and the first of a kind
-/// that the project has once wins. The Unicode name of a module and of its
-/// stream wins over the MBCS one, which is decoded in the code page of the
-/// project.
+/// that the project has once wins. The Unicode name of a module, of its
+/// stream and of a reference wins over the MBCS one, which is decoded in the
+/// code page of the project.
 ///
 /// # Errors
 ///
 /// An error if the stream is over [`MAX_DIR_STREAM`], if a record declares
 /// more bytes than the stream holds, if the terminator is missing, or if the
-/// project has more than [`MAX_MODULES`] modules.
+/// project has more than [`MAX_MODULES`] modules or [`MAX_REFERENCES`]
+/// references.
 pub fn parse_dir(stream: &[u8]) -> Result<DirInfo, OvbaError> {
     if stream.len() > MAX_DIR_STREAM {
         return Err(OvbaError::new(
@@ -111,6 +118,10 @@ pub fn parse_dir(stream: &[u8]) -> Result<DirInfo, OvbaError> {
                 reader.skip(RESERVED)?;
                 parser.record(id, &[])?;
             }
+            reference::NAME => parser.pending_name = Some(reference::name_record(&mut reader)?),
+            reference::REGISTERED => parser.add_reference(reference::registered(&mut reader)?)?,
+            reference::PROJECT => parser.add_reference(reference::project(&mut reader)?)?,
+            reference::CONTROL => parser.add_reference(reference::control(&mut reader)?)?,
             id => {
                 let data = reader.record_data(id)?;
                 parser.record(id, data)?;
@@ -172,6 +183,9 @@ impl RawModule {
 struct Parser {
     code_page: Option<u16>,
     project_name: Option<Vec<u8>>,
+    /// A REFERENCENAME record, waiting for the reference that it names.
+    pending_name: Option<RawName>,
+    references: Vec<RawReference>,
     /// The module whose records are being read.
     module: Option<RawModule>,
     modules: Vec<RawModule>,
@@ -221,6 +235,24 @@ impl Parser {
         Ok(())
     }
 
+    fn add_reference(&mut self, mut reference: RawReference) -> Result<(), OvbaError> {
+        if self.references.len() >= MAX_REFERENCES {
+            return Err(OvbaError::new(
+                Status::TooLarge,
+                "ovba.dir.too_many_references",
+                format!("the project declares more than {MAX_REFERENCES} references"),
+            ));
+        }
+        // A name record comes before the reference that it names. A control
+        // reference may hold a name of its own, which then wins.
+        let pending = self.pending_name.take();
+        if reference.name.is_empty() {
+            reference.name = pending.unwrap_or_default();
+        }
+        self.references.push(reference);
+        Ok(())
+    }
+
     /// The project, once the terminator is read: the MBCS text is decoded
     /// now that the last word on the code page is known.
     fn finish(mut self) -> Result<DirInfo, OvbaError> {
@@ -232,6 +264,11 @@ impl Parser {
                 .project_name
                 .map(|name| text::decode_mbcs(&name, code_page))
                 .filter(|name| !name.is_empty()),
+            references: self
+                .references
+                .iter()
+                .filter_map(|reference| reference.display_name(code_page))
+                .collect(),
             modules: self
                 .modules
                 .iter()
