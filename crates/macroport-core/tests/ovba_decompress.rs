@@ -96,6 +96,18 @@ fn reads_a_short_chunk_that_is_not_the_last() {
 }
 
 #[test]
+fn reads_a_chunk_up_to_the_end_of_a_container_that_cuts_it_short() {
+    // The header announces 6 bytes of data and 4 follow. Section 2.4.1.3.2
+    // ends a chunk at the end of the container when its size runs past it, so
+    // the chunk is read as far as it goes: here, the maximum compression
+    // example.
+    assert_eq!(
+        decompress(&hex("01 05 B0 02 61 45 00"), 1024).unwrap(),
+        vec![b'a'; 73]
+    );
+}
+
+#[test]
 fn reads_a_token_sequence_without_tokens() {
     // A flag byte alone: section 2.4.1.1.7 asks writers for one token at
     // least in the last sequence, which the reading algorithm does not check.
@@ -140,10 +152,22 @@ fn rejects_a_raw_chunk_that_is_not_4096_bytes() {
 }
 
 #[test]
-fn rejects_a_chunk_longer_than_the_input() {
-    // The header announces 6 bytes of data and 4 follow.
+fn rejects_a_raw_chunk_that_the_container_cuts_short() {
+    // The header of a raw chunk, then 100 of its 4096 bytes.
+    let mut container = vec![0x01, 0xFF, 0x3F];
+    container.extend([b'a'; 100]);
+    let error = decompress(&container, 4096).unwrap_err();
+    assert_eq!(error.code, "ovba.decompress.truncated");
+    assert_eq!(error.status, Status::Corrupted);
+}
+
+#[test]
+fn rejects_a_container_that_ends_inside_a_copy_token() {
+    // The header announces 6 bytes of data and 3 follow, the last one the
+    // first half of a copy token. The end of the container cuts the token,
+    // not the chunk: this is not a bad token.
     assert_eq!(
-        error_code("01 05 B0 02 61 45 00", 1024),
+        error_code("01 05 B0 02 61 45", 1024),
         "ovba.decompress.truncated"
     );
 }
@@ -233,12 +257,19 @@ fn an_error_displays_its_code_then_its_message() {
 // Hostile input.
 
 #[test]
-fn never_panics_on_a_truncated_container() {
+fn a_container_cut_short_gives_a_prefix_of_its_output_or_is_truncated() {
     for example in [NO_COMPRESSION, NORMAL, MAXIMUM] {
         let example = hex(example);
+        let whole = decompress(&example, 1024).unwrap();
         for length in 0..example.len() {
-            // Most prefixes are errors, some are whole containers.
-            let _ = decompress(example.get(..length).unwrap(), 1024);
+            // A cut between two tokens gives the bytes before it. A cut
+            // inside a token or a header, or an empty input, is truncated.
+            match decompress(example.get(..length).unwrap(), 1024) {
+                Ok(output) => assert!(whole.starts_with(&output), "length {length}"),
+                Err(error) => {
+                    assert_eq!(error.code, "ovba.decompress.truncated", "length {length}");
+                }
+            }
         }
     }
 }
