@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::matcher::{self, Matcher, MatcherKind, Patterns, Scope, TextMode};
 use super::{Ids, Label, Problem, SECURITY_FILE, yaml};
@@ -18,8 +18,8 @@ pub struct Security {
     pub container_indicators: Vec<ContainerIndicator>,
 }
 
-/// How serious a security finding is, from `Info` to `High`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+/// How serious a security finding is, ordered from `Info` to `High`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,

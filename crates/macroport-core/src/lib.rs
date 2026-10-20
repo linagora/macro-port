@@ -8,4 +8,5 @@
 
 #![forbid(unsafe_code)]
 
+pub mod report;
 pub mod rules;

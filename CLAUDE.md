@@ -17,7 +17,7 @@ Never, in Lot 1: call an LLM, translate or convert VBA code, score compatibility
 
 ## Current state of the repository
 
-M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which loads the three rules files, and `macroport-cli`, whose `macro-port` binary answers `--version`, `--help` and `rules check`, and `macroport-testkit`, whose helper validates reports against `schema/report.schema.json` in tests; the toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: the report model (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
+M0 in progress. The Cargo workspace holds `macroport-core` (`crates/macroport-core/clippy.toml` bans the impure standard library APIs), which loads the three rules files and models the report (`macroport_core::report`); `macroport-cli`, whose `macro-port` binary answers `--version`, `--help` and `rules check`; and `macroport-testkit`, whose helper validates reports against `schema/report.schema.json` in tests. The toolchain is pinned in `rust-toolchain.toml`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, tests, `cargo deny`, the SPDX header check and the wasm32 build of the core. Still missing: the empty report (rest of M0), `i18n/` (M4), `macroport-wasm` and `web/` (M5). Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
 
 ## Non-negotiable engineering rules
 
@@ -108,7 +108,7 @@ wasm-pack build crates/macroport-wasm --target web
 
 ## Changing contracts
 
-- `schema/report.schema.json`: bump `schema_version` (minor for additive, major for breaking), update the example, write an ADR.
+- `schema/report.schema.json`: bump `schema_version` (minor for additive, major for breaking), update the example, write an ADR. Update the model in `macroport_core::report` and its `SCHEMA_VERSION` too: a test reads the example into the model and checks that it writes the example back byte for byte.
 - `rules/*.yaml`: bump `version` in the three files together, even when only one changes: they share it, reports give it as `tool.rules_version`, and `rules check` rejects differing versions. Report before and after A4/A5 metrics in the PR, no sample-specific patterns.
 
 ## Pull requests (the owner reviews alone: make reviews cheap)

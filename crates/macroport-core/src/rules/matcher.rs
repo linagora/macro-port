@@ -2,7 +2,7 @@
 //! Signal matchers and structural predicates (SPEC section 7).
 
 use regex::{Regex, RegexBuilder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::Problem;
 
@@ -60,7 +60,8 @@ pub enum Matcher {
 }
 
 /// The type of a VBA module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModuleType {
     Standard,
     Class,
