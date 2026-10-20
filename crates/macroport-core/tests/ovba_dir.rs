@@ -8,13 +8,13 @@
 mod ovba_common;
 
 use macroport_core::ovba::{
-    DirInfo, DirModule, MAX_DIR_STREAM, MAX_MODULES, parse_compressed_dir, parse_dir,
+    DirInfo, DirModule, MAX_DIR_STREAM, MAX_MODULES, MAX_REFERENCES, parse_compressed_dir,
+    parse_dir,
 };
 use macroport_core::report::Status;
 use ovba_common::Lcg;
 
-// Builders for the records of the `dir` stream. The ones that take references
-// leave them empty until the reader of those arrives.
+// Builders for the records of the `dir` stream.
 
 /// A length as 4 bytes.
 fn size(data: &[u8]) -> [u8; 4] {
@@ -24,6 +24,11 @@ fn size(data: &[u8]) -> [u8; 4] {
 /// A record: its id, its size and its data.
 fn record(id: u16, data: &[u8]) -> Vec<u8> {
     [id.to_le_bytes().as_slice(), &size(data), data].concat()
+}
+
+/// A field made of its length and its bytes.
+fn length_prefixed(data: &[u8]) -> Vec<u8> {
+    [size(data).as_slice(), data].concat()
 }
 
 fn utf16(text: &str) -> Vec<u8> {
@@ -105,6 +110,76 @@ fn parse(information: &[Vec<u8>], references: &[Vec<u8>], modules: &[Vec<u8>]) -
     parse_dir(&dir(information, references, modules)).unwrap()
 }
 
+/// A REFERENCENAME record.
+fn name_record(name: &str) -> Vec<u8> {
+    [
+        record(0x0016, name.as_bytes()),
+        record(0x003E, &utf16(name)),
+    ]
+    .concat()
+}
+
+/// A reference record: its id, then the size that a reader ignores, then its
+/// fields.
+fn reference(id: u16, fields: &[Vec<u8>]) -> Vec<u8> {
+    let fields = fields.concat();
+    [id.to_le_bytes().as_slice(), &size(&fields), &fields].concat()
+}
+
+fn registered(libid: &str) -> Vec<u8> {
+    reference(0x000D, &[length_prefixed(libid.as_bytes()), vec![0; 6]])
+}
+
+fn project_reference(absolute: &str, relative: &str) -> Vec<u8> {
+    reference(
+        0x000E,
+        &[
+            length_prefixed(absolute.as_bytes()),
+            length_prefixed(relative.as_bytes()),
+            vec![0x46, 0x5F, 0xA9, 0x49, 0x0D, 0x00],
+        ],
+    )
+}
+
+/// A control reference: the twiddled libid, the name of the extended type
+/// library when there is one, then the extended libid.
+fn control(twiddled: &str, name: Option<&str>, extended: &str) -> Vec<u8> {
+    let first = [length_prefixed(twiddled.as_bytes()), vec![0; 6]].concat();
+    let second = [length_prefixed(extended.as_bytes()), vec![0; 26]].concat();
+    [
+        0x002F_u16.to_le_bytes().as_slice(),
+        &size(&first),
+        &first,
+        &name.map(name_record).unwrap_or_default(),
+        &0x0030_u16.to_le_bytes(),
+        &size(&second),
+        &second,
+    ]
+    .concat()
+}
+
+const OLE_AUTOMATION: &str = r"*\G{00020430-0000-0000-C000-000000000046}#2.0#0#C:\Windows\system32\stdole2.tlb#OLE Automation";
+const OFFICE_12: &str = r"*\G{2DF8D04C-5BFA-101B-BDE5-00AA0044DE52}#2.0#0#C:\Program Files\Common Files\Microsoft Shared\OFFICE12\MSO.DLL#Microsoft Office 12.0 Object Library";
+const DUMMY_LIBID: &str = r"*\G{00000000-0000-0000-0000-000000000000}#0.0#0##";
+const MS_FORMS: &str = r"*\G{896C2D83-5466-46ED-8FAE-4C3E4F85E710}#2.0#0#C:\Users\jsmith\AppData\Local\Temp\VBE\MSForms.exd#Microsoft Forms 2.0 Object Library";
+
+/// The four references of the specification example.
+fn example_references() -> Vec<Vec<u8>> {
+    vec![
+        name_record("stdole"),
+        registered(OLE_AUTOMATION),
+        name_record("Office"),
+        registered(OFFICE_12),
+        name_record("VBAProject1"),
+        project_reference(
+            r"*\CC:\Example Path\Example-ReferencedProject.xls",
+            r"*\CExample-ReferencedProject.xls",
+        ),
+        name_record("MSForms"),
+        control(DUMMY_LIBID, Some("MSForms"), MS_FORMS),
+    ]
+}
+
 fn dir_module(name: &str, text_offset: u32, procedural: bool) -> DirModule {
     DirModule {
         name: name.to_owned(),
@@ -114,11 +189,11 @@ fn dir_module(name: &str, text_offset: u32, procedural: bool) -> DirModule {
     }
 }
 
-/// A project with information and modules.
+/// A project with information, references and modules.
 fn example_stream() -> Vec<u8> {
     dir(
         &information_records(1252),
-        &[],
+        &example_references(),
         &[
             module("ThisWorkbook", 0, NON_PROCEDURAL),
             module("Module1", 815, PROCEDURAL),
@@ -133,7 +208,22 @@ fn reads_the_project_information_of_the_specification_example() {
     let info = parse(&information_records(0x04E4), &[], &[]);
     assert_eq!(info.code_page, Some(1252));
     assert_eq!(info.project_name.as_deref(), Some("VBAProject"));
+    assert!(info.references.is_empty());
     assert!(info.modules.is_empty());
+}
+
+#[test]
+fn reads_the_references_of_the_specification_example() {
+    let info = parse(&information_records(1252), &example_references(), &[]);
+    assert_eq!(
+        info.references,
+        [
+            "OLE Automation",
+            "Microsoft Office 12.0 Object Library",
+            "VBAProject1",
+            "Microsoft Forms 2.0 Object Library",
+        ]
+    );
 }
 
 #[test]
@@ -424,6 +514,145 @@ fn ignores_the_reserved_field_of_the_module_records_that_have_no_data() {
     );
 }
 
+// References.
+
+#[test]
+fn ignores_the_size_of_a_reference_record() {
+    let mut references = example_references();
+    for index in [1, 3, 5, 7] {
+        // A reader ignores it, so a writer may leave anything there.
+        for byte in references[index].get_mut(2..6).unwrap() {
+            *byte = 0xEE;
+        }
+    }
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references.len(), 4);
+    assert_eq!(info.references[3], "Microsoft Forms 2.0 Object Library");
+}
+
+#[test]
+fn reads_a_control_reference_that_has_no_extended_name() {
+    let references = [control(DUMMY_LIBID, None, MS_FORMS)];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["Microsoft Forms 2.0 Object Library"]);
+}
+
+#[test]
+fn a_control_reference_prefers_the_extended_libid_to_the_twiddled_one() {
+    let references = [control(OLE_AUTOMATION, None, MS_FORMS)];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["Microsoft Forms 2.0 Object Library"]);
+}
+
+#[test]
+fn reads_a_control_reference_that_follows_an_original_reference() {
+    // REFERENCEORIGINAL sits between the name and the control record.
+    let original = record(0x0033, &length_prefixed(OLE_AUTOMATION.as_bytes()));
+    let references = [
+        name_record("MSForms"),
+        original,
+        control(DUMMY_LIBID, Some("MSForms"), MS_FORMS),
+    ];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["Microsoft Forms 2.0 Object Library"]);
+}
+
+#[test]
+fn a_control_reference_with_a_dummy_libid_and_no_extended_one_falls_back_to_its_name() {
+    let references = [control(DUMMY_LIBID, Some("MSForms"), DUMMY_LIBID)];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["MSForms"]);
+}
+
+#[test]
+fn a_reference_without_a_usable_libid_is_named_after_its_name_record() {
+    let references = [
+        name_record("Scripting"),
+        registered("not a libid"),
+        name_record("Another"),
+        registered(r"*\G{00020430-0000-0000-C000-000000000046}#2.0#0#only-four-fields"),
+        // No name record at all: nothing to show.
+        registered("still not a libid"),
+    ];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["Scripting", "Another"]);
+}
+
+#[test]
+fn reads_the_registered_name_of_a_macintosh_library() {
+    // The kind of its path is H, where that of a Windows library is G.
+    let libid =
+        r"*\H{00020430-0000-0000-C000-000000000046}#2.0#0#Macintosh HD:stdole2.tlb#OLE Automation";
+    let info = parse(&information_records(1252), &[registered(libid)], &[]);
+    assert_eq!(info.references, ["OLE Automation"]);
+}
+
+#[test]
+fn a_registered_name_may_contain_a_hash() {
+    let references = [registered(
+        r"*\G{00020430-0000-0000-C000-000000000046}#2.0#0#C:\x.tlb#Library #2",
+    )];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(info.references, ["Library #2"]);
+}
+
+#[test]
+fn a_reference_never_shows_a_path() {
+    let paths = [
+        r"C:\Users\bob\secret.tlb",
+        r"\\server\share\secret.tlb",
+        "/home/bob/secret.tlb",
+        "d:secret",
+        r"..\..\secret",
+        "bob/secret",
+    ];
+    for path in paths {
+        let libid = format!(r"*\G{{00020430-0000-0000-C000-000000000046}}#2.0#0#C:\x.tlb#{path}");
+        let references = [
+            // The registered name is a path: the name record stands in.
+            name_record("Safe"),
+            registered(&libid),
+            // Both are paths: the reference is dropped.
+            name_record(path),
+            registered(&libid),
+            // A project reference shows its name, never its paths.
+            name_record(path),
+            project_reference(r"*\CC:\Users\bob\other.xlsm", r"*\Cother.xlsm"),
+            name_record("Other"),
+            project_reference(r"*\CC:\Users\bob\other.xlsm", r"*\Cother.xlsm"),
+        ];
+        let info = parse(&information_records(1252), &references, &[]);
+        assert_eq!(info.references, ["Safe", "Other"], "path {path}");
+    }
+}
+
+#[test]
+fn a_reference_never_shows_the_path_of_its_libid() {
+    let references = example_references();
+    let info = parse(&information_records(1252), &references, &[]);
+    for name in &info.references {
+        assert!(!name.contains(['\\', '/', ':']), "{name}");
+    }
+}
+
+#[test]
+fn keeps_the_references_in_the_order_of_the_stream() {
+    let references = [
+        registered(OFFICE_12),
+        registered(OLE_AUTOMATION),
+        registered(OFFICE_12),
+    ];
+    let info = parse(&information_records(1252), &references, &[]);
+    assert_eq!(
+        info.references,
+        [
+            "Microsoft Office 12.0 Object Library",
+            "OLE Automation",
+            "Microsoft Office 12.0 Object Library"
+        ]
+    );
+}
+
 // Limits.
 
 fn many_modules(count: usize) -> Vec<Vec<u8>> {
@@ -463,6 +692,22 @@ fn counts_the_last_module_even_when_nothing_terminates_it() {
     modules.push(record(0x0019, b"Last"));
     let error = parse_dir(&dir(&information_records(1252), &[], &modules)).unwrap_err();
     assert_eq!(error.code, "ovba.dir.too_many_modules");
+}
+
+#[test]
+fn accepts_the_most_references_and_rejects_one_more() {
+    let references = |count: usize| vec![registered(OLE_AUTOMATION); count];
+    let info = parse(&information_records(1252), &references(MAX_REFERENCES), &[]);
+    assert_eq!(info.references.len(), MAX_REFERENCES);
+
+    let stream = dir(
+        &information_records(1252),
+        &references(MAX_REFERENCES + 1),
+        &[],
+    );
+    let error = parse_dir(&stream).unwrap_err();
+    assert_eq!(error.status, Status::TooLarge);
+    assert_eq!(error.code, "ovba.dir.too_many_references");
 }
 
 /// A container of raw chunks that hold `data`, the last padded with zeros.
