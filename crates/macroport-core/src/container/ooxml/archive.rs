@@ -6,8 +6,9 @@
 //! the bytes actually read, never the sizes an entry declares, and the crate's
 //! own reader checks neither.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::io::{Cursor, Read};
+use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use std::sync::Arc;
 
 use flate2::Crc;
@@ -23,12 +24,20 @@ use crate::report::Status;
 /// read for it (SPEC M1). Deflate itself cannot go beyond about 1032.
 const MAX_RATIO: u64 = 1000;
 
+/// What opening an archive may read. The `zip` crate allocates for each entry
+/// of the central directory and bounds neither their number nor the time it
+/// takes, so a hostile directory costs far more than the file weighs. 4 MiB
+/// holds tens of thousands of entries, far more than a workbook has.
+const DIRECTORY_BUDGET: u64 = 4 * 1024 * 1024;
+
 /// Bytes inflated per read.
 const CHUNK: usize = 32 * 1024;
 
-/// The fixed part of a local file header (APPNOTE 4.3.7): the name and the
-/// extra field follow.
+/// The fixed part of a local file header and of a central directory record
+/// (APPNOTE 4.3.7 and 4.3.12): the name, the extra field and, in the central
+/// directory, the comment follow.
 const LOCAL_HEADER: usize = 30;
+const CENTRAL_RECORD: usize = 46;
 
 /// A fixed message only: nothing from the archive reaches an error, as
 /// everything in an archive is untrusted.
@@ -66,21 +75,35 @@ impl<'a> Archive<'a> {
             let message = "the file does not start with a ZIP signature";
             return Err(fail(Status::Unsupported, "zip.not_a_zip", message));
         }
+        let budget = Budget {
+            left: Cell::new(DIRECTORY_BUDGET),
+            exhausted: Cell::new(false),
+        };
+        let reader = Metered {
+            cursor: Cursor::new(bytes),
+            budget: &budget,
+        };
         // An Office file starts with its archive. With this offset the crate
-        // does not look for the directory in the whole file, which takes long
-        // on a large one.
+        // does not look for the directory in the whole file, which would spend
+        // the budget on any file of a few megabytes.
         let config = Config {
             archive_offset: ArchiveOffset::Known(0),
         };
-        let entries = ZipArchive::with_config(config, Cursor::new(bytes))
-            .map_err(|error| open_error(&error))?
-            .metadata();
+        let archive = ZipArchive::with_config(config, reader)
+            .map_err(|error| open_error(&error, budget.exhausted.get()))?;
+        let entries = archive.metadata();
         let mut names = BTreeMap::new();
         for index in 0..entries.len() {
             let name = entry_name(&entries, index);
             if name.is_some_and(|name| names.insert(name, index).is_some()) {
                 return Err(duplicate_entry());
             }
+        }
+        // The crate keeps the last of several entries of one name and says
+        // nothing, so the records of the directory are counted again.
+        let start = archive.central_directory_start();
+        if count_records(bytes, start, entries.len().saturating_add(1)) > entries.len() {
+            return Err(duplicate_entry());
         }
         Ok(Self {
             bytes,
@@ -160,7 +183,35 @@ fn data_start(bytes: &[u8], header_start: u64) -> Option<usize> {
         .checked_add(u16_at(header, 28)?)
 }
 
-fn open_error(error: &ZipError) -> ContainerError {
+/// The length of the central directory record at `at`, if there is one.
+fn record_length(bytes: &[u8], at: usize) -> Option<usize> {
+    let record = bytes.get(at..at.checked_add(CENTRAL_RECORD)?)?;
+    if !record.starts_with(b"PK\x01\x02") {
+        return None;
+    }
+    let variable = |length: usize, field| length.checked_add(u16_at(record, field)?);
+    variable(variable(variable(CENTRAL_RECORD, 28)?, 30)?, 32)
+}
+
+/// How many records follow one another from `start`, counting up to `limit`.
+fn count_records(bytes: &[u8], start: u64, limit: usize) -> usize {
+    let first = usize::try_from(start).ok();
+    let starts = std::iter::successors(first, |&at| at.checked_add(record_length(bytes, at)?));
+    starts
+        .take(limit)
+        .take_while(|&at| record_length(bytes, at).is_some())
+        .count()
+}
+
+fn open_error(error: &ZipError, directory_too_large: bool) -> ContainerError {
+    if directory_too_large {
+        let message = "the central directory of the archive is too large";
+        return fail(
+            Status::SuspiciousArchive,
+            "zip.directory_too_large",
+            message,
+        );
+    }
     match error {
         ZipError::UnsupportedArchive(_) => {
             let message = "the archive uses a ZIP feature that is not supported";
@@ -224,5 +275,36 @@ fn inflate(compressed: &[u8], cap: u64) -> Result<Vec<u8>, ContainerError> {
             let message = "an entry inflates beyond the allowed ratio";
             return Err(fail(Status::SuspiciousArchive, "zip.ratio", message));
         }
+    }
+}
+
+/// What is left to read while an archive opens, and whether it ran out.
+struct Budget {
+    left: Cell<u64>,
+    exhausted: Cell<bool>,
+}
+
+/// An in-memory reader that fails once its budget is spent.
+struct Metered<'a> {
+    cursor: Cursor<&'a [u8]>,
+    budget: &'a Budget,
+}
+
+impl Read for Metered<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.cursor.read(buffer)?;
+        let read_bytes = u64::try_from(read).unwrap_or(u64::MAX);
+        let Some(left) = self.budget.left.get().checked_sub(read_bytes) else {
+            self.budget.exhausted.set(true);
+            return Err(io::Error::other("the directory budget is spent"));
+        };
+        self.budget.left.set(left);
+        Ok(read)
+    }
+}
+
+impl Seek for Metered<'_> {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        self.cursor.seek(position)
     }
 }
