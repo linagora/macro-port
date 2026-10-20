@@ -70,6 +70,17 @@ impl<'a> Reader<'a> {
         Ok(u32::from_le_bytes(*bytes))
     }
 
+    /// The next 2 bytes as a number, left in place.
+    pub(super) fn peek_u16(&self) -> Option<u16> {
+        le_u16(self.rest)
+    }
+
+    /// A field made of its length (4 bytes) and that many bytes.
+    pub(super) fn length_prefixed(&mut self) -> Result<&'a [u8], OvbaError> {
+        let length = self.u32()?;
+        self.take(usize::try_from(length).unwrap_or(usize::MAX))
+    }
+
     /// The data of a record whose id was just read: its size, then its bytes.
     pub(super) fn record_data(&mut self, id: u16) -> Result<&'a [u8], OvbaError> {
         let size = self.u32()?;
