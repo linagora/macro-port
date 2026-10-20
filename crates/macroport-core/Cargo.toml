@@ -1,0 +1,30 @@
+[package]
+name = "macroport-core"
+description = "Pure analysis library of Macro-Port: file bytes in, report out"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+# Analysed files are hostile: no panic on input-dependent data (CLAUDE.md).
+# The core prints nothing either. clippy.toml lets tests unwrap, expect,
+# index, panic and print.
+[lints.clippy]
+arithmetic_side_effects = "deny"
+dbg_macro = "deny"
+disallowed_methods = "deny"
+disallowed_types = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+string_slice = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unwrap_used = "deny"
