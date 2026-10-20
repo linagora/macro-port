@@ -20,6 +20,7 @@
 )]
 
 mod fixtures;
+mod hostile;
 mod limits;
 mod malformed;
 mod reading;
