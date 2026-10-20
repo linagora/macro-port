@@ -10,6 +10,7 @@
 mod decompress;
 mod dir;
 mod reader;
+mod reference;
 mod text;
 
 use crate::report::Status;
@@ -22,6 +23,10 @@ pub const MAX_DIR_STREAM: usize = 16 * 1024 * 1024;
 
 /// The most modules a project may declare (SPEC M1).
 pub const MAX_MODULES: usize = 2_000;
+
+/// The most references a project may declare. SPEC M1 sets no limit, so this
+/// one mirrors that of modules.
+pub const MAX_REFERENCES: usize = 2_000;
 
 /// Why a stream of a VBA project could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
