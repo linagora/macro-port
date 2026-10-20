@@ -7,6 +7,10 @@ use std::fmt;
 
 use crate::report::Status;
 
+mod ooxml;
+
+pub use ooxml::{OoxmlPackage, read_ooxml};
+
 /// Why a container could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerError {
