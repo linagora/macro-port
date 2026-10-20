@@ -1,4 +1,6 @@
-# CLAUDE.md: Macro-Port
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Macro-Port is an open source (Apache-2.0) analyzer of Excel VBA macros that helps organisations migrate from Microsoft Excel to OnlyOffice Spreadsheet, Grist and LibreOffice Calc. It is initiated by LINAGORA. Read these files before any work:
 
@@ -9,9 +11,13 @@ Macro-Port is an open source (Apache-2.0) analyzer of Excel VBA macros that help
 
 ## Current scope
 
-**Lot 1 only** (inventory): extraction, metrics, security signals, family classification, JSON/HTML/CSV reports, CLI and WASM mini web app. Work milestone by milestone (M1 to M5); do not start a milestone before the previous one is merged. Exception: until binary fixtures exist in `corpus/fixtures/generated/`, do M2 and M3 first on the text corpus via `analyze_modules`. M5 always comes last.
+**Lot 1 only** (inventory): extraction, metrics, security signals, family classification, JSON/HTML/CSV reports, CLI and WASM mini web app. Work milestone by milestone (M0 to M5, M0 being the workspace, CI and rules-loading PR); do not start a milestone before the previous one is merged. Exception: until binary fixtures exist in `corpus/fixtures/generated/`, do M2 and M3 first on the text corpus via `analyze_modules`. M5 always comes last.
 
 Never, in Lot 1: call an LLM, translate or convert VBA code, score compatibility with target suites, fill the `orientation` field, add network access or telemetry.
+
+## Current state of the repository
+
+Still the starter kit: no Cargo workspace yet, and `crates/`, `schema/rules/` (M0), `i18n/` (M4) and `web/` (M5) do not exist. Until M0 is merged, only the Python tools run. Until M4, CLI messages are English only; Fluent (`en`, `fr`) arrives with the rest of the CLI strings. The binary fixtures (`corpus/fixtures/generated/`, `malformed/`) were built on 2026-10-18 on branch `fixtures/initial`; once it is merged, the M2/M3-first exception no longer applies and M1 follows M0. Update this section in the PR that changes it.
 
 ## Non-negotiable engineering rules
 
@@ -37,20 +43,44 @@ i18n/en, i18n/fr        # Fluent .ftl files
 corpus/                 # test corpus: families/ (text samples), fixtures/ (binary), ground-truth/
 docs/                   # SPEC, ACCEPTANCE, ADRs, CORPUS-PLAN
 tools/rules-prototype/  # Python calibration prototype: reference only, never port it
+tools/fixtures/         # Build-Fixtures.ps1 (Windows + Excel only, never in CI), make_malformed.py
+LISEZMOI-KIT.md, PROMPT-*.md  # owner-facing kit notes and prompts, in French
 ```
 
+## How the pieces fit
+
+- `macroport-core` pipeline: container detection (OOXML zip, CFB/BIFF8) → MS-OVBA extraction (`dir`, `PROJECT` and module streams) → lexer → structural parser (logical lines, `With` resolution, constant folding, call graph) → metrics → rule engine → `Report`. Two entry points: `analyze(bytes, file_name)` and `analyze_modules(modules, file_name)`. The second skips the container layer (`container: "text_module"`): that is how M2 and M3 run on `corpus/families/` before binary fixtures exist.
+- Everything impure lives in the CLI: directory walking, `rayon`, output files, HTML and CSV rendering, Fluent, and the injected `generated_at` and `scan.duration_ms` (`--deterministic` fixes them for tests). `macroport-wasm` wraps `analyze` for one file; the web app only renders report JSON and aggregates single-file reports into a fleet report.
+- Evidence line numbers count every physical line as the file presents it, export headers, `Attribute` lines and the corpus header block included (SPEC section 5). Never renumber after skipping them.
+- Rules are embedded at build time and overridable with `--rules`. `corpus_slug` in `families.yaml` maps a family id (`01-formatting`) to the corpus folder and manifest `family` (`01-mise-en-forme`); A4 relies on it. Family 14 has no family rules: it is only scored against `corpus/ground-truth/security-expected.yaml` (A5).
+- `container_indicators` in `security.yaml` are raised by the extraction layer (M1), not by matchers; the YAML only holds their labels and severities.
+- A1 compares extracted source with Excel's own export of each module (`*.expected.bas|cls`, listed in `corpus/fixtures/fixtures.yaml`), not with the corpus text.
+
 ## Commands
+
+Available now. `-I` ignores user site-packages: install PyYAML in a venv and run that venv's `python -I`.
+
+```
+python3 -I corpus/tools/build_manifest.py   # rewrites corpus/manifest.json and .csv from corpus/families/*/manifest.json; exits 1 on any inconsistency
+python3 -I tools/rules-prototype/prototype.py . [--verbose] [--report out.json]   # baseline A4/A5 metrics of the rules (needs PyYAML)
+python3 -I tools/fixtures/make_malformed.py corpus/fixtures/generated corpus/fixtures/malformed   # needs the generated fixtures
+```
+
+Prototype baseline on rules v0.1.0: 74 samples, top-1 70 %, top-2 88 %, 17/17 expected security signals.
+
+From M0 on:
 
 ```
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --workspace
+cargo test -p macroport-core <name_filter>   # a single test or group
+cargo insta review                           # review snapshot diffs (cargo-insta)
 cargo deny check
 cargo run -p macroport-cli -- scan corpus/families -o target/out --format json,html,csv
 cargo run -p macroport-cli -- rules check
 wasm-pack build crates/macroport-wasm --target web
 (cd web && npm ci && npm run build && npm test)
-python3 -I tools/rules-prototype/prototype.py .   # baseline metrics of the rules
 ```
 
 ## Tests
@@ -59,7 +89,7 @@ python3 -I tools/rules-prototype/prototype.py .   # baseline metrics of the rule
 - Corpus tests compute A4 and A5 metrics and fail below thresholds; print the confusion matrix.
 - Every JSON produced in tests is validated against `schema/report.schema.json`.
 - Malformed fixtures and fuzz targets for every binary parser.
-- Do not edit `corpus/manifest.json`, `corpus/ground-truth/` or corpus samples to make a test pass. If you believe the ground truth is wrong, say so in the PR and let the owner decide.
+- Do not edit the corpus manifests (`corpus/families/*/manifest.json` and the root `corpus/manifest.json` and `.csv` generated from them), `corpus/ground-truth/` or corpus samples to make a test pass. If you believe the ground truth is wrong, say so in the PR and let the owner decide.
 
 ## Changing contracts
 
@@ -80,3 +110,17 @@ python3 -I tools/rules-prototype/prototype.py .   # baseline metrics of the rule
 ## When in doubt
 
 Stop and ask in the PR or issue rather than guessing on: scope (is it Lot 1?), contracts (schema, rules format), anything touching safety (execution, network, file writes), licences.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues of `linagora/macro-port`, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, each label named after its role (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
