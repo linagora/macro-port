@@ -4,7 +4,15 @@
 //! The lexer only cuts the text. A [`Token`] names a kind and the bytes it
 //! covers in the text it was cut from; only whitespace lies between two
 //! tokens, so nothing is dropped, and no token holds a copy of the text. What
-//! the text means is for the parser, and nothing in it is ever evaluated.
+//! the text means is for the parser, and nothing in it is ever evaluated. The
+//! physical line of a token is [`LogicalLine::line_at`] of its `start`.
+//!
+//! Lexing never fails: a character that starts no token is a
+//! [`TokenKind::Unknown`] one. It takes time linear in the text, which is read
+//! from left to right, and no lookahead that found nothing is made again.
+//! [`tokenize`] is the way in; the lazy reader behind it stays private.
+//!
+//! [`LogicalLine::line_at`]: super::LogicalLine::line_at
 
 use super::scan::{
     bracket_len, date_literal_len, is_ident_char, is_ident_start, is_space, string_len,
@@ -105,18 +113,21 @@ fn keyword(word: &str) -> Option<Keyword> {
         .binary_search_by(|(spelling, _)| spelling.bytes().cmp(lowered.clone()))
         .ok()
         .and_then(|index| KEYWORDS.get(index))
-        .map(|&(_, keyword)| keyword)
+        .map(|&(_, found)| found)
 }
 
 /// What a token is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
-    /// A name: `Foo`, `Chr$` with its type character, or `[Sheet 1]`.
+    /// A name: `Foo`, `Chr$` with its type character, or `[Sheet 1]`. A word
+    /// spelled like a keyword is a name after `.` or `!` (`.End`) and before
+    /// `:=` (`Type:=8`).
     Identifier,
-    /// A word that gives the structure of the code.
+    /// A word that gives the structure of the code, in any letter case.
     Keyword(Keyword),
     /// A string literal, quotes included. It runs to the end of the text when
-    /// the closing quote is missing.
+    /// the closing quote is missing, which VBA does not accept:
+    /// [`Token::string_value`] is `None` for it.
     String,
     /// A number: `42`, `1.5E3`, `10%`.
     Number,
@@ -132,7 +143,10 @@ pub enum TokenKind {
     Comma,
     /// `;`
     Semicolon,
-    /// `:`, which only a lone colon outside the statement separators leaves.
+    /// `:`. The logical lines are cut at the statement separators, so one
+    /// has hardly any: it shows in a text that was not cut, and where a
+    /// bracketed name runs over a continuation, which the line splitter reads
+    /// one physical line at a time.
     Colon,
     /// `:=`, which follows the name of a named argument.
     ColonEquals,
@@ -166,7 +180,14 @@ pub enum TokenKind {
     LessEqual,
     /// `>=` or `=>`
     GreaterEqual,
-    /// Any other character.
+    /// A comment, from its `'`, or from the `Rem` that starts a statement, to
+    /// the end of the text. The logical lines come without their comments,
+    /// but a `Rem` after `Then` or `Else` is left in them, and the line then
+    /// has no [`comment`](super::LogicalLine::comment) for it:
+    /// [`Token::comment_text`] gives what it says. The parser skips the
+    /// token.
+    Comment,
+    /// Any other character, or a `[` that no `]` follows.
     Unknown,
 }
 
@@ -207,56 +228,103 @@ impl Token {
         }
     }
 
+    /// Whether the token is an identifier called `name`, in any ASCII letter
+    /// case: the way to read the words that are not keywords, `Lib` and
+    /// `Alias` of a `Declare` or the `Error` of `On Error`.
+    pub fn is_name(&self, source: &str, name: &str) -> bool {
+        self.kind == TokenKind::Identifier && self.name(source).eq_ignore_ascii_case(name)
+    }
+
     /// What a string literal holds, with its quotes off and `""` read as `"`.
-    /// `None` for any other token.
+    /// `None` for any other token, and for a string whose closing quote is
+    /// missing: it is not a literal, and nothing is made of it.
     pub fn string_value(&self, source: &str) -> Option<String> {
         if self.kind != TokenKind::String {
             return None;
         }
         let text = self.text(source);
-        let inside = text.strip_prefix('"')?;
-        let closed = string_len(text) == Some(text.len());
-        let inside = if closed {
-            inside.strip_suffix('"').unwrap_or(inside)
-        } else {
-            inside
-        };
+        if string_len(text) != Some(text.len()) {
+            return None;
+        }
+        let inside = text.strip_prefix('"')?.strip_suffix('"')?;
         Some(inside.replace("\"\"", "\""))
+    }
+
+    /// What a comment says, as [`Comment::text`](super::Comment::text) does
+    /// for the comment a logical line was cut from: after its `'` or its
+    /// `Rem`, trimmed. `None` for any other token.
+    pub fn comment_text<'a>(&self, source: &'a str) -> Option<&'a str> {
+        if self.kind != TokenKind::Comment {
+            return None;
+        }
+        let text = self.text(source);
+        // `Rem` is three ASCII bytes, so the cut falls on a character boundary.
+        let said = text.strip_prefix('\'').or_else(|| text.get(3..))?;
+        Some(said.trim_matches(is_space))
     }
 }
 
 /// Reads the tokens of a text, from left to right.
-pub struct Lexer<'a> {
+struct Lexer<'a> {
     text: &'a str,
     at: usize,
-    /// Whether the last token ends an operand: a name, a literal or `)`. A
-    /// `.` that follows one reaches a member, and anywhere else it may start
-    /// a number.
-    after_operand: bool,
-    /// Whether the last token is `.` or `!`, after which every word is a name.
-    after_member: bool,
+    /// The kind of the last token: the context of the next one, since the
+    /// same characters mean different things after a name and after an
+    /// operator.
+    last: Option<TokenKind>,
     /// Whether a `]` may still follow: false once a search has found none.
     brackets: bool,
 }
 
 impl<'a> Lexer<'a> {
     /// A lexer for `text`, the text of a logical line.
-    pub fn new(text: &'a str) -> Self {
+    fn new(text: &'a str) -> Self {
         Self {
             text,
             at: 0,
-            after_operand: false,
-            after_member: false,
+            last: None,
             brackets: true,
         }
     }
 
-    /// The kind and the length in bytes of the token that starts `rest`,
-    /// which starts with `c`.
-    fn read(&mut self, c: char, rest: &str) -> (TokenKind, usize) {
-        let after = |len: usize| rest.get(len..).and_then(|text| text.chars().next());
+    /// Whether the last token ends an operand: a name, a literal or `)`. A
+    /// `.` that follows one reaches a member, and anywhere else it may start
+    /// a number.
+    fn after_operand(&self) -> bool {
+        matches!(
+            self.last,
+            Some(
+                TokenKind::Identifier
+                    | TokenKind::Number
+                    | TokenKind::String
+                    | TokenKind::Date
+                    | TokenKind::RightParen
+            )
+        )
+    }
+
+    /// Whether the last token is `.` or `!`, after which every word is a name.
+    fn after_member(&self) -> bool {
+        matches!(self.last, Some(TokenKind::Dot | TokenKind::Bang))
+    }
+
+    /// Whether a statement starts here: at the start of the text, after a
+    /// `:`, and after the `Then` or `Else` of a single-line `If`.
+    fn at_statement_start(&self) -> bool {
+        matches!(
+            self.last,
+            None | Some(TokenKind::Colon | TokenKind::Keyword(Keyword::Then | Keyword::Else))
+        )
+    }
+
+    /// The kind and the length in bytes of the token that starts `rest`, the
+    /// text from its first character, which is not blank.
+    fn read(&mut self, rest: &str) -> (TokenKind, usize) {
+        let c = rest.chars().next().unwrap_or_default();
+        let char_at = |len: usize| rest.get(len..).and_then(|tail| tail.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
+            '\'' => (TokenKind::Comment, rest.len()),
             '[' if self.brackets => match bracket_len(rest) {
                 Some(len) => (TokenKind::Identifier, len),
                 None => {
@@ -264,10 +332,12 @@ impl<'a> Lexer<'a> {
                     (TokenKind::Unknown, 1)
                 }
             },
-            _ if is_ident_start(c) || c == '_' => self.word(rest),
-            '0'..='9' => (TokenKind::Number, number(rest)),
-            '.' if !self.after_operand && after(1).is_some_and(|next| next.is_ascii_digit()) => {
-                (TokenKind::Number, number(rest))
+            _ if is_ident_start(c) => self.word(rest),
+            '0'..='9' => (TokenKind::Number, number_len(rest)),
+            '.' if !self.after_operand()
+                && char_at(1).is_some_and(|next| next.is_ascii_digit()) =>
+            {
+                (TokenKind::Number, number_len(rest))
             }
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
@@ -285,19 +355,19 @@ impl<'a> Lexer<'a> {
             '\\' => (TokenKind::Backslash, 1),
             '^' => (TokenKind::Caret, 1),
             '&' => (TokenKind::Ampersand, 1),
-            ':' if after(1) == Some('=') => (TokenKind::ColonEquals, 2),
+            ':' if char_at(1) == Some('=') => (TokenKind::ColonEquals, 2),
             ':' => (TokenKind::Colon, 1),
-            '=' => match after(1) {
+            '=' => match char_at(1) {
                 Some('<') => (TokenKind::LessEqual, 2),
                 Some('>') => (TokenKind::GreaterEqual, 2),
                 _ => (TokenKind::Equals, 1),
             },
-            '<' => match after(1) {
+            '<' => match char_at(1) {
                 Some('>') => (TokenKind::NotEqual, 2),
                 Some('=') => (TokenKind::LessEqual, 2),
                 _ => (TokenKind::Less, 1),
             },
-            '>' => match after(1) {
+            '>' => match char_at(1) {
                 Some('<') => (TokenKind::NotEqual, 2),
                 Some('=') => (TokenKind::GreaterEqual, 2),
                 _ => (TokenKind::Greater, 1),
@@ -306,23 +376,27 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// The word that starts `rest`: a keyword, or an identifier with its type
-    /// character. After `.` or `!`, and before `:=`, a word is always a name:
-    /// `.End`, `Type:=8`.
+    /// The word that starts `rest`: a keyword, a `Rem` comment, or an
+    /// identifier with its type character. After `.` or `!`, and before `:=`,
+    /// a word is always a name: `.End`, `Type:=8`.
     fn word(&self, rest: &str) -> (TokenKind, usize) {
         let end = rest.find(|c: char| !is_ident_char(c)).unwrap_or(rest.len());
         let word = rest.get(..end).unwrap_or_default();
-        let after = rest.get(end..).unwrap_or_default();
-        let named_argument = after.trim_start_matches(is_space).starts_with(":=");
-        if !self.after_member
-            && !named_argument
-            && let Some(keyword) = keyword(word)
-        {
-            return (TokenKind::Keyword(keyword), end);
+        let tail = rest.get(end..).unwrap_or_default();
+        if !self.after_member() {
+            if self.at_statement_start() && word.eq_ignore_ascii_case("rem") {
+                return (TokenKind::Comment, rest.len());
+            }
+            let named_argument = || tail.trim_start_matches(is_space).starts_with(":=");
+            if let Some(found) = keyword(word)
+                && !named_argument()
+            {
+                return (TokenKind::Keyword(found), end);
+            }
         }
         (
             TokenKind::Identifier,
-            end.saturating_add(type_character(after)),
+            end.saturating_add(type_character_len(tail)),
         )
     }
 }
@@ -331,25 +405,15 @@ impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
-        let rest = self.text.get(self.at..)?;
-        let gap = rest
-            .len()
-            .saturating_sub(rest.trim_start_matches(is_space).len());
-        let start = self.at.saturating_add(gap);
-        let rest = self.text.get(start..)?;
-        let c = rest.chars().next()?;
-        let (kind, len) = self.read(c, rest);
-        let end = start.saturating_add(len);
+        let rest = self.text.get(self.at..)?.trim_start_matches(is_space);
+        let first = rest.chars().next()?;
+        // `rest` is the end of the text, so it starts where its length says.
+        let start = self.text.len().saturating_sub(rest.len());
+        let (kind, len) = self.read(rest);
+        // Every token covers its first character: the lexer always advances.
+        let end = start.saturating_add(len.max(first.len_utf8()));
         self.at = end;
-        self.after_operand = matches!(
-            kind,
-            TokenKind::Identifier
-                | TokenKind::Number
-                | TokenKind::String
-                | TokenKind::Date
-                | TokenKind::RightParen
-        );
-        self.after_member = matches!(kind, TokenKind::Dot | TokenKind::Bang);
+        self.last = Some(kind);
         Some(Token { kind, start, end })
     }
 }
@@ -365,13 +429,13 @@ fn starts_operand(c: char) -> bool {
     is_ident_start(c) || c.is_ascii_digit() || matches!(c, '"' | '(' | '[' | '.' | '_')
 }
 
-/// Bytes of the type character that opens `after`, the text that follows a
+/// Bytes of the type character that opens `tail`, the text that follows a
 /// name or a number: 0 or 1. `$`, `%` and `@` always are one. `!`, `&` and
 /// `#` are when what follows could not be an operand or a file number:
 /// `rs!Name` reaches a member, `a&b` joins strings and `Print#1` opens a file
 /// number.
-fn type_character(after: &str) -> usize {
-    let mut chars = after.chars();
+fn type_character_len(tail: &str) -> usize {
+    let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
         return 0;
     };
@@ -387,7 +451,7 @@ fn type_character(after: &str) -> usize {
 
 /// Bytes of the number that starts `rest`: digits, a fraction, an exponent
 /// and a type character.
-fn number(rest: &str) -> usize {
+fn number_len(rest: &str) -> usize {
     let bytes = rest.as_bytes();
     let digits = |from: usize| {
         bytes.get(from..).map_or(0, |tail| {
@@ -411,5 +475,86 @@ fn number(rest: &str) -> usize {
             end = first.saturating_add(exponent);
         }
     }
-    end.saturating_add(type_character(rest.get(end..).unwrap_or_default()))
+    end.saturating_add(type_character_len(rest.get(end..).unwrap_or_default()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_keyword_table_is_in_order_for_the_search() {
+        for pair in KEYWORDS.windows(2) {
+            assert!(pair[0].0 < pair[1].0, "{} before {}", pair[0].0, pair[1].0);
+        }
+        for (spelling, _) in KEYWORDS {
+            assert!(
+                spelling.bytes().all(|b| b.is_ascii_lowercase()),
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_keyword_is_found_in_any_letter_case() {
+        for &(spelling, expected) in KEYWORDS {
+            let mut letters = spelling.chars();
+            let title: String = letters
+                .next()
+                .map(|first| first.to_ascii_uppercase())
+                .into_iter()
+                .chain(letters)
+                .collect();
+            let alternating: String = spelling
+                .chars()
+                .zip([true, false].into_iter().cycle())
+                .map(|(c, upper)| if upper { c.to_ascii_uppercase() } else { c })
+                .collect();
+            for word in [spelling, &spelling.to_uppercase(), &title, &alternating] {
+                assert_eq!(keyword(word), Some(expected), "{word}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_longer_word_a_shorter_word_or_another_script_is_no_keyword() {
+        for word in ["", "i", "ifx", "xif", "iff", "elsei", "wit", "İf", "ıf"] {
+            assert_eq!(keyword(word), None, "{word}");
+        }
+    }
+
+    #[test]
+    fn a_comment_says_what_follows_its_apostrophe_or_its_rem() {
+        for (text, said) in [
+            ("' a note ", "a note"),
+            ("'", ""),
+            ("Rem a note", "a note"),
+            ("REM", ""),
+            ("rem é", "é"),
+        ] {
+            let tokens = tokenize(text);
+            assert_eq!(tokens.len(), 1, "{text:?}");
+            assert_eq!(tokens[0].comment_text(text), Some(said), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn the_rem_of_a_single_line_if_is_a_comment_the_line_does_not_hold() {
+        let text = "If a Then Rem hi";
+        let said: Vec<_> = tokenize(text)
+            .iter()
+            .filter_map(|token| token.comment_text(text))
+            .collect();
+        assert_eq!(said, ["hi"]);
+    }
+
+    #[test]
+    fn only_a_comment_says_something() {
+        let text = "x = \"a\" 'b";
+        let said: Vec<_> = tokenize(text)
+            .iter()
+            .map(|token| token.comment_text(text))
+            .collect();
+        assert_eq!(said, [None, None, None, Some("b")]);
+    }
 }
