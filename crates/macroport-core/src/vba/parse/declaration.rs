@@ -116,9 +116,10 @@ pub(super) fn block_end(kind: &DeclarationKind) -> Option<Keyword> {
     }
 }
 
-/// Whether the statement `tokens` reads `Word As ...`. A `Type` takes it for a
-/// member whatever `Word` is, a keyword included: Excel exports `Type As Long`
-/// as a member (corpus sample 13-06, line 105).
+/// Whether the statement `tokens` reads `Word As ...`. A `Type` or an `Enum`
+/// takes it for a member whatever `Word` is, a keyword included: Excel's own
+/// export of the corpus sample 13-06 has `Type As Long` as a member (lines 100
+/// and 136 of its `.expected.cls` files).
 pub(super) fn reads_as_member(tokens: &[Token]) -> bool {
     tokens
         .get(1)

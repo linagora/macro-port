@@ -152,7 +152,7 @@ pub fn parse(source: &SourceLines) -> ParsedModule {
         source,
         module: ParsedModule::default(),
         open: None,
-        members: None,
+        block: None,
         open_ifs: Vec::new(),
     };
     parser.run();
@@ -260,7 +260,7 @@ impl Open {
 }
 
 /// A `Type` or an `Enum` whose members are being read, outside any procedure.
-struct Members {
+struct OpenBlock {
     /// `DeclarationKind::Type` or `DeclarationKind::Enum`.
     kind: DeclarationKind,
     /// The word after the `End` that closes it.
@@ -272,10 +272,10 @@ struct Members {
     last: usize,
 }
 
-impl Members {
-    /// Takes the logical line `index`, made of `tokens`, as a member, and tells
-    /// whether it is the `End` that closes the block.
-    fn take(&mut self, index: usize, tokens: &[Token]) -> bool {
+impl OpenBlock {
+    /// Adds the logical line `index`, made of `tokens`, to the block as a
+    /// member, and tells whether it is the `End` that closes the block.
+    fn add(&mut self, index: usize, tokens: &[Token]) -> bool {
         self.last = index;
         end_word(tokens) == Some(self.closer)
     }
@@ -296,7 +296,7 @@ struct Parser<'a> {
     open: Option<Open>,
     /// The `Type` or the `Enum` being read, if there is one. Never together
     /// with a procedure: the header of a procedure ends it.
-    members: Option<Members>,
+    block: Option<OpenBlock>,
     /// The logical lines of the `#If` directives that are not closed yet.
     open_ifs: Vec<usize>,
 }
@@ -316,7 +316,7 @@ impl Parser<'_> {
             }
         }
         self.close_unended();
-        self.close_unended_members();
+        self.close_unended_block();
     }
 
     /// Reads a line of code: a member of the `Type` or the `Enum` being read, a
@@ -350,9 +350,9 @@ impl Parser<'_> {
     /// Takes the line as a member of the `Type` or the `Enum` being read, if
     /// there is one, and tells whether it did. The `End` that closes the block
     /// is its last member. A line that cannot be a member, the header of a
-    /// procedure or a statement that `declared` something, is read as what it
-    /// is, and ends a block that has no end. Unless it reads `Word As ...`,
-    /// which is a member whatever `Word` is.
+    /// procedure or a statement that `declared` something, is not taken: it
+    /// ends a block that has no end, and is read as what it is. Unless it
+    /// reads `Word As ...`, which is a member whatever `Word` is.
     fn take_member(
         &mut self,
         index: usize,
@@ -360,36 +360,36 @@ impl Parser<'_> {
         declared: bool,
         tokens: &[Token],
     ) -> bool {
-        let Some(members) = self.members.as_mut() else {
+        let Some(block) = self.block.as_mut() else {
             return false;
         };
-        let apart = declared || matches!(found, Shape::Header(_));
-        if apart && !reads_as_member(tokens) {
+        let ends_block =
+            (declared || matches!(found, Shape::Header(_))) && !reads_as_member(tokens);
+        if ends_block {
+            self.close_unended_block();
             return false;
         }
-        let closes = members.take(index, tokens);
+        let closes = block.add(index, tokens);
         if let Shape::Directive(directive) = found {
             // A member like the others, but the `#If` blocks must follow it, or
             // the forms of a procedure after it would not be told.
             self.directive(index, *directive);
         }
         if closes {
-            self.close_members();
+            self.close_block();
         }
         true
     }
 
     /// Lists the declaration `kind` that the statement makes, if it stands
-    /// outside any procedure. A `Type` or an `Enum` only opens its block, and
-    /// ends the one that has no end.
+    /// outside any procedure. A `Type` or an `Enum` only opens its block.
     fn declare(&mut self, kind: DeclarationKind, index: usize, line: &LogicalLine) {
-        self.close_unended_members();
         if self.open.is_some() {
             return;
         }
         match block_end(&kind) {
             Some(closer) => {
-                self.members = Some(Members {
+                self.block = Some(OpenBlock {
                     kind,
                     closer,
                     first: index,
@@ -406,17 +406,17 @@ impl Parser<'_> {
     }
 
     /// Lists the block being read, up to the line read last.
-    fn close_members(&mut self) {
-        if let Some(members) = self.members.take() {
-            self.module.declarations.push(members.into_declaration());
+    fn close_block(&mut self) {
+        if let Some(block) = self.block.take() {
+            self.module.declarations.push(block.into_declaration());
         }
     }
 
     /// Closes the block being read, if there is one, where its members stop.
-    fn close_unended_members(&mut self) {
-        if let Some(line) = self.members.as_ref().map(|members| members.line) {
+    fn close_unended_block(&mut self) {
+        if let Some(line) = self.block.as_ref().map(|block| block.line) {
             self.recover_in_module(RecoveryKind::UnclosedBlock, line);
-            self.close_members();
+            self.close_block();
         }
     }
 
@@ -439,7 +439,6 @@ impl Parser<'_> {
     /// procedure, and the body is shared. Elsewhere the procedure still open
     /// has no end, and this header opens another one.
     fn header(&mut self, index: usize, line: &LogicalLine, header: Header) {
-        self.close_unended_members();
         if let Some(open) = self.open.as_mut().filter(|open| open.form_expected) {
             open.form(index, line, &header);
             return;
