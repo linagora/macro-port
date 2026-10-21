@@ -465,6 +465,27 @@ fn a_hash_right_after_a_name_is_its_type_character() {
 }
 
 #[test]
+fn a_dot_before_a_digit_starts_a_number_and_before_a_name_reaches_a_member() {
+    check(&[
+        ("x = .5", "Identifier[x] Equals[=] Number[.5]"),
+        ("MsgBox .5", "Identifier[MsgBox] Number[.5]"),
+        (
+            "f(.5, .25)",
+            "Identifier[f] LeftParen[(] Number[.5] Comma[,] Number[.25] RightParen[)]",
+        ),
+        (
+            "Foo(1).Bar",
+            "Identifier[Foo] LeftParen[(] Number[1] RightParen[)] Dot[.] Identifier[Bar]",
+        ),
+        (
+            "If a Then .Name = 1",
+            "Keyword(If)[If] Identifier[a] Keyword(Then)[Then] Dot[.] Identifier[Name] Equals[=] Number[1]",
+        ),
+        ("x.Y .5", "Identifier[x] Dot[.] Identifier[Y] Number[.5]"),
+    ]);
+}
+
+#[test]
 fn hexadecimal_and_octal_literals_are_numbers() {
     check(&[
         ("&HFF", "Number[&HFF]"),
