@@ -116,14 +116,38 @@ pub(super) fn block_end(kind: &DeclarationKind) -> Option<Keyword> {
     }
 }
 
-/// Whether the statement `tokens` reads `Word As ...`. A `Type` or an `Enum`
-/// takes it for a member whatever `Word` is, a keyword included: Excel's own
-/// export of the corpus sample 13-06 has `Type As Long` as a member (lines 100
-/// and 136 of its `.expected.cls` files).
+/// Whether the statement `tokens` reads `Word As ...` or `Word(...) As ...`. A
+/// `Type` or an `Enum` takes it for a member whatever `Word` is, a keyword
+/// included: Excel's own export of the corpus sample 13-06 has `Type As Long`
+/// as a member (lines 100 and 136 of its `.expected.cls` files), and a member
+/// that is an array has its subscripts between its name and its `As`, as in
+/// `Type(0 To 3) As Byte`.
 pub(super) fn reads_as_member(tokens: &[Token]) -> bool {
-    tokens
-        .get(1)
-        .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::As))
+    let mut rest = tokens.iter().skip(1).map(|token| token.kind);
+    match rest.next() {
+        Some(TokenKind::Keyword(Keyword::As)) => true,
+        Some(TokenKind::LeftParen) => {
+            // Up to the parenthesis that closes the subscripts, nested ones
+            // included, and then the `As`.
+            let mut depth = 1usize;
+            for kind in rest.by_ref() {
+                match kind {
+                    TokenKind::LeftParen => depth = depth.saturating_add(1),
+                    TokenKind::RightParen => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // The token after the parenthesis that closes them: none when it
+            // never comes.
+            rest.next() == Some(TokenKind::Keyword(Keyword::As))
+        }
+        _ => false,
+    }
 }
 
 /// The words that give a scope to a declaration, or open a variable one.
