@@ -19,14 +19,27 @@
 //! and then the body, which the two forms share. The `#If` of a form may stand
 //! in a branch of another. The name, the kind and the parameters are the ones
 //! of the first form; a form that names nothing is recovered all the same.
+//!
+//! The statements outside any procedure that declare or set something are
+//! listed in [`ParsedModule::declarations`], in source order: `Option`,
+//! `Declare`, `Const`, variables, `Type`, `Enum`, `Implements`, `Event`,
+//! `WithEvents` and the conditional-compilation directives. A `Type` or an
+//! `Enum` is one declaration up to its `End`, and its members declare nothing.
+//! Any other statement outside a procedure, such as the `Set` of a sample cut
+//! from a longer macro, is neither a declaration nor an error.
 
+mod declaration;
 mod shape;
 
 use std::ops::Range;
 
-use self::shape::{Directive, EndOf, Header, Shape, shape};
-use super::{LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
+use self::declaration::{block_end, declaration, ends};
+use self::shape::{EndOf, Header, Shape, shape};
+use super::{Keyword, LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
 use crate::report::{ProcedureKind, Visibility};
+
+pub use self::declaration::{Declaration, DeclarationKind, OptionKind};
+pub use self::shape::Directive;
 
 /// The most recoveries kept for the module and for each procedure. The first
 /// ones tell where the code stops parsing, which is what a reader looks for,
@@ -47,6 +60,10 @@ pub enum RecoveryKind {
     /// A terminator with nothing to close: an `End Sub`, `End Function` or
     /// `End Property` outside a procedure.
     StrayTerminator,
+    /// A block that has no end. So far: a `Type` or an `Enum` with no
+    /// `End Type` or `End Enum` before the header of a procedure or the end of
+    /// the module. Found at its opener.
+    UnclosedBlock,
     /// A statement that does not parse as what it starts like. So far: the
     /// header of a procedure that names nothing, such as `Sub (a, b)` or
     /// `Sub 123()`. Found at the statement.
@@ -106,6 +123,9 @@ pub struct ParsedModule {
     /// The procedures in source order, their lines never overlapping. A
     /// logical line that is in none of them stands outside any procedure.
     pub procedures: Vec<Procedure>,
+    /// The declarations outside any procedure, in source order. A directive
+    /// between the forms of a procedure is a line of the procedure.
+    pub declarations: Vec<Declaration>,
     /// What the parser stepped over outside any procedure, the first
     /// [`MAX_RECOVERIES`].
     pub recoveries: Vec<Recovery>,
@@ -126,6 +146,7 @@ pub fn parse(source: &SourceLines) -> ParsedModule {
         source,
         module: ParsedModule::default(),
         open: None,
+        body: None,
         open_ifs: Vec::new(),
     };
     parser.run();
@@ -232,10 +253,37 @@ impl Open {
     }
 }
 
+/// A `Type` or an `Enum` whose members are being read, outside any procedure.
+struct Body {
+    /// `DeclarationKind::Type` or `DeclarationKind::Enum`.
+    kind: DeclarationKind,
+    /// The word after the `End` that closes it.
+    closer: Keyword,
+    /// The logical line of its opener, and the physical line it starts on.
+    first: usize,
+    line: u32,
+    /// The last logical line of code read in it.
+    last: usize,
+}
+
+impl Body {
+    /// The declaration that the block makes, up to the line read last.
+    fn into_declaration(self) -> Declaration {
+        Declaration {
+            kind: self.kind,
+            line: self.line,
+            lines: self.first..self.last.saturating_add(1),
+        }
+    }
+}
+
 struct Parser<'a> {
     source: &'a SourceLines,
     module: ParsedModule,
     open: Option<Open>,
+    /// The `Type` or the `Enum` being read, if there is one. Never together
+    /// with a procedure: the header of a procedure ends it.
+    body: Option<Body>,
     /// The logical lines of the `#If` directives that are not closed yet.
     open_ifs: Vec<usize>,
 }
@@ -255,19 +303,99 @@ impl Parser<'_> {
             }
         }
         self.close_unended();
+        self.close_unended_body();
     }
 
-    /// Reads a line of code: a procedure header, an end, a directive, or a
-    /// statement.
+    /// Reads a line of code: a member of the `Type` or the `Enum` being read, a
+    /// procedure header, an end, a directive, or a statement.
     fn code(&mut self, index: usize, line: &LogicalLine, tokens: &[Token]) {
-        match shape(tokens, &line.text) {
+        let found = shape(tokens, &line.text);
+        if self.member(index, &found, tokens) {
+            return;
+        }
+        match found {
             Shape::Header(header) => self.header(index, line, header),
             Shape::End(end) => self.end(index, line, end),
             Shape::Directive(directive) => {
                 self.directive(index, directive);
                 self.touch(index, line);
+                self.declare(DeclarationKind::Directive(directive), index, line, tokens);
             }
-            Shape::Statement => self.touch(index, line),
+            Shape::Statement => {
+                self.touch(index, line);
+                if let Some(kind) = declaration(tokens, &line.text) {
+                    self.declare(kind, index, line, tokens);
+                }
+            }
+        }
+    }
+
+    /// Takes the line as part of the `Type` or the `Enum` being read, if there
+    /// is one: a member, or the `End` that closes the block. Whether it did.
+    /// The header of a procedure is neither: the block has no end, and the
+    /// header is read as what it is.
+    fn member(&mut self, index: usize, found: &Shape, tokens: &[Token]) -> bool {
+        if self.body.is_none() {
+            return false;
+        }
+        if matches!(found, Shape::Header(_)) {
+            self.close_unended_body();
+            return false;
+        }
+        if let Some(body) = self.body.as_mut() {
+            body.last = index;
+            if ends(tokens, body.closer) {
+                self.close_body();
+            }
+        }
+        true
+    }
+
+    /// Lists the declaration `kind` that the statement makes, if it stands
+    /// outside any procedure. A `Type` or an `Enum` only opens its block.
+    fn declare(
+        &mut self,
+        kind: DeclarationKind,
+        index: usize,
+        line: &LogicalLine,
+        tokens: &[Token],
+    ) {
+        if self.open.is_some() {
+            return;
+        }
+        let start = tokens
+            .first()
+            .map_or(line.line, |token| line.line_at(token.start));
+        match block_end(&kind) {
+            Some(closer) => {
+                self.body = Some(Body {
+                    kind,
+                    closer,
+                    first: index,
+                    line: start,
+                    last: index,
+                });
+            }
+            None => self.module.declarations.push(Declaration {
+                kind,
+                line: start,
+                lines: index..index.saturating_add(1),
+            }),
+        }
+    }
+
+    /// Lists the block being read, up to the line read last.
+    fn close_body(&mut self) {
+        if let Some(body) = self.body.take() {
+            self.module.declarations.push(body.into_declaration());
+        }
+    }
+
+    /// Closes the block being read, if there is one, where its members stop.
+    fn close_unended_body(&mut self) {
+        if let Some(line) = self.body.as_ref().map(|body| body.line) {
+            self.recover_in_module(RecoveryKind::UnclosedBlock, line);
+            self.close_body();
         }
     }
 
@@ -314,6 +442,7 @@ impl Parser<'_> {
                     open.end_if_of(frame);
                 }
             }
+            Directive::Const => {}
         }
     }
 

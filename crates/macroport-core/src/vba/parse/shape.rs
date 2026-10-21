@@ -46,8 +46,8 @@ impl EndOf {
 }
 
 /// A conditional-compilation directive.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Directive {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Directive {
     /// `#If`
     If,
     /// `#ElseIf`
@@ -56,6 +56,8 @@ pub(super) enum Directive {
     Else,
     /// `#End If`
     EndIf,
+    /// `#Const`
+    Const,
 }
 
 /// What a logical line of code is.
@@ -80,7 +82,7 @@ pub(super) fn shape(tokens: &[Token], text: &str) -> Shape {
     }
 }
 
-/// `#If`, `#ElseIf`, `#Else` or `#End If`.
+/// `#If`, `#ElseIf`, `#Else`, `#End If` or `#Const`.
 fn directive(tokens: &[Token]) -> Option<Directive> {
     let [hash, word, rest @ ..] = tokens else {
         return None;
@@ -99,6 +101,7 @@ fn directive(tokens: &[Token]) -> Option<Directive> {
         {
             Some(Directive::EndIf)
         }
+        TokenKind::Keyword(Keyword::Const) => Some(Directive::Const),
         _ => None,
     }
 }
