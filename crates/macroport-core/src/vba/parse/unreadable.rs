@@ -30,11 +30,7 @@ pub(super) fn unreadable(tokens: &[Token], text: &str) -> Option<usize> {
 fn broken(tokens: &[Token], text: &str) -> Option<usize> {
     tokens
         .iter()
-        .find(|token| match token.kind {
-            TokenKind::Unknown => true,
-            TokenKind::String => token.string_value(text).is_none(),
-            _ => false,
-        })
+        .find(|token| token.kind == TokenKind::Unknown || token.is_unclosed_string(text))
         .map(|token| token.start)
 }
 
