@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The structural parser on hostile text (CLAUDE.md: every input is hostile).
 //! The work must grow with the number of lines and no more: a procedure with
-//! no end must not send the parser looking for one in the lines that follow,
-//! header after header. Linear time shows on the clock only, so the limit is
-//! set far above what a single pass takes and far below what a second look at
-//! the lines read so far, at each line, would take on modules this long.
+//! no end, or a `Type` with none, must not send the parser looking for one in
+//! the lines that follow, header after header. Linear time shows on the clock
+//! only, so the limit is set far above what a single pass takes and far below
+//! what a second look at the lines read so far, at each line, would take on
+//! modules this long.
 
 // clippy.toml keeps the clock out of the core, not out of its tests.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
@@ -34,27 +35,48 @@ fn parse_in_time(text: &str) -> ParsedModule {
 
 #[test]
 fn a_module_of_one_repeated_line_is_read_in_linear_time() {
-    // The line, the procedures read from it and the recoveries of the module.
+    // The text to repeat, the procedures and the declarations read from it, and
+    // the recoveries of the module.
     let cases = [
         // No procedure ends: each header closes the one before it.
-        ("Sub a()", LINES, 0),
-        ("Property Get a()", LINES, 0),
+        ("Sub a()", LINES, 0, 0),
+        ("Property Get a()", LINES, 0, 0),
         // A header that names nothing is a header all the same.
-        ("Sub", LINES, 0),
+        ("Sub", LINES, 0, 0),
         // Nothing opens, so each end is stray, and only the first are kept.
-        ("End Sub", 0, MAX_RECOVERIES),
-        ("End Property", 0, MAX_RECOVERIES),
+        ("End Sub", 0, 0, MAX_RECOVERIES),
+        ("End Property", 0, 0, MAX_RECOVERIES),
         // Not headers and not ends.
-        ("x = 1", 0, 0),
-        ("' comment", 0, 0),
-        ("Label:", 0, 0),
-        ("Public Static", 0, 0),
-        ("Property", 0, 0),
-        ("End", 0, 0),
+        ("x = 1", 0, 0, 0),
+        ("' comment", 0, 0, 0),
+        ("Label:", 0, 0, 0),
+        ("Public Static", 0, 0, 0),
+        ("Property", 0, 0, 0),
+        ("End", 0, 0, 0),
+        // Declarations, one for each line. Directives with nothing to match
+        // are declarations too, and every `#If` stays open.
+        ("Option Explicit", 0, LINES, 0),
+        ("Dim a", 0, LINES, 0),
+        ("Public Declare Function F Lib \"x\" ()", 0, LINES, 0),
+        ("#If X Then", 0, LINES, 0),
+        ("#Else", 0, LINES, 0),
+        ("#End If", 0, LINES, 0),
+        // Four lines, `LINES` times, no `#End If`: the second header of each
+        // unit is the other form of the first, and the next unit opens a
+        // procedure of its own. Only the first `#If` stands outside one.
+        ("#If X Then\nSub a()\n#Else\nSub a()", LINES, 1, 0),
+        // No `End` closes the block: the lines that follow are its members.
+        ("Type T", 0, 1, 1),
+        ("Enum E", 0, 1, 1),
+        ("End Type", 0, 0, 0),
+        // The header of a procedure closes the block: only the first
+        // recoveries are kept.
+        ("Type T\nSub a()\nEnd Sub", LINES, LINES, MAX_RECOVERIES),
     ];
-    for (line, procedures, recoveries) in cases {
+    for (line, procedures, declarations, recoveries) in cases {
         let module = parse_in_time(&format!("{line}\n").repeat(LINES));
         assert_eq!(module.procedures.len(), procedures, "{line:?}");
+        assert_eq!(module.declarations.len(), declarations, "{line:?}");
         assert_eq!(module.recoveries.len(), recoveries, "{line:?}");
     }
 }

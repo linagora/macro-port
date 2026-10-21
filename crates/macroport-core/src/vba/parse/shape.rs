@@ -46,8 +46,8 @@ impl EndOf {
 }
 
 /// A conditional-compilation directive.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Directive {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Directive {
     /// `#If`
     If,
     /// `#ElseIf`
@@ -69,8 +69,7 @@ pub(super) enum Shape {
 }
 
 /// What the statement `tokens`, cut from `text`, is. A directive is told by its
-/// leading `#`, so that the `Else` and the `End If` of `#Else` and `#End If`
-/// are read as no clause and no terminator of a block.
+/// leading `#`, before anything else.
 pub(super) fn shape(tokens: &[Token], text: &str) -> Shape {
     if let Some(directive) = directive(tokens) {
         Shape::Directive(directive)
@@ -85,7 +84,7 @@ pub(super) fn shape(tokens: &[Token], text: &str) -> Shape {
 
 /// `#If`, `#ElseIf`, `#Else`, `#End If` or `#Const`.
 fn directive(tokens: &[Token]) -> Option<Directive> {
-    let [hash, word, ..] = tokens else {
+    let [hash, word, rest @ ..] = tokens else {
         return None;
     };
     if hash.kind != TokenKind::Hash {
@@ -95,7 +94,13 @@ fn directive(tokens: &[Token]) -> Option<Directive> {
         TokenKind::Keyword(Keyword::If) => Some(Directive::If),
         TokenKind::Keyword(Keyword::ElseIf) => Some(Directive::ElseIf),
         TokenKind::Keyword(Keyword::Else) => Some(Directive::Else),
-        TokenKind::Keyword(Keyword::End) => Some(Directive::EndIf),
+        TokenKind::Keyword(Keyword::End)
+            if rest
+                .first()
+                .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::If)) =>
+        {
+            Some(Directive::EndIf)
+        }
         TokenKind::Keyword(Keyword::Const) => Some(Directive::Const),
         _ => None,
     }
