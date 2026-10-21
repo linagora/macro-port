@@ -39,7 +39,8 @@ const PACKAGE_RELATIONSHIPS: &str = "_rels/.rels";
 const MAX_PART_NAME: usize = 1024;
 
 /// The container indicator of `rules/security.yaml` for Excel 4.0 macro sheets.
-const XLM_MACROSHEET: &str = "sec.xlm-macrosheet";
+/// The caller raises it for a compound file too: see [`OoxmlPackage::indicators`].
+pub(crate) const XLM_MACROSHEET: &str = "sec.xlm-macrosheet";
 
 /// The container indicator of `rules/security.yaml` for a VBA project in a
 /// package that is declared as a workbook without macros.
