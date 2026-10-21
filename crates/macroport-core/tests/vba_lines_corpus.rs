@@ -42,7 +42,8 @@ fn pieces(line: &LogicalLine) -> Vec<(u32, &str)> {
 /// The samples end their lines with LF, and the exports of Excel with CR LF:
 /// `str::lines` reads both. Each piece of code must open the physical line it
 /// is attributed to, so a line number that is off by one is caught unless the
-/// next line opens with the same code.
+/// next line opens with the same code. After a `:` it need only be found in
+/// the line.
 #[test]
 fn every_logical_line_points_to_its_first_physical_line() {
     for dir in ["families", "fixtures/generated"] {
@@ -66,9 +67,17 @@ fn every_logical_line_points_to_its_first_physical_line() {
                 assert!(ordered, "{path}: {line:?}");
                 previous = line.line;
                 match line.kind {
-                    LogicalKind::Code => {
-                        for (number, piece) in pieces(line) {
-                            assert!(at(number).starts_with(piece), "{path}: {number} {piece:?}");
+                    LogicalKind::Code | LogicalKind::Label => {
+                        for (index, (number, piece)) in pieces(line).into_iter().enumerate() {
+                            // After a `:` or a label, the statement starts
+                            // inside its physical line.
+                            let inside = index == 0 && line.after_separator;
+                            let found = if inside {
+                                at(number).contains(piece)
+                            } else {
+                                at(number).starts_with(piece)
+                            };
+                            assert!(found, "{path}: {number} {piece:?}");
                         }
                     }
                     LogicalKind::CommentOnly => {
@@ -88,35 +97,46 @@ fn every_logical_line_points_to_its_first_physical_line() {
     }
 }
 
-/// Every physical line is blank, skipped or part of one logical line, and the
-/// runs of skipped lines are ordered and do not overlap anything.
+/// Flags the physical lines `first` to `last` (1-based).
+fn mark(flags: &mut [bool], first: u32, last: u32) {
+    for number in first..=last {
+        if let Some(flag) = flags.get_mut((number as usize).saturating_sub(1)) {
+            *flag = true;
+        }
+    }
+}
+
+/// Every physical line is blank, skipped or part of a logical line, never
+/// both skipped and part of one, and the skipped runs are ordered. Two logical
+/// lines share a physical line only when the later follows the earlier in one
+/// chain, which `after_separator` says.
 #[test]
 fn every_physical_line_is_accounted_for() {
     for dir in ["families", "fixtures/generated"] {
         for (path, text) in samples(dir) {
             let lines = split_lines(&text).expect("lines");
-            let mut owner = vec![0u32; lines.physical_lines as usize];
-            let mut claim = |first: u32, last: u32| {
-                for number in first..=last {
-                    let slot = owner.get_mut((number as usize).saturating_sub(1));
-                    let slot = slot.expect("a line of the text");
-                    *slot = slot.saturating_add(1);
-                }
-            };
+            let count = lines.physical_lines as usize;
+            let (mut skipped, mut code) = (vec![false; count], vec![false; count]);
             let mut previous = 0;
             for run in &lines.skipped {
-                assert!(previous < run.first && run.first <= run.last, "{path}");
+                let ordered = previous < run.first && run.first <= run.last;
+                assert!(ordered && run.last <= lines.physical_lines, "{path}");
                 previous = run.last;
-                claim(run.first, run.last);
+                mark(&mut skipped, run.first, run.last);
             }
+            let mut end = 0;
             for line in &lines.logical {
-                claim(line.line, line.end_line);
+                let shares = line.line <= end;
+                assert!(!shares || line.after_separator, "{path}: {line:?}");
+                end = line.end_line;
+                mark(&mut code, line.line, line.end_line);
             }
-            for (number, (count, physical)) in owner.iter().zip(text.lines()).enumerate() {
+            let flags = skipped.iter().zip(&code).zip(text.lines());
+            for (number, ((skip, held), physical)) in flags.enumerate() {
+                let line = number + 1;
+                assert!(!(*skip && *held), "{path}: line {line} is skipped and code");
                 let blank = physical.trim().is_empty();
-                // A blank line only goes unclaimed, unless a continuation took it.
-                assert!(*count <= 1, "{path}: line {} claimed twice", number + 1);
-                assert!(*count == 1 || blank, "{path}: line {} lost", number + 1);
+                assert!(*skip || *held || blank, "{path}: line {line} is lost");
             }
         }
     }

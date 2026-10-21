@@ -25,3 +25,25 @@ fn splits_within(text: &str, limit: Duration) {
 fn a_line_of_opening_brackets_is_read_in_linear_time() {
     splits_within(&"[".repeat(2 << 20), Duration::from_secs(5));
 }
+
+/// Each `#` looks for its closing `#` no further than a date literal can
+/// reach, each `:` cuts a statement, and only the first statement of a chain is
+/// tested for a label: none of them reads the rest of a line again.
+#[test]
+fn lines_of_hashes_separators_and_names_are_read_in_linear_time() {
+    let limit = Duration::from_secs(5);
+    let never_closed = format!("#{}", "a".repeat(47)).repeat(40_000);
+    let one_label = format!("{}:", "a".repeat(2 << 20));
+    let one_number = format!("{} x", "1".repeat(2 << 20));
+    for text in [
+        "#".repeat(2 << 20),
+        never_closed,
+        "#1:2# ".repeat(100_000),
+        "x:".repeat(100_000),
+        one_label,
+        one_number,
+        " _\n".repeat(200_000),
+    ] {
+        splits_within(&text, limit);
+    }
+}

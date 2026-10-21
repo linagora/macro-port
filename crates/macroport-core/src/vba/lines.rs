@@ -6,14 +6,23 @@
 //! code (corpus header, export header, `Attribute` lines) are listed in
 //! [`SourceLines::skipped`] and the parser never sees them, but they count.
 //! The statements become logical lines, each carrying the physical line where
-//! it starts: `_` continuations are joined, and comments are cut off and kept
+//! it starts: `_` continuations are joined, `:` separators cut a physical line
+//! into statements, labels are told apart, and comments are cut off and kept
 //! apart. Nothing here evaluates anything: the text is only cut.
 
+use std::borrow::Cow;
+
 use super::VbaError;
-use super::scan::{bracket_len, is_ident_char, is_space, string_len};
+use super::scan::{
+    bracket_len, date_literal_len, is_ident_char, is_ident_start, is_reserved, is_space,
+    line_number_len, string_len,
+};
 use crate::report::Status;
 
-/// The most physical lines of a text that [`split_lines`] accepts.
+/// The most lines that [`split_lines`] accepts, counted twice: the physical
+/// lines of a text, and the logical lines it is cut into, since `:` makes many
+/// of one physical line. A single statement chain with more `:` than that is
+/// refused as well.
 ///
 /// Splitting costs memory per line, not per byte: a text made of one-character
 /// lines takes about 90 times its size (measured), which against the 64 MB
@@ -23,8 +32,8 @@ use crate::report::Status;
 /// splits several modules bounds their sum itself.
 pub const MAX_LINES: u32 = 250_000;
 
-/// The error of a text of more than [`MAX_LINES`] lines: the file is too
-/// large to analyse, not corrupted.
+/// The error of a text of more than [`MAX_LINES`] physical or logical lines:
+/// the file is too large to analyse, not corrupted.
 fn too_many_lines() -> VbaError {
     VbaError::new(
         Status::TooLarge,
@@ -74,8 +83,11 @@ pub struct Attribute {
 /// What a logical line holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogicalKind {
-    /// Code: the statement, which the parser reads on.
+    /// Code: one statement, or the start of one that the parser reads on.
     Code,
+    /// A statement label definition: [`LogicalLine::text`] is the label,
+    /// without its colon (`ErrHandler`, or the line number `10`).
+    Label,
     /// A comment alone: [`LogicalLine::text`] is empty.
     CommentOnly,
 }
@@ -104,8 +116,14 @@ pub struct LogicalLine {
     /// The code, trimmed: continuations are joined with a single space and
     /// the comment is cut off. Strings are untouched.
     pub text: String,
-    /// The comment that ends the statement, if any.
+    /// The comment that ends the physical line chain, if any. On a line cut
+    /// at `:`, it belongs to the last statement.
     pub comment: Option<Comment>,
+    /// True when another logical line of the same chain precedes this one: a
+    /// statement before a `:`, or a label. A `:` that leads the chain has
+    /// nothing to follow. After `If x Then` it tells a single-line `If`
+    /// (`If x Then: y`) from a block.
+    pub after_separator: bool,
     /// Offset in `text` and physical line of each line after the first.
     breaks: Vec<(usize, u32)>,
 }
@@ -114,11 +132,7 @@ impl LogicalLine {
     /// The physical line of byte `offset` of [`text`](Self::text), for the
     /// lexer: a continuation moves it to the line the text came from.
     pub fn line_at(&self, offset: usize) -> u32 {
-        let passed = self.breaks.partition_point(|&(start, _)| start <= offset);
-        passed
-            .checked_sub(1)
-            .and_then(|i| self.breaks.get(i))
-            .map_or(self.line, |&(_, line)| line)
+        line_before(&self.breaks, offset, self.line)
     }
 }
 
@@ -159,6 +173,8 @@ pub fn split_lines(text: &str) -> Result<SourceLines, VbaError> {
         consumed: 0,
         too_many: false,
         out: SourceLines::default(),
+        line_seps: Vec::new(),
+        seps: Vec::new(),
     };
     builder.corpus_header();
     builder.body();
@@ -201,12 +217,13 @@ impl<'a> Iterator for Physical<'a> {
     }
 }
 
-/// The physical lines of one statement, read as its code and, at the end, a
-/// comment.
-struct Chain {
+/// The physical lines that continuation marks join, read as their code, which
+/// `:` may cut into several statements, and, at the end, a comment.
+struct Chain<'a> {
     /// The code of the physical lines, comment and continuation marks
-    /// removed, joined with single spaces.
-    code: String,
+    /// removed, joined with single spaces. A chain of one physical line
+    /// borrows its code from the line instead of copying it.
+    code: Cow<'a, str>,
     /// Offset in `code` of the code of each physical line, and its number.
     starts: Vec<(usize, u32)>,
     comment: Option<Comment>,
@@ -229,12 +246,19 @@ struct Builder<'a> {
     /// Whether the text has more than [`MAX_LINES`] lines.
     too_many: bool,
     out: SourceLines,
+    /// Separators of the current physical line, scratch space.
+    line_seps: Vec<usize>,
+    /// Separators of the current chain, as offsets in its code.
+    seps: Vec<usize>,
 }
 
 impl<'a> Builder<'a> {
     /// The next physical line and its number. Nothing once the text is over
     /// [`MAX_LINES`] lines.
     fn next_line(&mut self) -> Option<(u32, &'a str)> {
+        if self.too_many {
+            return None;
+        }
         let line = self.rest.next()?;
         self.consumed = self.consumed.saturating_add(1);
         if self.consumed > MAX_LINES {
@@ -336,14 +360,15 @@ impl<'a> Builder<'a> {
     }
 
     /// Reads the physical lines of the statement that starts at `first` and
-    /// turns them into a logical line. True when it holds code.
+    /// turns them into logical lines. True when one holds code.
     fn chain(&mut self, first: u32, line: &'a str) -> bool {
         let mut chain = Chain {
-            code: String::new(),
+            code: Cow::default(),
             starts: Vec::new(),
             comment: None,
             last: first,
         };
+        self.seps.clear();
         let mut at_start = true;
         let (mut number, mut line) = (first, line);
         loop {
@@ -355,7 +380,7 @@ impl<'a> Builder<'a> {
                     append(&mut comment.text, text.trim_matches(is_space));
                     marker.is_some()
                 }
-                None => Self::read(&mut chain, number, line, &mut at_start),
+                None => self.read(&mut chain, number, line, &mut at_start),
             };
             chain.last = number;
             if !continues {
@@ -369,18 +394,42 @@ impl<'a> Builder<'a> {
         self.emit(chain)
     }
 
-    /// Adds the code and the comment of a physical line to `chain`. True when
-    /// the line is continued.
-    fn read(chain: &mut Chain, number: u32, line: &str, at_start: &mut bool) -> bool {
-        let scan = scan(line, at_start);
+    /// Adds the code and the comment of a physical line to `chain`, and its
+    /// separators to the chain's. True when the line is continued.
+    fn read(
+        &mut self,
+        chain: &mut Chain<'a>,
+        number: u32,
+        line: &'a str,
+        at_start: &mut bool,
+    ) -> bool {
+        let numbered = chain.code.is_empty();
+        let scan = scan(line, numbered, at_start, &mut self.line_seps);
         let code = line.get(..scan.code_end).unwrap_or_default();
         let body = code.trim_matches(is_space);
         if !body.is_empty() {
-            if !chain.code.is_empty() {
-                chain.code.push(' ');
-            }
-            chain.starts.push((chain.code.len(), number));
-            chain.code.push_str(body);
+            let base = if chain.code.is_empty() {
+                chain.code = Cow::Borrowed(body);
+                0
+            } else {
+                let joined = chain.code.to_mut();
+                joined.push(' ');
+                let base = joined.len();
+                joined.push_str(body);
+                base
+            };
+            // The code is trimmed on its way into the chain: the separators
+            // move with it.
+            let indent = code
+                .len()
+                .saturating_sub(code.trim_start_matches(is_space).len());
+            let moved = self
+                .line_seps
+                .iter()
+                .map(|&sep| base.saturating_add(sep.saturating_sub(indent)));
+            self.seps.extend(moved);
+            self.too_many |= self.seps.len() > MAX_LINES as usize;
+            chain.starts.push((base, number));
         }
         if let Some(start) = scan.comment_text {
             let text = line.get(start..scan.marker.unwrap_or(line.len()));
@@ -392,31 +441,145 @@ impl<'a> Builder<'a> {
         scan.marker.is_some()
     }
 
-    /// Pushes the logical line of `chain`: its code and its comment, or the
-    /// comment alone. A chain with neither gives nothing. True when the chain
+    /// Adds a logical line, unless the text has [`MAX_LINES`] of them already.
+    fn push(&mut self, line: LogicalLine) {
+        if self.out.logical.len() >= MAX_LINES as usize {
+            self.too_many = true;
+        } else {
+            self.out.logical.push(line);
+        }
+    }
+
+    /// Cuts the code of `chain` at its separators and pushes one logical line
+    /// per statement, a label and the statement after it counting as two.
+    /// The comment goes to the last of them, or stands alone. True when one
     /// holds code.
-    fn emit(&mut self, chain: Chain) -> bool {
+    fn emit(&mut self, chain: Chain<'_>) -> bool {
+        if self.too_many {
+            return false;
+        }
         let Chain {
-            code,
+            mut code,
             starts,
             comment,
             last,
         } = chain;
-        let (kind, line) = match (starts.first(), &comment) {
-            (Some(&(_, line)), _) => (LogicalKind::Code, line),
-            (None, Some(comment)) => (LogicalKind::CommentOnly, comment.line),
-            (None, None) => return false,
-        };
-        self.out.logical.push(LogicalLine {
-            line,
-            end_line: last,
-            kind,
-            text: code,
-            comment,
-            breaks: starts.into_iter().skip(1).collect(),
-        });
-        kind == LogicalKind::Code
+        let first = starts.first().map_or(last, |&(_, line)| line);
+        let before = self.out.logical.len();
+        let seps = std::mem::take(&mut self.seps);
+        let ends = seps.iter().copied().chain(std::iter::once(code.len()));
+        let mut begin = 0usize;
+        for (index, end) in ends.enumerate() {
+            let raw = code.get(begin..end).unwrap_or_default();
+            let body = raw.trim_start_matches(is_space);
+            let offset = begin.saturating_add(raw.len().saturating_sub(body.len()));
+            begin = end.saturating_add(1);
+            let statement = body.trim_end_matches(is_space);
+            if statement.is_empty() {
+                continue;
+            }
+            // A colon that leads the chain separates nothing: the statement it
+            // introduces follows only what the chain already gave.
+            let follows = self.out.logical.len() > before;
+            let piece = |kind, text: String, offset, after_separator| {
+                logical(kind, text, offset, after_separator, &starts, first)
+            };
+            // Only the first statement of a chain can be a label, and its
+            // colon comes right after its name.
+            let attached = index < seps.len() && !body.ends_with(is_space);
+            let label = if index == 0 {
+                label_len(statement, attached)
+            } else {
+                None
+            };
+            match label {
+                Some(len) => {
+                    let (name, rest) = statement.split_at_checked(len).unwrap_or_default();
+                    self.push(piece(LogicalKind::Label, name.to_owned(), offset, false));
+                    let remainder = rest.trim_start_matches(is_space);
+                    if !remainder.is_empty() {
+                        let gap = rest.len().saturating_sub(remainder.len());
+                        let at = offset.saturating_add(len).saturating_add(gap);
+                        let text = remainder.to_owned();
+                        self.push(piece(LogicalKind::Code, text, at, true));
+                    }
+                }
+                None => {
+                    // Without a separator the whole code is the statement:
+                    // an owned code moves, so that a huge line is not copied
+                    // again.
+                    let text = if seps.is_empty() {
+                        std::mem::take(&mut code).into_owned()
+                    } else {
+                        statement.to_owned()
+                    };
+                    self.push(piece(LogicalKind::Code, text, offset, follows));
+                }
+            }
+            if self.too_many {
+                break;
+            }
+        }
+        self.seps = seps;
+        let code_found = self.out.logical.len() > before;
+        if code_found {
+            if let Some(line) = self.out.logical.last_mut() {
+                line.end_line = last;
+                line.comment = comment;
+            }
+        } else if let Some(comment) = comment {
+            self.push(LogicalLine {
+                line: comment.line,
+                end_line: last,
+                kind: LogicalKind::CommentOnly,
+                text: String::new(),
+                comment: Some(comment),
+                after_separator: false,
+                breaks: Vec::new(),
+            });
+        }
+        code_found
     }
+}
+
+/// The logical line for the statement `text`, found at `offset` in the joined
+/// code of a chain whose physical lines start at `starts`.
+fn logical(
+    kind: LogicalKind,
+    text: String,
+    offset: usize,
+    after_separator: bool,
+    starts: &[(usize, u32)],
+    first: u32,
+) -> LogicalLine {
+    let end = offset.saturating_add(text.len());
+    // The starts of the physical lines after the first one of the statement.
+    let inside = starts.partition_point(|&(start, _)| start <= offset)
+        ..starts.partition_point(|&(start, _)| start < end);
+    LogicalLine {
+        line: line_before(starts, offset, first),
+        end_line: line_before(starts, end.saturating_sub(1), first),
+        kind,
+        text,
+        comment: None,
+        after_separator,
+        breaks: starts
+            .get(inside)
+            .unwrap_or_default()
+            .iter()
+            .map(|&(start, line)| (start.saturating_sub(offset), line))
+            .collect(),
+    }
+}
+
+/// The line of the last entry of `marks`, sorted by offset, that starts at or
+/// before `offset`, or `default` when none does.
+fn line_before(marks: &[(usize, u32)], offset: usize, default: u32) -> u32 {
+    let passed = marks.partition_point(|&(start, _)| start <= offset);
+    passed
+        .checked_sub(1)
+        .and_then(|i| marks.get(i))
+        .map_or(default, |&(_, line)| line)
 }
 
 /// Appends `text` to `joined`, after a space when there is already text.
@@ -438,16 +601,28 @@ fn marker(line: &str) -> Option<usize> {
     before.ends_with(is_space).then_some(before.len())
 }
 
-/// Reads `line` left to right: a comment ends the code, and a `_` ends the
-/// line as a continuation unless it is inside a string. In a string that never
-/// closes, the `_` is text and the next line a statement of its own: joined to
-/// the unclosed string, its code would be read as text.
+/// Reads `line` left to right: the statement separators go to `seps` (byte
+/// offsets in `line`, at most [`MAX_LINES`] and one more), a comment ends the
+/// code, and a `_` ends the line as a continuation unless it is inside a
+/// string. In a string that never closes, the `_` is text and the next line a
+/// statement of its own: joined to the unclosed string, its code would be
+/// read as text.
 ///
 /// `at_start` tells whether the statement being read has no token yet, which
 /// is where `Rem` starts a comment; it carries over to a continuation line,
-/// the mark of which is no token.
-fn scan(line: &str, at_start: &mut bool) -> Scan {
+/// the mark of which is no token. `numbered` tells that the chain has no code
+/// yet: a line number that opens `line` is a label, no token either, so `Rem`
+/// may follow it.
+fn scan(line: &str, numbered: bool, at_start: &mut bool, seps: &mut Vec<usize>) -> Scan {
+    seps.clear();
     let mark = marker(line);
+    let number = if numbered {
+        let code = line.trim_start_matches(is_space);
+        let indent = line.len().saturating_sub(code.len());
+        indent..indent.saturating_add(line_number_len(code).unwrap_or(0))
+    } else {
+        0..0
+    };
     let mut at = 0usize;
     let mut brackets = true;
     let mut open_string = false;
@@ -458,7 +633,7 @@ fn scan(line: &str, at_start: &mut bool) -> Scan {
         }
         let Some(c) = rest.chars().next() else { break };
         let mut step = c.len_utf8();
-        let start = is_space(c) && *at_start;
+        let mut start = (is_space(c) || number.contains(&at)) && *at_start;
         match c {
             '"' => match string_len(rest) {
                 Some(len) => step = len,
@@ -471,6 +646,10 @@ fn scan(line: &str, at_start: &mut bool) -> Scan {
                 Some(len) => step = len,
                 None => brackets = false,
             },
+            // After a name or a closing bracket, `#` is a type character.
+            '#' if !follows_name(line, at) => {
+                step = date_literal_len(rest).unwrap_or(step);
+            }
             '\'' => {
                 comment = Some((at, at.saturating_add(1)));
                 break;
@@ -478,6 +657,14 @@ fn scan(line: &str, at_start: &mut bool) -> Scan {
             'R' | 'r' if *at_start && is_rem(rest) => {
                 comment = Some((at, at.saturating_add(3)));
                 break;
+            }
+            // `:=` names an argument and separates nothing.
+            ':' if !rest.starts_with(":=") => {
+                seps.push(at);
+                start = true;
+                if seps.len() > MAX_LINES as usize {
+                    break;
+                }
             }
             _ => {}
         }
@@ -500,6 +687,26 @@ fn is_rem(rest: &str) -> bool {
             .get(3..)
             .and_then(|after| after.chars().next())
             .is_none_or(|c| !is_ident_char(c))
+}
+
+/// Whether the character before byte `at` of `line` ends a name or a closing
+/// bracket, which makes a `#` right after it a type character, not the start
+/// of a date.
+fn follows_name(line: &str, at: usize) -> bool {
+    line.get(..at)
+        .and_then(|read| read.chars().next_back())
+        .is_some_and(|c| is_ident_char(c) || c == ')' || c == ']')
+}
+
+/// Length of the label that opens `statement`, the first of a chain: a name
+/// that is not a reserved word and whose colon follows it (`attached`), or a
+/// line number, which needs no colon. What follows a line number is code.
+fn label_len(statement: &str, attached: bool) -> Option<usize> {
+    if let Some(digits) = line_number_len(statement) {
+        return Some(digits);
+    }
+    let name = statement.starts_with(is_ident_start) && statement.chars().all(is_ident_char);
+    (attached && name && !is_reserved(statement)).then_some(statement.len())
 }
 
 /// A provenance line of the corpus header: `' Source:`, `' Author:`,
@@ -688,4 +895,17 @@ fn literal_len(rest: &str) -> Option<usize> {
             .all(|c| c.is_ascii_alphanumeric() || "+-.&#%!@^".contains(c));
     (number || word.eq_ignore_ascii_case("true") || word.eq_ignore_ascii_case("false"))
         .then_some(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scan_of_a_line_stops_collecting_separators_one_past_the_limit() {
+        let line = ":".repeat((MAX_LINES as usize).saturating_mul(2));
+        let mut seps = Vec::new();
+        scan(&line, false, &mut true, &mut seps);
+        assert_eq!(seps.len(), (MAX_LINES as usize).saturating_add(1));
+    }
 }
