@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Fuzzing of the binary parsers (SPEC section 9, A2): every night, each target
+# Fuzzing of the binary parsers and the lexer (A2): every night, each target
 # of fuzz/ runs for one hour (3600 seconds) in a job of its own, on the nightly
 # toolchain that cargo-fuzz needs. The corpus a night ends with is where the
 # next one starts. A job that finds a crash fails and uploads the input as an
@@ -45,7 +45,8 @@ jobs:
         include:
           # max_len is the largest input in bytes, above the largest seed:
           # the zip bomb of the fixtures weighs 1 MB, the largest workbook
-          # 267 KB, and a stream of a VBA project far less.
+          # 267 KB, the largest module export 152 KB, and a stream of a VBA
+          # project far less.
           - target: zip_entry
             max_len: 1048576
           - target: ooxml_xml
@@ -62,6 +63,8 @@ jobs:
             max_len: 65536
           - target: module_source
             max_len: 131072
+          - target: lexer
+            max_len: 262144
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install nightly --profile minimal
