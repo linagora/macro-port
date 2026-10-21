@@ -4,8 +4,8 @@
 use std::sync::LazyLock;
 
 use macroport_core::analyze::{Extraction, Options, extract};
-use macroport_core::report::{FileReport, Lang, Report};
-use macroport_core::rules::{RuleSet, RulesSources};
+use macroport_core::report::{FileReport, Lang, Report, Signal};
+use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::{corpus, report_problems};
 
 /// The rules that ship with the tool, loaded once.
@@ -27,6 +27,18 @@ pub fn fixture(file: &str) -> Extraction {
 pub fn codes(report: &FileReport) -> Vec<&str> {
     let errors = report.errors.iter().flatten();
     errors.map(|error| error.code.as_str()).collect()
+}
+
+/// The signal `id` of `severity` that a container indicator makes: it is the
+/// file's, with no module and no evidence.
+pub fn file_signal(id: &str, severity: Severity) -> Signal {
+    Signal {
+        signal_id: id.to_owned(),
+        severity,
+        module: None,
+        procedure: None,
+        evidence: None,
+    }
 }
 
 /// The extraction of `bytes`, a file named `path`, with these options.
