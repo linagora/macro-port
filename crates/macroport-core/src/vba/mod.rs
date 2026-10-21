@@ -21,7 +21,7 @@ use crate::rules::ModuleType;
 pub use aggregate::{file_metrics, module_metrics};
 pub(crate) use dependencies::count_progids;
 pub use expr::MAX_NESTING;
-pub use facts::{CallSite, Facts, MemberUse, StatementReader};
+pub use facts::{CallSite, Facts, MAX_WITH_BLOCKS, MemberUse, StatementReader};
 pub use fold::ConstTable;
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{

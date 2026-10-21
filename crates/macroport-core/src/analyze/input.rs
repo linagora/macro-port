@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), with what measuring the procedures
-//! showed ([`Analysis::measures`]). Four conventions matter to the engine:
+//! showed ([`Analysis::measures`]). Five conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -12,6 +12,10 @@
 //!   (ADR-0004): the modules that have no procedure are scored on them.
 //! - The strings of a statement are the ones that constant folding gives, read
 //!   with the constants of the module, whichever procedure uses them.
+//! - A chain that starts with a dot inside a `With` block continues the object
+//!   of the block (`.Font` under `With Range("A1")` is `Range.Font`). The
+//!   blocks are followed within a procedure, and within each run of lines
+//!   between two procedures: a block never outlives the run that opens it.
 //! - `parse_recovered` holds for a procedure when the parser recovered in it,
 //!   when a statement of it nests expressions deeper than the reader follows,
 //!   or when its blocks do not match (SPEC M2 item 6). It holds for the module
@@ -118,13 +122,47 @@ const FACTS_PER_TOKEN: usize =
 /// raw text, as its code, and as the name of a member, of a call and of a chain.
 const COPIES: usize = 5;
 
-/// What a statement of `text` and `tokens` tokens may take at the most once it
-/// is read as a line, known before its facts are: a line over what is left of
-/// the room is refused without being read.
-fn ceiling(text: &str, tokens: usize) -> usize {
+/// The most that a copy of the object of a `With` block takes in a chain. The
+/// reader keeps an object that weighs 4,096 at the most, where a name weighs
+/// 32 more than its bytes: 124 names of one letter. A name takes 8 more bytes
+/// here, [`line_bytes`] counting the 24 of its `String` and the 16 of its
+/// allocation, which makes 5,088 bytes at the most.
+const OBJECT_BYTES: usize = 5_120;
+
+/// How many times the text of a statement may be copied in its line by the
+/// copies of the object of a `With` block. The reader lets a statement copy
+/// four times its text in weight (see [`vba::Facts::chains`]), and a weight is
+/// a quarter less than the bytes it stands for, at the most (see
+/// [`OBJECT_BYTES`]): so five.
+const WITH_COPIES: usize = 5;
+
+/// What the copies of the object of a `With` block may add to a statement,
+/// besides [`WITH_COPIES`] times its text: what the statements before it left
+/// unspent, which the reader caps at 16,384, and the 128 that it earns whatever
+/// its text is, a quarter more for the bytes they stand for. 24 KiB covers the
+/// 20,640.
+const WITH_ALLOWANCE: usize = 24 * 1024;
+
+/// What the object of a `With` block may add to the line of a statement of
+/// `text` and `tokens`. The reader copies the object into the chain that a dot
+/// or a bang starts, so a statement has as many copies as it has dots and
+/// bangs at the most, within what the reader lets it copy.
+fn with_copies(text: &str, tokens: &[Token]) -> usize {
+    let dots = (tokens.iter())
+        .filter(|token| matches!(token.kind, TokenKind::Dot | TokenKind::Bang))
+        .count();
+    let allowed = (text.len().saturating_mul(WITH_COPIES)).saturating_add(WITH_ALLOWANCE);
+    dots.saturating_mul(OBJECT_BYTES).min(allowed)
+}
+
+/// What a statement of `text` and `tokens` may take at the most once it is read
+/// as a line, known before its facts are: a line over what is left of the room
+/// is refused without being read.
+fn ceiling(text: &str, tokens: &[Token]) -> usize {
     size_of::<CodeLine>()
         .saturating_add(text.len().saturating_mul(COPIES))
-        .saturating_add(tokens.saturating_mul(FACTS_PER_TOKEN))
+        .saturating_add(tokens.len().saturating_mul(FACTS_PER_TOKEN))
+        .saturating_add(with_copies(text, tokens))
 }
 
 /// What `line` takes in memory, near enough: the line itself, its texts, and
@@ -249,7 +287,7 @@ fn read_module(
         consts.declare(line);
     }
     let mut converter = Converter {
-        reader: StatementReader::new(&consts),
+        consts: &consts,
         room,
     };
 
@@ -338,7 +376,8 @@ fn gaps(count: usize, procedures: &[Procedure]) -> Vec<Range<usize>> {
 /// Reads the logical lines of a module into the lines of the engine, taking
 /// what each weighs from the room of the file.
 struct Converter<'c, 'r> {
-    reader: StatementReader<'c>,
+    /// The constants of the module, which every run of lines reads with.
+    consts: &'c ConstTable,
     room: &'r mut Room,
 }
 
@@ -346,23 +385,34 @@ impl Converter<'_, '_> {
     /// The lines of the engine for `lines`, and whether one of the statements
     /// nests expressions deeper than the reader follows. Fails when a line does
     /// not fit in the room that is left.
+    ///
+    /// `lines` is a run: the lines between two procedures, or those of one
+    /// procedure. The reader that follows its `With` blocks is its own, so
+    /// that a block a run leaves open, which a procedure without an end does,
+    /// is closed with the run and gives its object to no other.
     fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<(Vec<CodeLine>, bool), VbaError> {
+        let mut reader = StatementReader::new(self.consts);
         let mut too_deep = false;
         // The room limits what is kept, so room is not made for all the lines
         // at once: a module of a quarter of a million lines would take 50 MB
         // before the first of them was refused.
         let mut code = Vec::with_capacity(lines.len().min(1 << 12));
         for line in lines {
-            let (converted, deep) = self.code_line(line)?;
+            let (converted, deep) = self.code_line(&mut reader, line)?;
             too_deep |= deep;
             code.push(converted);
         }
         Ok((code, too_deep))
     }
 
-    /// The line of the engine for `line`, and whether its statement nests
-    /// expressions too deep to be read.
-    fn code_line(&mut self, line: &LogicalLine) -> Result<(CodeLine, bool), VbaError> {
+    /// The line of the engine for `line`, which `reader` reads after the lines
+    /// of its run, and whether its statement nests expressions too deep to be
+    /// read.
+    fn code_line(
+        &mut self,
+        reader: &mut StatementReader<'_>,
+        line: &LogicalLine,
+    ) -> Result<(CodeLine, bool), VbaError> {
         let comment = line.comment.as_ref().map(|comment| comment.text.clone());
         let raw = raw_text(&line.text, comment.as_deref());
         if line.kind != LogicalKind::Code {
@@ -381,10 +431,10 @@ impl Converter<'_, '_> {
         // facts are read. The tokens are gone when the facts are: they weigh 24
         // bytes each, and a hostile statement has a million.
         let tokens = tokenize(&line.text);
-        self.room.fits(ceiling(&line.text, tokens.len()))?;
+        self.room.fits(ceiling(&line.text, &tokens))?;
         let code = without_strings(&line.text, &tokens);
         drop(tokens);
-        let facts = self.reader.read(line);
+        let facts = reader.read(line);
         let converted = CodeLine {
             line: line.line,
             raw,
@@ -591,6 +641,39 @@ mod tests {
         // A dot that opens a continued line goes on with the chain before it.
         assert_eq!(lines[2].chains, [["x", "Interior", "Color"]]);
         assert!(lines[0].chains.is_empty());
+    }
+
+    #[test]
+    fn a_chain_that_starts_with_a_dot_continues_the_object_of_the_with_block() {
+        let adapted = adapted(
+            "Sub Run()\n    With Range(\"A1\")\n        .Font.Bold = True\n    End With\n    \
+             .Font = 1\nEnd Sub\n",
+        );
+
+        let lines = &adapted.input.procedures[0].lines;
+        assert_eq!(lines[2].chains, [["Range", "Font", "Bold"]]);
+        // The block is closed, and a dot that follows it has no object.
+        assert!(lines[4].chains.is_empty());
+    }
+
+    #[test]
+    fn a_with_block_that_a_procedure_leaves_open_is_closed_with_the_procedure() {
+        // The first procedure has no End Sub, and its With has no End With.
+        let adapted = adapted(
+            "Sub Broken()\n    With ws\n        .A.B = 1\nSub Fine()\n    .C.D = 2\nEnd Sub\n",
+        );
+
+        let procedures = &adapted.input.procedures;
+        assert_eq!(procedures[0].lines[2].chains, [["ws", "A", "B"]]);
+        assert_eq!(procedures[1].lines[1].chains, [["C", "D"]]);
+    }
+
+    #[test]
+    fn a_with_statement_outside_the_procedures_opens_no_block_for_them() {
+        let adapted = adapted("With ws\nSub Run()\n    .A.B = 1\nEnd Sub\n");
+
+        assert_eq!(raws(&adapted.input.declarations), [(1, "With ws")]);
+        assert_eq!(adapted.input.procedures[0].lines[1].chains, [["A", "B"]]);
     }
 
     #[test]
@@ -886,12 +969,60 @@ mod tests {
             let adapted = adapted(&text);
             let lines = &adapted.input.procedures[0].lines;
             for line in lines.iter().filter(|line| line.comment.is_none()) {
-                let tokens = tokenize(&line.raw).len();
-                let ceiling = ceiling(&line.raw, tokens);
+                let ceiling = ceiling(&line.raw, &tokenize(&line.raw));
                 let weight = line_bytes(line);
                 let start: String = line.raw.chars().take(40).collect();
                 assert!(weight <= ceiling, "{weight} > {ceiling} for {start:?}");
             }
         }
+    }
+
+    #[test]
+    fn the_copies_of_the_object_of_a_block_stay_within_the_ceiling_of_the_statement() {
+        // The object weighs 3,960 in the reader's measure, nearly what a block
+        // may keep. The statements before the last spend none of what they
+        // earn, so the last has all that may be saved in front of it, and spends
+        // it on copies of the object: the most that a short statement can weigh.
+        let object = vec!["a"; 120].join(".");
+        let saved = "        x = 1\n".repeat(150);
+        let text = format!(
+            "Sub Run()\n    With {object}\n{saved}        .b = .c + .d + .e + .f + .g\n    \
+             End With\nEnd Sub\n"
+        );
+
+        let adapted = adapted(&text);
+
+        let lines = &adapted.input.procedures[0].lines;
+        let last = (lines.iter())
+            .find(|line| line.raw.starts_with(".b"))
+            .expect("the last statement");
+        let copies = (last.chains.iter())
+            .filter(|chain| chain.len() > 100)
+            .count();
+        assert!(copies > 0, "{} chains, none a copy", last.chains.len());
+        let tokens = tokenize(&last.raw);
+        let weight = line_bytes(last);
+        // The copies take more than the text and the tokens of the statement
+        // allow, and the ceiling has room for them.
+        let without =
+            size_of::<CodeLine>() + COPIES * last.raw.len() + tokens.len() * FACTS_PER_TOKEN;
+        assert!(weight > without, "{weight} <= {without}");
+        let ceiling = ceiling(&last.raw, &tokens);
+        assert!(weight <= ceiling, "{weight} > {ceiling}");
+    }
+
+    #[test]
+    fn the_object_of_a_block_is_copied_at_a_dot_or_a_bang_only() {
+        let copies = |text: &str| with_copies(text, &tokenize(text));
+
+        assert_eq!(copies("x = Chr(65) & \"x\""), 0);
+        assert_eq!(copies(".A = 1"), OBJECT_BYTES);
+        assert_eq!(copies("!A = 1"), OBJECT_BYTES);
+        // A long text with a single dot, a long string say, is copied into once.
+        let long = format!("x = \"{}\" & .A", "a".repeat(1 << 20));
+        assert_eq!(copies(&long), OBJECT_BYTES);
+        // And a text full of dots is copied into as much as the reader allows.
+        let many = ".A ".repeat(10_000);
+        assert_eq!(copies(&many), WITH_COPIES * many.len() + WITH_ALLOWANCE);
     }
 }
