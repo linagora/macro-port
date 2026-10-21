@@ -2,6 +2,8 @@
 //! The files that make up each format of the reports: which renderer writes
 //! which file (SPEC M4).
 
+use std::fmt::Display;
+
 use macroport_core::report::Report;
 
 use crate::args::Format;
@@ -13,12 +15,6 @@ use crate::render::{csv, html};
 pub struct Document {
     pub name: &'static str,
     pub contents: Vec<u8>,
-}
-
-impl Document {
-    fn new(name: &'static str, contents: Vec<u8>) -> Self {
-        Self { name, contents }
-    }
 }
 
 /// The files of `report` in `format`, in the language of `messages`.
@@ -33,24 +29,29 @@ pub fn documents(
     messages: &Messages,
 ) -> Result<Vec<Document>, String> {
     match format {
-        Format::Json => {
-            let json = report.to_json().map_err(|error| error.to_string())?;
-            Ok(vec![Document::new("report.json", json.into_bytes())])
-        }
-        Format::Html => {
-            let page = html::render(report, messages).map_err(|error| error.to_string())?;
-            Ok(vec![Document::new("report.html", page.into_bytes())])
-        }
+        Format::Json => Ok(vec![document("report.json", report.to_json())?]),
+        Format::Html => Ok(vec![document(
+            "report.html",
+            html::render(report, messages),
+        )?]),
         Format::Csv => Ok(vec![
-            Document::new("files.csv", csv::files(report).map_err(|e| e.to_string())?),
-            Document::new(
-                "procedures.csv",
-                csv::procedures(report).map_err(|e| e.to_string())?,
-            ),
-            Document::new(
-                "signals.csv",
-                csv::signals(report).map_err(|e| e.to_string())?,
-            ),
+            document("files.csv", csv::files(report))?,
+            document("procedures.csv", csv::procedures(report))?,
+            document("signals.csv", csv::signals(report))?,
         ]),
+    }
+}
+
+/// The file `name` that a renderer made, or the text of its error.
+fn document(
+    name: &'static str,
+    rendered: Result<impl Into<Vec<u8>>, impl Display>,
+) -> Result<Document, String> {
+    match rendered {
+        Ok(contents) => Ok(Document {
+            name,
+            contents: contents.into(),
+        }),
+        Err(error) => Err(error.to_string()),
     }
 }
