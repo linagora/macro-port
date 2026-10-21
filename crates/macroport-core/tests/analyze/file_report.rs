@@ -103,6 +103,35 @@ fn a_caller_that_did_not_read_a_file_can_report_it_as_too_large() {
 }
 
 #[test]
+fn a_file_that_is_not_read_is_a_text_module_when_its_extension_says_so() {
+    let options = Options::new(&RULES);
+    let limited = Options {
+        max_file_size: 10,
+        ..options
+    };
+
+    for (path, container) in [
+        ("dir/Big.BAS", Container::TextModule),
+        ("Big.cls", Container::TextModule),
+        ("Big.frm", Container::TextModule),
+        ("Big.xlsm", Container::Xlsm),
+        ("Big.txt", Container::Unknown),
+    ] {
+        let reported = too_large(path, 300 * 1024 * 1024, "ab".repeat(32), &options);
+        let extracted = extraction_with(b"Sub A()\nEnd Sub\n", path, &limited).file;
+
+        for report in [reported, extracted] {
+            assert_eq!(report_problems_of(&report), Vec::<String>::new());
+            assert_eq!(
+                (report.container, report.status),
+                (container, Status::TooLarge),
+                "{path}"
+            );
+        }
+    }
+}
+
+#[test]
 fn the_extension_names_the_container_in_any_case() {
     for (path, container) in [
         ("a.XLSM", Container::Xlsm),
@@ -134,6 +163,9 @@ fn a_file_under_the_name_of_another_family_has_no_container() {
         (&package, "a.xla", Container::Unknown),
         (&encrypted, "a.xlam", Container::Xlam),
         (&encrypted, "a.xls", Container::Unknown),
+        (&package, "a.bas", Container::Unknown),
+        (&workbook, "a.cls", Container::Unknown),
+        (&encrypted, "a.frm", Container::Unknown),
     ] {
         assert_eq!(extraction(bytes, path).file.container, container, "{path}");
     }
