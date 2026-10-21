@@ -10,6 +10,8 @@
 // counter in a test adds one.
 #![allow(clippy::arithmetic_side_effects, clippy::expect_used)]
 
+mod failures;
 mod file_report;
 mod fixtures;
+mod robustness;
 mod support;
