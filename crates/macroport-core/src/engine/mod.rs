@@ -10,6 +10,7 @@
 //! signals and complexity traits.
 
 mod eval;
+pub mod families;
 mod glob;
 mod hit;
 mod input;
