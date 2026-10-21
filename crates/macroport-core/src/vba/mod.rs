@@ -4,6 +4,8 @@
 //! declarations. It only reads text. Nothing from an analysed file is ever
 //! executed or evaluated, constant folding apart.
 
+mod aggregate;
+mod dependencies;
 mod expr;
 mod facts;
 mod fold;
@@ -16,6 +18,7 @@ mod scan;
 use crate::report::Status;
 use crate::rules::ModuleType;
 
+pub use aggregate::{file_metrics, module_metrics};
 pub use expr::MAX_NESTING;
 pub use facts::{CallSite, Facts, MemberUse, StatementReader};
 pub use fold::ConstTable;
