@@ -14,10 +14,9 @@ mod shape;
 
 use std::ops::Range;
 
-use crate::report::{ProcedureKind, Visibility};
-
 use self::shape::{EndOf, Header, Shape, shape};
-use crate::vba::{LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
+use super::{LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
+use crate::report::{ProcedureKind, Visibility};
 
 /// The most recoveries kept for the module and for each procedure. The first
 /// ones tell where the code stops parsing, which is what a reader looks for,
@@ -112,6 +111,7 @@ struct Open {
     header: Header,
     /// The logical line of the header.
     first: usize,
+    /// The physical line of the keyword of the header.
     start_line: u32,
     /// The last logical line of code read, and the physical line it ends on:
     /// where a procedure that has no end stops.
@@ -121,9 +121,44 @@ struct Open {
 }
 
 impl Open {
+    /// The procedure that `header` opens, on the logical line `index`.
+    fn new(header: Header, index: usize, line: &LogicalLine) -> Self {
+        Self {
+            start_line: line.line_at(header.keyword_offset),
+            header,
+            first: index,
+            last: index,
+            last_line: line.end_line,
+            recoveries: Vec::new(),
+        }
+    }
+
+    /// Notes that `line`, the logical line `index`, is code of the procedure.
+    fn touch(&mut self, index: usize, line: &LogicalLine) {
+        self.last = index;
+        self.last_line = line.end_line;
+    }
+
+    /// Records a recovery, unless the procedure has [`MAX_RECOVERIES`] already.
     fn recover(&mut self, kind: RecoveryKind, line: u32) {
         if self.recoveries.len() < MAX_RECOVERIES {
             self.recoveries.push(Recovery { line, kind });
+        }
+    }
+
+    /// The procedure, ending with the logical line `last` on the physical line
+    /// `end_line`.
+    fn into_procedure(self, last: usize, end_line: u32) -> Procedure {
+        Procedure {
+            name: self.header.name,
+            kind: self.header.kind,
+            visibility: self.header.visibility,
+            is_static: self.header.is_static,
+            parameter_count: self.header.parameter_count,
+            start_line: self.start_line,
+            end_line,
+            lines: self.first..last.saturating_add(1),
+            recoveries: self.recoveries,
         }
     }
 }
@@ -135,6 +170,7 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
+    /// Reads every logical line of the module, one at a time.
     fn run(&mut self) {
         let source = self.source;
         for (index, line) in source.logical.iter().enumerate() {
@@ -147,11 +183,10 @@ impl Parser<'_> {
                 }
             }
         }
-        if self.open.is_some() {
-            self.close_unended();
-        }
+        self.close_unended();
     }
 
+    /// Reads a line of code: a procedure header, an end, or a statement.
     fn code(&mut self, index: usize, line: &LogicalLine, tokens: &[Token]) {
         match shape(tokens, &line.text) {
             Shape::Header(header) => self.header(index, line, header),
@@ -160,72 +195,49 @@ impl Parser<'_> {
         }
     }
 
-    /// Notes that `line` is code of the procedure being read.
+    /// Notes that `line` is code of the procedure being read, if there is one.
     fn touch(&mut self, index: usize, line: &LogicalLine) {
         if let Some(open) = self.open.as_mut() {
-            open.last = index;
-            open.last_line = line.end_line;
+            open.touch(index, line);
         }
     }
 
-    /// Records a recovery in the procedure being read, or in the module.
-    fn recover(&mut self, kind: RecoveryKind, line: u32) {
-        match self.open.as_mut() {
-            Some(open) => open.recover(kind, line),
-            None if self.module.recoveries.len() < MAX_RECOVERIES => {
-                self.module.recoveries.push(Recovery { line, kind });
-            }
-            None => {}
+    /// Records a recovery outside any procedure.
+    fn recover_in_module(&mut self, kind: RecoveryKind, line: u32) {
+        if self.module.recoveries.len() < MAX_RECOVERIES {
+            self.module.recoveries.push(Recovery { line, kind });
         }
     }
 
+    /// A procedure header: the procedure still open has no end, and this
+    /// header opens another one.
     fn header(&mut self, index: usize, line: &LogicalLine, header: Header) {
-        if self.open.is_some() {
-            self.close_unended();
-        }
-        let start_line = line.line_at(header.keyword);
-        self.open = Some(Open {
-            header,
-            first: index,
-            start_line,
-            last: index,
-            last_line: line.end_line,
-            recoveries: Vec::new(),
-        });
+        self.close_unended();
+        self.open = Some(Open::new(header, index, line));
     }
 
+    /// An `End Sub`, `End Function` or `End Property`: it closes the procedure
+    /// being read, whatever the kind of the procedure.
     fn end(&mut self, index: usize, line: &LogicalLine, end: EndOf) {
         let Some(mut open) = self.open.take() else {
-            self.recover(RecoveryKind::StrayTerminator, line.line);
+            self.recover_in_module(RecoveryKind::StrayTerminator, line.line);
             return;
         };
         if !end.closes(open.header.kind) {
             open.recover(RecoveryKind::WrongEnd, line.line);
         }
-        self.finish(open, index, line.line);
+        let procedure = open.into_procedure(index, line.line);
+        self.module.procedures.push(procedure);
     }
 
-    /// Closes the procedure being read where its code stops.
+    /// Closes the procedure being read, if there is one, where its code stops.
     fn close_unended(&mut self) {
         if let Some(mut open) = self.open.take() {
             open.recover(RecoveryKind::MissingEnd, open.start_line);
             let (last, last_line) = (open.last, open.last_line);
-            self.finish(open, last, last_line);
+            let procedure = open.into_procedure(last, last_line);
+            self.module.procedures.push(procedure);
         }
-    }
-
-    fn finish(&mut self, open: Open, last: usize, end_line: u32) {
-        self.module.procedures.push(Procedure {
-            name: open.header.name,
-            kind: open.header.kind,
-            visibility: open.header.visibility,
-            is_static: open.header.is_static,
-            parameter_count: open.header.parameter_count,
-            start_line: open.start_line,
-            end_line,
-            lines: open.first..last.saturating_add(1),
-            recoveries: open.recoveries,
-        });
     }
 }
 
