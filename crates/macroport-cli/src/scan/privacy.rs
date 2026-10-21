@@ -31,8 +31,10 @@ pub struct PrivacyArgs {
 
     /// Key of the hashes of `--redact`. The same key gives the same hashes in
     /// every run, so that the reports can be compared. By default a random key
-    /// is drawn for each run and forgotten, which makes the runs unlinkable.
-    /// A key on the command line shows in the list of processes of the machine.
+    /// is drawn for each run and forgotten, so the hashes of two runs differ.
+    /// The hashes of the contents of the files (`sha256`) are not keyed and
+    /// stay. A key on the command line shows in the list of processes of the
+    /// machine.
     #[arg(long, value_name = "KEY", requires = "redact", value_parser = non_empty)]
     pub redact_key: Option<String>,
 
