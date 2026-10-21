@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use macroport_core::analyze::{Extraction, Options, extract};
 use macroport_core::report::{FileReport, Lang, Report};
 use macroport_core::rules::{RuleSet, RulesSources};
-use macroport_testkit::report_problems;
+use macroport_testkit::{corpus, report_problems};
 
 /// The rules that ship with the tool, loaded once.
 pub static RULES: LazyLock<RuleSet> = LazyLock::new(|| {
@@ -16,6 +16,17 @@ pub static RULES: LazyLock<RuleSet> = LazyLock::new(|| {
 /// The extraction of `bytes`, a file named `path`, with the default options.
 pub fn extraction(bytes: &[u8], path: &str) -> Extraction {
     extraction_with(bytes, path, &Options::new(&RULES))
+}
+
+/// The extraction of the file `file` of `corpus/fixtures/`.
+pub fn fixture(file: &str) -> Extraction {
+    extraction(&corpus::read(&format!("fixtures/{file}")), file)
+}
+
+/// The codes of the errors of `report`, in order.
+pub fn codes(report: &FileReport) -> Vec<&str> {
+    let errors = report.errors.iter().flatten();
+    errors.map(|error| error.code.as_str()).collect()
 }
 
 /// The extraction of `bytes`, a file named `path`, with these options.
