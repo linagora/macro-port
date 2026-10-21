@@ -44,8 +44,24 @@ const FLAG_BITS: [u8; 8] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80];
 /// # Errors
 ///
 /// An error if the container breaks a rule of section 2.4.1, or decompresses
-/// to more than `max_output` bytes.
+/// to more than `max_output` bytes. It says how many bytes had been
+/// decompressed by then ([`OvbaError::produced`]): a container can break after
+/// `max_output` bytes, and the work is done all the same.
 pub fn decompress(input: &[u8], max_output: usize) -> Result<Vec<u8>, OvbaError> {
+    let mut output = Vec::new();
+    match decompress_chunks(input, max_output, &mut output) {
+        Ok(()) => Ok(output),
+        Err(error) => Err(error.with_produced(output.len())),
+    }
+}
+
+/// Appends to `output` the bytes that the chunks of the container `input`
+/// decompress to, up to the one that crosses `max_output`.
+fn decompress_chunks(
+    input: &[u8],
+    max_output: usize,
+    output: &mut Vec<u8>,
+) -> Result<(), OvbaError> {
     let Some((&signature, mut rest)) = input.split_first() else {
         return Err(truncated("the container is empty"));
     };
@@ -55,10 +71,9 @@ pub fn decompress(input: &[u8], max_output: usize) -> Result<Vec<u8>, OvbaError>
             format!("the container starts with {signature:#04x}, not 0x01"),
         ));
     }
-    let mut output = Vec::new();
     while !rest.is_empty() {
         let (chunk, tail) = split_chunk(rest)?;
-        chunk.decompress_into(&mut output)?;
+        chunk.decompress_into(output)?;
         if output.len() > max_output {
             return Err(OvbaError::new(
                 Status::SuspiciousArchive,
@@ -68,7 +83,7 @@ pub fn decompress(input: &[u8], max_output: usize) -> Result<Vec<u8>, OvbaError>
         }
         rest = tail;
     }
-    Ok(output)
+    Ok(())
 }
 
 /// A chunk of a container, without its header.
