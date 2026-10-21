@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Family scores of the procedures (SPEC M3, ACCEPTANCE A4).
+//! Family scores and primary families of the procedures (SPEC M3, ACCEPTANCE
+//! A4).
 //!
 //! [`classify`] scores each procedure of a project against the families of
 //! `families.yaml`:
@@ -10,7 +11,10 @@
 //!   adds half its weight per hit to every procedure of the module or of the
 //!   project.
 //! - The families that scored come best first: by score, then by the number of
-//!   distinct signals that matched, then by family id.
+//!   distinct signals that matched, then by family id. The first one is the
+//!   primary family when its score reaches `min_score`, else the procedure is
+//!   [`UNCLASSIFIED`]. The secondary families are the others that score at
+//!   least `secondary_ratio` times as much.
 //! - A score carries one evidence item for each hit it counts. A hit in the
 //!   procedure is cited at its own line, any other hit at the declaration of
 //!   the procedure, so that every score cites a line inside the procedure
@@ -25,10 +29,13 @@ use super::eval::Evaluator;
 use super::hit::{Hit, Place};
 use super::input::{ProcedureInput, ProjectInput};
 use crate::report::{Evidence, FamilyScore};
-use crate::rules::{Families, FamilySignal, Scope};
+use crate::rules::{Families, FamilySignal, Scope, Scoring};
 
 #[cfg(test)]
 mod tests;
+
+/// The `primary_family` of a procedure that no family claims.
+pub const UNCLASSIFIED: &str = "unclassified";
 
 /// The family scores of every procedure of a project.
 #[derive(Debug, Clone, PartialEq)]
@@ -38,11 +45,16 @@ pub struct ProjectFamilies {
     pub modules: Vec<Vec<ProcedureFamilies>>,
 }
 
-/// The family scores of a procedure.
+/// The `primary_family`, `secondary_families` and `families` of a procedure.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcedureFamilies {
+    /// The family that the procedure is about, or [`UNCLASSIFIED`].
+    pub primary_family: String,
+    /// The other families that score close to it, best first. Empty for an
+    /// unclassified procedure.
+    pub secondary_families: Vec<String>,
     /// The scores, best first, each with the evidence of the hits it counts. A
-    /// family with no counted hit is not listed.
+    /// family with no counted hit is not listed, and neither is `unclassified`.
     pub families: Vec<FamilyScore>,
 }
 
@@ -62,7 +74,8 @@ pub fn classify(project: &ProjectInput, rules: &Families) -> ProjectFamilies {
                 index,
                 procedure,
             };
-            procedures.push(procedure_families(scorer.score(at, &module_hits)));
+            let tallies = scorer.score(at, &module_hits);
+            procedures.push(procedure_families(tallies, &rules.scoring));
         }
         modules.push(procedures);
     }
@@ -297,11 +310,36 @@ fn points(half_points: u64) -> f64 {
     half_points as f64 / 2.0
 }
 
-fn procedure_families(tallies: Tallies<'_>) -> ProcedureFamilies {
-    let families = tallies
-        .ranked()
+/// The primary family of a ranking, and the secondary ones. Below `min_score`
+/// nothing is primary, and then nothing is secondary either.
+fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<String>) {
+    let unclassified = || (UNCLASSIFIED.to_owned(), Vec::new());
+    let Some(((family, best), others)) = ranked.split_first() else {
+        return unclassified();
+    };
+    let top = points(best.half_points);
+    if top >= scoring.min_score {
+        let floor = scoring.secondary_ratio * top;
+        let close = others
+            .iter()
+            .filter(|(_, tally)| points(tally.half_points) >= floor);
+        let secondary = close.map(|&(id, _)| id.to_owned()).collect();
+        ((*family).to_owned(), secondary)
+    } else {
+        unclassified()
+    }
+}
+
+fn procedure_families(tallies: Tallies<'_>, scoring: &Scoring) -> ProcedureFamilies {
+    let ranked = tallies.ranked();
+    let (primary_family, secondary_families) = verdict(&ranked, scoring);
+    let families = ranked
         .into_iter()
         .map(|(family, tally)| tally.into_score(family))
         .collect();
-    ProcedureFamilies { families }
+    ProcedureFamilies {
+        primary_family,
+        secondary_families,
+        families,
+    }
 }

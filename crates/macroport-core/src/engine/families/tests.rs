@@ -275,6 +275,52 @@ fn equal_scores_go_to_the_family_with_more_distinct_signals_then_to_the_lower_id
     // has as many signals as 02-b, and a lower score.
     let ranked = [("02-b", 3.0), ("01-a", 3.0), ("03-c", 3.0), ("04-d", 2.0)];
     assert_eq!(scores(found), ranked);
+    // The first is the primary family, and the others score close to it.
+    assert_eq!(found.primary_family, "02-b");
+    assert_eq!(found.secondary_families, ["01-a", "03-c", "04-d"]);
+}
+
+#[test]
+fn the_primary_family_needs_the_minimum_score() {
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 1)]);
+    let found = |names: &[&str]| classify(&hits_of(names), &rules).modules[0][0].clone();
+    assert_eq!(found(&["Foo", "Foo", "Foo"]).primary_family, "01-a");
+    // Below 3 the score is given with its evidence, but nothing is primary or
+    // secondary.
+    let below = found(&["Foo", "Foo"]);
+    assert_eq!(below.primary_family, UNCLASSIFIED);
+    assert_eq!(scores(&below), [("01-a", 2.0)]);
+    assert_eq!(lines_cited(&below.families[0]), [2, 3]);
+    assert!(below.secondary_families.is_empty());
+    let none = found(&["Bar"]);
+    assert_eq!(none.primary_family, UNCLASSIFIED);
+    assert!(none.families.is_empty());
+}
+
+/// Families `01-a`, `02-b` and `03-c`, each with a signal for `Foo` of the
+/// weight given for it.
+fn weighed(weights: &[u32]) -> Families {
+    let ids = ["01-a", "02-b", "03-c"];
+    let signals = |id, &weight| family(id, vec![signal(id, &["Foo"], weight)]);
+    rules(
+        ids.iter()
+            .zip(weights)
+            .map(|(id, w)| signals(id, w))
+            .collect(),
+    )
+}
+
+#[test]
+fn secondary_families_reach_the_ratio_of_the_primary_score() {
+    let found =
+        |weights: &[u32]| classify(&hits_of(&["Foo"]), &weighed(weights)).modules[0][0].clone();
+    // 0.6 x 10 = 6: the score at the ratio is secondary, the one below is not.
+    let found_all = found(&[10, 6, 5]);
+    assert_eq!(found_all.primary_family, "01-a");
+    assert_eq!(found_all.secondary_families, ["02-b"]);
+    assert_eq!(found_all.families.len(), 3);
+    // The minimum score of 3 is not a threshold of the secondary families.
+    assert_eq!(found(&[3, 2]).secondary_families, ["02-b"]);
 }
 
 #[test]
