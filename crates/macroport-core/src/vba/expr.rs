@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The expression reader: it walks the tokens of a statement as expressions,
-//! with the precedence of VBA, and lists the strings, the members, the calls
-//! and the chains it finds.
+//! with the precedence of VBA, and lists the strings, the members, the calls,
+//! the chains and the ProgIDs it finds. It also tells whether an expression
+//! shows the marks of obfuscation.
 //!
 //! A string literal is listed as it is. A literal that is part of an
 //! expression the closed set of [`super::fold`] folds is listed once, as the
@@ -22,6 +23,13 @@
 //! operand of its own, a member of the `With` object (`list.Add .Name`). A
 //! chain that starts with a dot (or a bang) inside a `With` block continues the
 //! object of the block, which the caller hands to the reader.
+//!
+//! A ProgID is the class that a call of `CreateObject` or `GetObject` names, by
+//! its name (`Class:=`) or its position, when the argument folds to a string.
+//!
+//! The marks of obfuscation are those of SPEC section 7: three calls of `Chr`,
+//! `ChrW` or `ChrB` joined by `&` or `+` in one expression, whether or not they
+//! fold, and `StrReverse` applied to a string literal.
 //!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
@@ -55,6 +63,24 @@ const SIGN_POWER: u8 = 23;
 /// followed by a `.`: `VBA.Chr(65)`, `VBA.Strings.Chr$(65)`.
 const LIBRARIES: [&str; 2] = ["VBA", "Strings"];
 
+/// The names that `CreateObject` and `GetObject` may be qualified with: the
+/// library and the module that holds the two, as in
+/// `VBA.Interaction.CreateObject("X")`. `Interaction` holds no function of the
+/// closed set, so that it is not among [`LIBRARIES`].
+const OBJECT_LIBRARIES: [&str; 2] = ["VBA", "Interaction"];
+
+/// The functions that create an object of a class, each with the position of
+/// the argument that names the class: `CreateObject(Class, [ServerName])` and
+/// `GetObject([PathName], [Class])`, whose path is a file or a moniker.
+const PROGID_FUNCTIONS: [(&str, usize); 2] = [("CreateObject", 0), ("GetObject", 1)];
+
+/// The name of that argument, for a call that gives it by name.
+const CLASS_ARGUMENT: &str = "Class";
+
+/// How many calls of `Chr`, `ChrW` or `ChrB` joined in one expression are a
+/// mark of obfuscation (SPEC section 7, `chr_obfuscation`).
+const CHR_CALLS_FOR_A_MARK: usize = 3;
+
 /// The words that stand for a value, which the lexer reads as identifiers: they
 /// are no member and no call.
 const LITERALS: [&str; 5] = ["True", "False", "Nothing", "Null", "Empty"];
@@ -66,15 +92,31 @@ struct Node {
     /// Index of its first token, which gives a string its place in the
     /// order of the statement.
     start: usize,
+    /// How many calls of `Chr`, `ChrW` and `ChrB` the operand joins, whether
+    /// or not they fold: the operand is one of them, or a join of operands,
+    /// or a function of the closed set (or a group) around such a join.
+    chr_calls: usize,
+    /// Whether the operand is a string literal, or literals joined (and
+    /// grouped): `StrReverse` of such an operand is a mark of obfuscation. The
+    /// name of a constant is no literal.
+    literal: bool,
 }
 
 impl Node {
+    /// An operand whose value is `value`, which is no literal and joins no
+    /// call of `Chr`, `ChrW` or `ChrB`.
+    fn valued(start: usize, value: Value) -> Self {
+        Self {
+            value,
+            start,
+            chr_calls: 0,
+            literal: false,
+        }
+    }
+
     /// An operand whose value is not known.
     fn unknown(start: usize) -> Self {
-        Self {
-            value: Value::Unknown,
-            start,
-        }
+        Self::valued(start, Value::Unknown)
     }
 }
 
@@ -115,6 +157,12 @@ fn binary(kind: TokenKind) -> Option<(u8, u8, Operator)> {
         _ => return None,
     };
     Some((power, power.saturating_add(1), operator))
+}
+
+/// Whether `kind` is a binary operator: one that needs an operand on each
+/// side. `Not` is not, and `-` is: its unary use is the reader's business.
+pub(super) fn is_binary_operator(kind: TokenKind) -> bool {
+    binary(kind).is_some()
 }
 
 /// Whether a token of `kind` can start an expression. A type name, which `As`
@@ -210,6 +258,9 @@ struct Chain {
     /// Whether the elements read so far are only library names (`VBA.`,
     /// `VBA.Strings.`), so that the next may be a function of the closed set.
     library: bool,
+    /// Whether they are only the names that may qualify `CreateObject` and
+    /// `GetObject` (`VBA.Interaction.`), so that the next may be one of them.
+    object_library: bool,
     /// The names read so far, the object of the `With` block in front of them
     /// if a dot started the chain.
     elements: Vec<String>,
@@ -305,6 +356,11 @@ pub(super) struct Reader<'a> {
     calls: Vec<(usize, CallSite)>,
     /// The chains found, by the index of their first token.
     chains: Vec<(usize, Vec<String>)>,
+    /// The ProgIDs found, by the index of the token of the function that
+    /// takes them.
+    progids: Vec<(usize, String)>,
+    /// Whether an expression shows the marks of obfuscation.
+    chr_obfuscation: bool,
     /// The innermost `With` block that the statement lies in, if the caller
     /// follows one. Its object has no names when it is unknown.
     enclosing: Option<Enclosing<'a>>,
@@ -337,6 +393,8 @@ impl<'a> Reader<'a> {
             members: Vec::new(),
             calls: Vec::new(),
             chains: Vec::new(),
+            progids: Vec::new(),
+            chr_obfuscation: false,
             enclosing: None,
             continued: &[],
             object_start: block_object_start(tokens),
@@ -401,6 +459,8 @@ impl<'a> Reader<'a> {
             members: in_order(self.members),
             calls: in_order(self.calls),
             chains: in_order(self.chains),
+            progids: in_order(self.progids),
+            chr_obfuscation: self.chr_obfuscation,
             too_deep: self.too_deep,
         };
         (facts, self.opened)
@@ -540,21 +600,35 @@ impl<'a> Reader<'a> {
     /// What the operands `left` and `right` of `operator` make together. Two
     /// strings joined are one, built by appending to the left one: the chain
     /// `a & b & c & ...` is read in linear time. Otherwise the operands that
-    /// are known are listed, and the result is not.
+    /// are known are listed, and the result is not. A join adds up the calls
+    /// of `Chr`, `ChrW` and `ChrB` in its operands, known or not: it is a mark
+    /// of obfuscation when there are [`CHR_CALLS_FOR_A_MARK`] of them. Any
+    /// other operator counts for none, whatever its operands hold.
     fn combine(&mut self, operator: Operator, left: Node, right: Node) -> Node {
         let start = left.start;
+        let chr_calls = match operator {
+            Operator::Join => left.chr_calls.saturating_add(right.chr_calls),
+            Operator::Other => 0,
+        };
+        if chr_calls >= CHR_CALLS_FOR_A_MARK {
+            self.chr_obfuscation = true;
+        }
         match (operator, left.value, right.value) {
             (Operator::Join, Value::Text(mut joined), Value::Text(tail)) => {
                 joined.push_str(&tail);
                 Node {
-                    value: Value::Text(joined),
-                    start,
+                    chr_calls,
+                    literal: left.literal && right.literal,
+                    ..Node::valued(start, Value::Text(joined))
                 }
             }
             (_, left_value, right_value) => {
                 self.finish_value(start, left_value);
                 self.finish_value(right.start, right_value);
-                Node::unknown(start)
+                Node {
+                    chr_calls,
+                    ..Node::unknown(start)
+                }
             }
         }
     }
@@ -570,18 +644,20 @@ impl<'a> Reader<'a> {
         match token.kind {
             TokenKind::String => {
                 self.advance();
+                // A string that is not closed has no value, and is no literal.
+                let value = token
+                    .string_value(self.text)
+                    .map_or(Value::Unknown, Value::Text);
                 Node {
-                    value: token
-                        .string_value(self.text)
-                        .map_or(Value::Unknown, Value::Text),
-                    start,
+                    literal: matches!(value, Value::Text(_)),
+                    ..Node::valued(start, value)
                 }
             }
             TokenKind::Number => {
                 self.advance();
                 let value =
                     parse_number(token.text(self.text)).map_or(Value::Unknown, Value::Number);
-                Node { value, start }
+                Node::valued(start, value)
             }
             TokenKind::Date => {
                 self.advance();
@@ -634,18 +710,22 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// Whether the tokens from `at` are `Name:=`, the head of a named argument.
+    fn names_argument(&self, at: usize) -> bool {
+        self.tokens
+            .get(at)
+            .zip(self.tokens.get(at.saturating_add(1)))
+            .is_some_and(|(name, equals)| {
+                name.kind == TokenKind::Identifier && equals.kind == TokenKind::ColonEquals
+            })
+    }
+
     /// Reads `Name:=` if that is what comes next: the name is a named
     /// argument, and the value follows it as an expression of its own. Tells
     /// whether it was.
     fn named_argument(&mut self) -> bool {
         let at = self.pos;
-        let named = self
-            .tokens
-            .get(at)
-            .zip(self.tokens.get(at.saturating_add(1)))
-            .is_some_and(|(name, equals)| {
-                name.kind == TokenKind::Identifier && equals.kind == TokenKind::ColonEquals
-            });
+        let named = self.names_argument(at);
         if named {
             self.member(at, true);
             self.pos = at.saturating_add(2);
@@ -734,6 +814,7 @@ impl<'a> Reader<'a> {
             start,
             qualified,
             library: !qualified,
+            object_library: !qualified,
             inherited: elements.len(),
             elements,
         };
@@ -833,17 +914,18 @@ impl<'a> Reader<'a> {
             .is_some_and(|rest| rest.iter().all(|token| token.kind == TokenKind::Comment))
     }
 
-    /// Whether the token at `index` names a library.
-    fn is_library(&self, index: usize) -> bool {
+    /// Whether the token at `index` is one of the library `names`.
+    fn names_one_of(&self, index: usize, names: &[&str]) -> bool {
         let name = self.name_at(index);
-        LIBRARIES
+        names
             .iter()
             .any(|library| library.eq_ignore_ascii_case(name))
     }
 
     /// An element of `chain` that a `.` or a `!` follows, which is the token
     /// at `at` and has `arguments` if a `(` followed it. It is a member, and a
-    /// call if it has arguments. A library name is followed by a `.`.
+    /// call if it has arguments, one that creates an object perhaps. A library
+    /// name is followed by a `.`.
     fn inner_element(
         &mut self,
         chain: &mut Chain,
@@ -851,20 +933,65 @@ impl<'a> Reader<'a> {
         arguments: Option<Vec<Option<Node>>>,
     ) {
         self.member(at, false);
-        chain.library = chain.library
-            && self.kind() == Some(TokenKind::Dot)
-            && arguments.is_none()
-            && self.is_library(at);
+        let object_library = chain.object_library;
+        let plain = self.kind() == Some(TokenKind::Dot) && arguments.is_none();
+        chain.library = chain.library && plain && self.names_one_of(at, &LIBRARIES);
+        chain.object_library = object_library && plain && self.names_one_of(at, &OBJECT_LIBRARIES);
         if let Some(arguments) = arguments {
             self.call(at, chain.qualified);
+            self.progid(at, object_library, &arguments);
             self.finish_all(arguments);
         }
     }
 
+    /// Lists the ProgID that the call of the function at `at` names, if it is
+    /// one of [`PROGID_FUNCTIONS`] and its class argument has a value: the
+    /// argument called `Class` wherever it stands, else the one at the
+    /// position of the class, if it is not called otherwise. The function is
+    /// the one of the library of VBA, not the method of another object:
+    /// `object_library` tells whether only the names that may qualify it lie
+    /// before it ([`Chain::object_library`]). A statement that declares
+    /// something holds no call.
+    fn progid(&mut self, at: usize, object_library: bool, arguments: &[Option<Node>]) {
+        if self.declaration || !object_library {
+            return;
+        }
+        let name = self.name_at(at);
+        let Some(&(_, position)) = PROGID_FUNCTIONS
+            .iter()
+            .find(|(function, _)| function.eq_ignore_ascii_case(name))
+        else {
+            return;
+        };
+        let by_name = arguments.iter().flatten().find(|node| {
+            self.argument_name(node.start)
+                .is_some_and(|called| called.eq_ignore_ascii_case(CLASS_ARGUMENT))
+        });
+        let by_position = arguments
+            .get(position)
+            .and_then(Option::as_ref)
+            .filter(|node| self.argument_name(node.start).is_none());
+        if let Some(Node {
+            value: Value::Text(progid),
+            ..
+        }) = by_name.or(by_position)
+        {
+            self.progids.push((at, progid.clone()));
+        }
+    }
+
+    /// The name of the argument whose expression starts at the token `start`,
+    /// if it is a named one (`Class:="X.Y"`).
+    fn argument_name(&self, start: usize) -> Option<&'a str> {
+        let name = start.checked_sub(2)?;
+        self.names_argument(name).then(|| self.name_at(name))
+    }
+
     /// What the last element of `chain` is worth: it is the token at `at` and
     /// has `arguments` if a `(` followed it. It is a member. With arguments it
-    /// is a call, of the closed set of folding perhaps; without, it may be a
-    /// constant, or a call all the same.
+    /// is a call, of the closed set of folding perhaps, and one that creates
+    /// an object perhaps; without, it may be a constant, or a call all the
+    /// same.
     fn last_element(
         &mut self,
         chain: &Chain,
@@ -889,6 +1016,7 @@ impl<'a> Reader<'a> {
             };
         };
         self.call(at, chain.qualified);
+        self.progid(at, chain.object_library, &arguments);
         match Folding::named(self.name_at(at)).filter(|_| chain.library) {
             Some(function) => self.fold(start, function, arguments),
             None => {
@@ -920,25 +1048,40 @@ impl<'a> Reader<'a> {
         if !self.budget.take(value.len()) {
             return Some(Node::unknown(start));
         }
-        Some(Node {
-            value: Value::Text(value.to_owned()),
-            start,
-        })
+        Some(Node::valued(start, Value::Text(value.to_owned())))
     }
 
     /// What `function` makes of its `arguments`: one expression whose value
-    /// it folds, or nothing.
+    /// it folds, or nothing. The call of `Chr`, `ChrW` or `ChrB` counts as one
+    /// call whether it folds or not, and the other functions pass on the count
+    /// of their argument. `StrReverse` of a string literal is a mark of
+    /// obfuscation.
     fn fold(&mut self, start: usize, function: Folding, arguments: Vec<Option<Node>>) -> Node {
-        if let [Some(argument)] = arguments.as_slice()
+        let argument = match arguments.as_slice() {
+            [Some(argument)] => Some(argument),
+            _ => None,
+        };
+        let chr_calls = if function.makes_character() {
+            1
+        } else {
+            argument.map_or(0, |argument| argument.chr_calls)
+        };
+        if function == Folding::StrReverse && argument.is_some_and(|argument| argument.literal) {
+            self.chr_obfuscation = true;
+        }
+        if let Some(argument) = argument
             && let Some(text) = function.apply(&argument.value, &mut self.budget)
         {
             return Node {
-                value: Value::Text(text),
-                start,
+                chr_calls,
+                ..Node::valued(start, Value::Text(text))
             };
         }
         self.finish_all(arguments);
-        Node::unknown(start)
+        Node {
+            chr_calls,
+            ..Node::unknown(start)
+        }
     }
 
     /// Reads the arguments of a call, or the content of a group, up to the

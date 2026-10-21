@@ -6,13 +6,16 @@
 
 use macroport_core::analyze::{Options, analyze, analyze_modules};
 use macroport_core::report::{
-    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, Status, Visibility,
+    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, ProcedureReport,
+    Status, Visibility,
 };
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
 
-use crate::support::{HELLO, checked, module, modules, options, sha256, suspected};
+use crate::support::{
+    HELLO, checked, marks_recovery, module, modules, options, procedures, sha256,
+};
 
 fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
     ModuleSource {
@@ -45,8 +48,9 @@ fn complexity(metrics: &Metrics) -> (Option<u32>, Option<u32>, Option<u32>) {
 /// The names of the procedures of `module`, with whether each is suspected of
 /// not compiling.
 fn names(module: &ModuleReport) -> Vec<(&str, bool)> {
+    let marked = |procedure: &ProcedureReport| marks_recovery(procedure.traits.as_deref());
     (module.procedures.iter())
-        .map(|procedure| (procedure.name.as_str(), suspected(&procedure.traits)))
+        .map(|procedure| (procedure.name.as_str(), marked(procedure)))
         .collect()
 }
 
@@ -441,8 +445,12 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
 
         assert_eq!(file.status, Status::Ok, "{text:?}");
         let first = &module(&file).procedures[0];
-        assert_eq!(suspected(&first.traits), expected, "{text:?}");
-        assert_eq!(suspected(&file.traits), expected, "{text:?}");
+        assert_eq!(
+            marks_recovery(first.traits.as_deref()),
+            expected,
+            "{text:?}"
+        );
+        assert_eq!(marks_recovery(file.traits.as_deref()), expected, "{text:?}");
     }
 }
 
@@ -467,9 +475,13 @@ fn a_procedure_whose_blocks_do_not_match_gets_the_trait_and_marks_the_file() {
         let [first, other] = &module(&file).procedures[..] else {
             panic!("two procedures expected");
         };
-        assert_eq!(suspected(&first.traits), expected, "{text:?}");
-        assert!(!suspected(&other.traits), "{text:?}");
-        assert_eq!(suspected(&file.traits), expected, "{text:?}");
+        assert_eq!(
+            marks_recovery(first.traits.as_deref()),
+            expected,
+            "{text:?}"
+        );
+        assert!(!marks_recovery(other.traits.as_deref()), "{text:?}");
+        assert_eq!(marks_recovery(file.traits.as_deref()), expected, "{text:?}");
     }
 }
 
@@ -478,7 +490,7 @@ fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
     assert_eq!(names(module(&file)), [("Fine", false), ("Later", false)]);
-    assert!(suspected(&file.traits));
+    assert!(marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
@@ -511,7 +523,7 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
         |traits: &Option<Vec<String>>| (traits.iter().flatten()).any(|t| t == "does_not_parse");
     assert!(has(&module(&file).procedures[0].traits));
     assert!(has(&file.traits));
-    assert!(!suspected(&file.traits));
+    assert!(!marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
@@ -644,8 +656,7 @@ fn analyze_reads_the_procedures_of_the_modules_of_a_workbook() {
 
     assert_eq!((file.container, file.status), (Container::Xlsm, Status::Ok));
     assert_eq!(file.errors, Some(Vec::new()));
-    let found: Vec<_> = (modules(&file).iter())
-        .flat_map(|module| &module.procedures)
+    let found: Vec<_> = procedures(&file)
         .map(|p| (p.name.as_str(), p.start_line))
         .collect();
     // Excel's export of the module has them at these lines.

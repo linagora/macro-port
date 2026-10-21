@@ -3,8 +3,8 @@
 
 use std::sync::LazyLock;
 
-use macroport_core::analyze::{Extraction, Options, extract};
-use macroport_core::report::{FileReport, Lang, ModuleReport, Report, Signal};
+use macroport_core::analyze::{Extraction, Options, analyze, extract};
+use macroport_core::report::{FileReport, Lang, ModuleReport, ProcedureReport, Report, Signal};
 use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::{corpus, report_problems};
 use sha2::{Digest, Sha256};
@@ -45,11 +45,11 @@ pub fn codes(report: &FileReport) -> Vec<&str> {
 }
 
 /// Whether `traits` has the trait that the shipped rules give to what did not
-/// parse cleanly, the one tied to the predicate `parse_recovered`. The rule
-/// engine gives every trait of a procedure or a file, so the others come with
-/// it.
-pub fn suspected(traits: &Option<Vec<String>>) -> bool {
-    (traits.iter().flatten()).any(|id| id == "compile_error_suspected")
+/// parse cleanly, the one tied to the predicate `parse_recovered`. A report may
+/// carry other traits, from the rules that look at the metrics: the rule engine
+/// gives every trait of a procedure or a file.
+pub fn marks_recovery(traits: Option<&[String]>) -> bool {
+    traits.is_some_and(|traits| traits.iter().any(|id| id == "compile_error_suspected"))
 }
 
 /// The signal `id` of `severity` that a container indicator makes: it is the
@@ -94,9 +94,32 @@ pub fn checked(file: FileReport) -> FileReport {
     file
 }
 
+/// The report of the file `path` of `corpus/`, relative to it, from `analyze()`
+/// with the default options and checked against the report schema.
+pub fn corpus_report(path: &str) -> FileReport {
+    checked(analyze(&corpus::read(path), path, &options()))
+}
+
+/// The text samples of the families, by their paths relative to `corpus/`.
+pub fn samples() -> Vec<String> {
+    let samples = corpus::files("families", &["bas", "cls", "frm"]);
+    assert!(samples.len() >= 80, "{} samples", samples.len());
+    samples
+}
+
+/// The text of the sample `path` of `corpus/`, relative to it.
+pub fn sample_text(path: &str) -> String {
+    String::from_utf8(corpus::read(path)).expect("a sample is UTF-8")
+}
+
 /// The modules of the VBA project of `file`.
 pub fn modules(file: &FileReport) -> &[ModuleReport] {
     &file.vba_project.as_ref().expect("a VBA project").modules
+}
+
+/// The procedures of every module of `file`.
+pub fn procedures(file: &FileReport) -> impl Iterator<Item = &ProcedureReport> {
+    modules(file).iter().flat_map(|module| &module.procedures)
 }
 
 /// The only module of `file`.
