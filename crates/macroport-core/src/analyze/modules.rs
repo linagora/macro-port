@@ -5,9 +5,11 @@
 //! holds what it makes of one: the lines, and the procedures that the parser
 //! finds in them. [`Front`] puts that into the report of the module, and
 //! completes the report of the file once every module is read. [`finish`] runs
-//! it on the modules of an extraction: those that were found in a workbook, or
-//! the text modules that [`analyze_modules`] (in the `text` submodule) wraps in
-//! one.
+//! it on the modules of an extraction, those that were found in a workbook. The
+//! text modules have two doors of their own: [`analyze_modules`] (the `text`
+//! submodule) wraps modules that the caller has as text in a file, and
+//! `analyze_text` (the `text_file` submodule) reads a `.bas`, `.cls` or `.frm`
+//! file as the one module of a file.
 //!
 //! The file is `ok` when a module has a procedure or is suspected of having lost
 //! its source, when it has Excel 4.0 macro sheets or when the encryption of the
@@ -28,6 +30,7 @@
 //! Nothing here executes or evaluates anything from the file.
 
 mod text;
+mod text_file;
 
 use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
@@ -41,6 +44,7 @@ use crate::vba::{
 };
 
 pub use self::text::analyze_modules;
+pub(super) use self::text_file::{analyze_text, is_text_module};
 
 /// The family of a procedure that no rule has scored: the rule engine (M3)
 /// classifies the procedures, so until it runs none is.
@@ -116,8 +120,13 @@ impl Front {
     fn read(&mut self, module: &mut ModuleReport, text: &str) {
         match self.analyse(text) {
             Ok(analysis) => self.fill(module, &analysis),
-            Err(error) => (self.failures).push(Failure::from(error).in_module(&module.name)),
+            Err(error) => self.fail(&module.name, error),
         }
+    }
+
+    /// Keeps, for the file, why the module called `name` was not read.
+    fn fail(&mut self, name: &str, error: VbaError) {
+        self.failures.push(Failure::from(error).in_module(name));
     }
 
     /// Reads the next module. One that crosses the budget of lines is read

@@ -18,3 +18,4 @@ mod indicators;
 mod modules;
 mod robustness;
 mod support;
+mod text_files;
