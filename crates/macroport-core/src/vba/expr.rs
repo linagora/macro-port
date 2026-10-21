@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The expression reader: it walks the tokens of a statement as expressions,
-//! with the precedence of VBA, and lists the strings, the members and the calls
-//! it finds.
+//! with the precedence of VBA, and lists the strings, the members, the calls
+//! and the chains it finds.
 //!
 //! A string literal is listed as it is. A literal that is part of an
 //! expression the closed set of [`super::fold`] folds is listed once, as the
@@ -16,14 +16,21 @@
 //! takes those that the syntax does not rule out, like the calibration
 //! prototype.
 //!
+//! The names joined by dots make a chain, the arguments of the calls in it
+//! left out. A dot continues the chain when it touches the name before it or
+//! opens a continued line (`a.b`, `a _` then `.b`); after a space it starts an
+//! operand of its own, a member of the `With` object (`list.Add .Name`). A
+//! chain that starts with a dot has the names after the dot and no more: the
+//! object of the `With` block it lies in is not known to the reader.
+//!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
 //! listed as they are, and the statement is flagged. Every token is read once
 //! and a folded string is built by appending to the left operand, so the time
 //! is linear in the tokens, but for the final sorts of the facts. What a
 //! string function or a constant makes out of a string is paid for out of a
-//! [`Budget`] that the text of the statement sets, so that its memory and
-//! time are too.
+//! [`Budget`] that the text of the statement sets, so that the memory and the
+//! time are linear too.
 
 use super::facts::{CallSite, Facts, MemberUse};
 use super::fold::{Budget, ConstTable, Folding, Value, parse_number};
@@ -179,6 +186,8 @@ struct Chain {
     /// Whether the elements read so far are only library names (`VBA.`,
     /// `VBA.Strings.`), so that the next may be a function of the closed set.
     library: bool,
+    /// The names read so far.
+    elements: Vec<String>,
 }
 
 /// Reads the expressions of one statement.
@@ -206,10 +215,17 @@ pub(super) struct Reader<'a> {
     members: Vec<(usize, MemberUse)>,
     /// The calls found, by the index of their token.
     calls: Vec<(usize, CallSite)>,
+    /// The chains found, by the index of their first token.
+    chains: Vec<(usize, Vec<String>)>,
+    /// The indices of the dots and bangs that open a line continued from the
+    /// one before, in order: they continue the chain before them, as a dot
+    /// after a space does not.
+    continued: &'a [usize],
 }
 
 impl<'a> Reader<'a> {
-    /// A reader of the statement `tokens`, which were cut from `text`.
+    /// A reader of the statement `tokens`, which were cut from `text`, with no
+    /// continued line.
     pub(super) fn new(text: &'a str, tokens: &'a [Token], consts: &'a ConstTable) -> Self {
         Self {
             text,
@@ -223,7 +239,16 @@ impl<'a> Reader<'a> {
             strings: Vec::new(),
             members: Vec::new(),
             calls: Vec::new(),
+            chains: Vec::new(),
+            continued: &[],
         }
+    }
+
+    /// The same reader, for a statement whose tokens at the indices
+    /// `continued` are dots or bangs that open a continued line.
+    pub(super) fn continued(mut self, continued: &'a [usize]) -> Self {
+        self.continued = continued;
+        self
     }
 
     /// Reads the statement and gives the facts it holds, in source order.
@@ -266,6 +291,7 @@ impl<'a> Reader<'a> {
             strings: in_order(self.strings),
             members: in_order(self.members),
             calls: in_order(self.calls),
+            chains: in_order(self.chains),
             too_deep: self.too_deep,
         }
     }
@@ -584,7 +610,8 @@ impl<'a> Reader<'a> {
     /// Reads a name and what follows it: `Foo`, `Foo(1, 2)`, `a.b(c).d`,
     /// `rs!Name`, or `.Font` in a `With`. Only two shapes have a value: a call
     /// of the closed set, alone or qualified by library names, and the name
-    /// of a constant. The arguments are expressions of their own.
+    /// of a constant. The arguments are expressions of their own, and the names
+    /// make a chain.
     fn primary(&mut self) -> Node {
         let start = self.pos;
         let qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
@@ -595,24 +622,72 @@ impl<'a> Reader<'a> {
             start,
             qualified,
             library: !qualified,
+            elements: Vec::new(),
         };
         while self.kind() == Some(TokenKind::Identifier) {
             let at = self.pos;
             self.advance();
-            let arguments = if self.kind() == Some(TokenKind::LeftParen) {
-                self.advance();
-                Some(self.arguments())
-            } else {
-                None
-            };
-            if !matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
-                return self.last_element(&chain, at, arguments);
+            chain.elements.push(self.name_at(at).to_owned());
+            let arguments = self.argument_lists(&mut chain);
+            if !self.continues_operand() {
+                let node = self.last_element(&chain, at, arguments);
+                self.end_chain(chain);
+                return node;
             }
             self.inner_element(&mut chain, at, arguments);
             self.advance();
             chain.qualified = true;
         }
+        self.end_chain(chain);
         Node::unknown(start)
+    }
+
+    /// Reads the argument list that follows a name, if there is one, and the
+    /// ones after it, which index what the call gives (`Cells(1)(2)`). The call
+    /// is then none of the closed set, and those lists hold expressions of
+    /// their own.
+    fn argument_lists(&mut self, chain: &mut Chain) -> Option<Vec<Option<Node>>> {
+        if self.kind() != Some(TokenKind::LeftParen) {
+            return None;
+        }
+        self.advance();
+        let arguments = self.arguments();
+        while self.kind() == Some(TokenKind::LeftParen) {
+            self.advance();
+            chain.library = false;
+            let indexes = self.arguments();
+            self.finish_all(indexes);
+        }
+        Some(arguments)
+    }
+
+    /// Whether the next token is a dot or a bang that continues the operand
+    /// just read. A dot after a space starts an operand of its own: `list.Add
+    /// .Name` passes the member `Name` of the `With` object to `Add`, as the
+    /// corpus does. A continued line puts a space there all the same
+    /// (`x.Interior _` then `.Color`): the caller says which dots open one.
+    fn continues_operand(&self) -> bool {
+        let at = self.pos;
+        let Some(dot) = self
+            .tokens
+            .get(at)
+            .filter(|token| matches!(token.kind, TokenKind::Dot | TokenKind::Bang))
+        else {
+            return false;
+        };
+        let touches = at
+            .checked_sub(1)
+            .and_then(|before| self.tokens.get(before))
+            .is_some_and(|before| before.end == dot.start);
+        touches || self.continued.binary_search(&at).is_ok()
+    }
+
+    /// Ends `chain`: it is listed if it has more than one element, and a name
+    /// alone is no chain.
+    fn end_chain(&mut self, chain: Chain) {
+        if chain.elements.len() > 1 {
+            self.chains.push((chain.start, chain.elements));
+        }
     }
 
     /// Whether the token at `index` names a library.
