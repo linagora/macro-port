@@ -33,7 +33,7 @@ const HOSTILE: &str = "<!--<script>x</scr\0ipt></SCRIPT >\"'&<img src=x onerror=
 /// Where the strings that [`hostile`] replaces are in a report: JSON pointers,
 /// with `*` for the index in a list. The names of families, signals and traits,
 /// the places and the lines of evidence are those of [`hostile_names`].
-const SHOWN: [&str; 12] = [
+const SHOWN: [&str; 18] = [
     "/generated_at",
     "/tool/name",
     "/tool/version",
@@ -45,6 +45,12 @@ const SHOWN: [&str; 12] = [
     "/files/*/errors/*/message",
     "/files/*/vba_project/name",
     "/files/*/vba_project/references/*",
+    "/files/*/vba_project/modules/*/name",
+    "/files/*/vba_project/modules/*/stream_name",
+    "/files/*/vba_project/modules/*/source_sha256",
+    "/files/*/vba_project/modules/*/procedures/*/name",
+    "/files/*/vba_project/modules/*/procedures/*/calls/*",
+    "/files/*/vba_project/modules/*/procedures/*/apis/*/name",
     "/files/*/notes/*",
 ];
 
@@ -239,9 +245,12 @@ fn the_script_looks_for_what_the_template_writes() {
         assert_eq!(page.matches(&format!(" id=\"{id}\"")).count(), 1, "{id}");
     }
 
-    // It matches a file on its path and on the value of each of its chips.
+    // It matches a file on its path and on the value of each of its chips, in
+    // its first summary.
     assert!(SCRIPT.contains(r#"querySelectorAll("details.file")"#));
-    assert!(SCRIPT.contains(r#"querySelectorAll("summary .path, summary .value")"#));
+    assert!(SCRIPT.contains(r#"querySelector("summary").querySelectorAll(".path, .value")"#));
+    // The buttons open and close the modules and procedures of a file as well.
+    assert!(SCRIPT.contains(r#"files[i].querySelectorAll("details")"#));
     let files = &report.files;
     let chips = files.len()
         + (files.iter().filter(|file| file.complexity_level.is_some())).count()
@@ -251,13 +260,18 @@ fn the_script_looks_for_what_the_template_writes() {
         page.matches(r#"<details class="file">"#).count(),
         files.len()
     );
-    // The chips of the signals, further down in a file, are not in a summary.
-    let summaries = cut(&page, "<summary>", "</summary>").1.concat();
-    assert_eq!(
-        summaries.matches(r#"<span class="path">"#).count(),
-        files.len()
-    );
-    assert_eq!(summaries.matches(r#"<span class="value">"#).count(), chips);
+    // The chips of the signals, further down in a file, are not in a summary. The
+    // modules and procedures have summaries, and chips in them, that the script
+    // does not read: the summary of a file is the one that opens with its path.
+    let summaries = cut(&page, "<summary>", "</summary>").1;
+    assert!(summaries.len() > files.len(), "the modules have summaries");
+    let path = r#"<span class="path">"#;
+    assert_eq!(summaries.concat().matches(path).count(), files.len());
+    let own: String = (summaries.iter())
+        .filter(|s| s.starts_with(path))
+        .copied()
+        .collect();
+    assert_eq!(own.matches(r#"<span class="value">"#).count(), chips);
 }
 
 #[test]
@@ -274,20 +288,27 @@ fn the_data_block_cannot_end_its_element_and_gives_the_report_back() {
     assert_eq!(read, report);
 }
 
-/// The strings of the injection fixture that the page shows.
+/// The strings of the injection fixture that carry markup or a quote, each
+/// once. The page shows every one of them, though not at each place that the
+/// report has it: a signal does not repeat its module or its procedure.
 fn injected(report: &Report) -> Vec<String> {
-    let first = &report.files[0];
-    let second = &report.files[1];
-    let project = first.vba_project.as_ref().expect("a project");
-    let mut shown = vec![first.path.as_str(), second.path.as_str()];
-    shown.extend(report.scan.roots.iter().flatten().map(String::as_str));
-    shown.extend(project.name.as_deref());
-    shown.extend(project.references.iter().flatten().map(String::as_str));
-    shown.extend(second.errors.iter().flatten().map(|e| e.message.as_str()));
-    let lines = (first.signals.iter().flatten()).flat_map(|s| s.evidence.iter().flatten());
-    shown.extend(lines.filter_map(|line| line.snippet.as_deref()));
-    assert_eq!(shown.len(), 8, "the fixture has eight strings to show");
-    shown.into_iter().map(str::to_owned).collect()
+    fn collect(value: &Value, strings: &mut BTreeSet<String>) {
+        match value {
+            Value::String(text) if text.contains(['<', '>', '&', '"', '\'']) => {
+                strings.insert(text.clone());
+            }
+            Value::Array(items) => items.iter().for_each(|item| collect(item, strings)),
+            Value::Object(members) => members.values().for_each(|m| collect(m, strings)),
+            _ => {}
+        }
+    }
+    let mut strings = BTreeSet::new();
+    collect(
+        &serde_json::to_value(report).expect("a report is JSON"),
+        &mut strings,
+    );
+    assert_eq!(strings.len(), 12, "the fixture has twelve strings to show");
+    strings.into_iter().collect()
 }
 
 #[test]
@@ -360,15 +381,15 @@ fn parse_tag(inside: &str) -> Tag {
     }
 }
 
-const ELEMENTS: [&str; 34] = [
+const ELEMENTS: [&str; 35] = [
     "html", "head", "meta", "title", "link", "style", "body", "header", "main", "section", "h1",
-    "h2", "h3", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter",
+    "h2", "h3", "h4", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter",
     "label", "input", "button", "output", "details", "summary", "span", "code", "script",
 ];
 
 /// The classes that lay the page out.
-const LAYOUT_CLASSES: &str = "facts notice totals distributions count toolbar file path chip \
-                              hint value families signals evidence score";
+const LAYOUT_CLASSES: &str = "facts notice totals distributions count toolbar file module \
+                              procedure path name chip hint value families signals evidence score";
 
 /// The classes that colour a word after a value of the schema: `status-ok`,
 /// `level-low`, `severity-high`.
@@ -744,17 +765,26 @@ fn each_file_has_its_path_chips_and_facts() {
     assert!(shown.contains(
         "legacy/xlm-only.xlsb Status Analysed Complexity Low Highest severity Medium Format"
     ));
+    // Its metrics follow the facts of the file (the cyclomatic complexity is the
+    // highest of its procedures), and its families come after them.
     assert!(shown.contains(
         "Format XLSM Size 14321 bytes SHA-256 \
          f01be4b0b98c36f5ad66974216461d080278970f204e50c92f41ada6cf24187e \
-         VBA project VBAProject References Visual Basic For Applications \
-         Microsoft Excel 16.0 Object Library OLE Automation Microsoft Office 16.0 Object Library"
+         VBA project VBAProject Code page 1252 References Visual Basic For Applications \
+         Microsoft Excel 16.0 Object Library OLE Automation Microsoft Office 16.0 Object Library \
+         Lines of code 7 Logical lines of code 5 Procedures 1 Highest cyclomatic complexity 1 \
+         Cyclomatic complexity, total 1 Maximum nesting depth 0 Forms 0 Declare statements 0 \
+         External dependencies 0 Families"
     ));
     // A protected project, Excel 4.0 macros and their sheets, a workbook that is
     // encrypted, an error and a note.
-    assert!(shown.contains("VBA project BudgetTools Protected Yes"));
+    assert!(shown.contains("VBA project BudgetTools Protected Yes Code page 1252"));
     assert!(shown.contains("Excel 4.0 macros Yes Excel 4.0 macro sheets 2"));
-    assert!(shown.contains("Workbook encrypted Yes"));
+    assert!(shown.contains(
+        "Workbook encrypted Yes Lines of code 72 Logical lines of code 54 Procedures 5 \
+         Highest cyclomatic complexity 4 Cyclomatic complexity, total 12 \
+         Maximum nesting depth 2 Forms 1 Declare statements 1 External dependencies 2 Traits"
+    ));
     assert!(shown.contains("Errors ooxml.encrypted The package is password-protected"));
     assert!(shown.contains("Notes encrypted_default_password_possible"));
     // Each one is shown for the one file of the fleet that has it, and not as a
@@ -793,9 +823,115 @@ fn a_file_lists_its_traits_families_and_signals_with_their_labels() {
     ] {
         assert!(fr.contains(expected), "{expected:?} in {fr}");
     }
-    // A section is there for the files that have something to list in it.
-    for (heading, files) in [("Families", 3), ("Security signals", 3), ("Traits", 1)] {
-        assert_eq!(en.matches(heading).count(), files, "{heading}");
+    // A section is there for the files that have something to list in it, and
+    // the traits for the one file and the one procedure of the fleet that has
+    // some.
+    let markup = markup(&page(&report, Lang::En));
+    for (heading, files) in [("Families", 3), ("Security signals", 3)] {
+        let heading = format!("<h3>{heading}</h3>");
+        assert_eq!(markup.matches(&heading).count(), files, "{heading}");
+    }
+    assert_eq!(markup.matches("<dt>Traits</dt>").count(), 2);
+}
+
+#[test]
+fn a_file_lists_its_modules_and_their_procedures_with_their_labels() {
+    let report = common::fleet();
+    let en = words(&markup(&page(&report, Lang::En)));
+    let fr = words(&markup(&page(&report, Lang::Fr)));
+
+    // A module has its type, its stream and the hash of its source, its metrics
+    // (the cyclomatic complexity is the highest of its procedures) and its
+    // procedures. A procedure has its kind, visibility and family, the flags that
+    // are true, its lines and metrics, the secondary families, calls, APIs and
+    // traits that it has, and its families and signals, which do not say where
+    // they were raised.
+    for expected in [
+        "Modules ThisWorkbook Document module Stream ThisWorkbook Source code SHA-256 \
+         1f426bb1b1e3420e334c903a9b4407c4a767dfbfcbe3235e1b4fb91a8e95cfc2 \
+         Lines of code 14 Logical lines of code 12 Procedures 1 Highest cyclomatic complexity 2 \
+         Cyclomatic complexity, total 2 Maximum nesting depth 1 Procedures Workbook_Open Sub \
+         Visibility Private Family Event-driven automation Entry point Event handler \
+         Line range 8-14 Lines of code 7 Logical lines of code 6 Cyclomatic complexity 2 \
+         Maximum nesting depth 1 Parameters 0 GoTo and GoSub statements 0 Calls FormatReport \
+         APIs Application.ScreenUpdating ×2 \
+         Families Event-driven automation score 5 evt.handler Line 8 Private Sub Workbook_Open() \
+         Security signals Medium Runs automatically when the file opens or closes \
+         sec.auto-exec sec.auto-exec Line 8 Private Sub Workbook_Open()",
+        // A signal of a module, and a procedure with secondary families and APIs.
+        "Declare statements 1 Security signals Low Calls native Windows APIs (Declare) \
+         sec.declare sec.declare Line 2 Private Declare Function GetTickCount Lib \"kernel32\" () \
+         As Long Procedures FormatReport Sub Visibility Default Family Formatting and layout \
+         Entry point Line range 5-22 Lines of code 18 Logical lines of code 14 \
+         Cyclomatic complexity 4 Maximum nesting depth 2 Parameters 0 GoTo and GoSub statements 0 \
+         Secondary families Report generation and printing APIs Range.Interior ×2, Range.Font ×1",
+        // A procedure with traits, and no call and no family.
+        "Macro1 Sub Visibility Default Family Unclassified Possibly unused Line range 39-46 \
+         Lines of code 8 Logical lines of code 6 Cyclomatic complexity 1 Maximum nesting depth 0 \
+         Parameters 0 GoTo and GoSub statements 0 APIs Select ×3 \
+         Traits Recorded macro style, Possibly unused UserForm1 Form",
+        // A module with no stream and no hash, and a procedure with no secondary
+        // family, no call and no trait.
+        "Modules Module1 Standard module Lines of code 12 Logical lines of code 8 Procedures 1 \
+         Highest cyclomatic complexity 2 Cyclomatic complexity, total 2 Maximum nesting depth 1 \
+         Procedures AskName Sub Visibility Public Family Forms and data entry Entry point \
+         Line range 2-10 Lines of code 9 Logical lines of code 7 Cyclomatic complexity 2 \
+         Maximum nesting depth 1 Parameters 0 GoTo and GoSub statements 0 APIs InputBox ×2 \
+         Families Forms and data entry score 4",
+    ] {
+        assert!(en.contains(expected), "{expected:?} in {en}");
+    }
+    for expected in [
+        "Modules ThisWorkbook Module de document Flux ThisWorkbook SHA-256 du code source",
+        "Complexité cyclomatique maximale 2 Complexité cyclomatique totale 2 \
+         Profondeur d’imbrication maximale 1 Procédures Workbook_Open Sub Visibilité Privée \
+         Famille Événements Point d’entrée Gestionnaire d’événement Plage de lignes 8-14 \
+         Lignes de code 7 Lignes de code logiques 6 Complexité cyclomatique 2 \
+         Profondeur d’imbrication maximale 1 Paramètres 0 Instructions GoTo et GoSub 0 \
+         Appels FormatReport API Application.ScreenUpdating ×2 Familles Événements score 5",
+        "Familles secondaires Génération de rapports API Range.Interior ×2, Range.Font ×1",
+        "Macro1 Sub Visibilité Par défaut Famille Non classée Possiblement inutilisée \
+         Plage de lignes 39-46",
+        "Caractéristiques Macro enregistrée, Possiblement inutilisée",
+    ] {
+        assert!(fr.contains(expected), "{expected:?} in {fr}");
+    }
+    // The report says where each signal was raised; the page lists it there.
+    assert!(!en.contains("M_14_01.Auto_Open") && !en.contains("ThisWorkbook.Workbook_Open"));
+}
+
+#[test]
+fn a_module_or_a_procedure_has_a_flag_only_when_it_is_true() {
+    let chip =
+        |label: &str| format!(r#"<span class="chip"><span class="value">{label}</span></span>"#);
+    let mut report = common::fleet();
+    let before = page(&report, Lang::En);
+    // Six procedures of the fleet are entry points, two handle an event and one
+    // is possibly unused. The others have the flag set to false, or not at all.
+    for (label, procedures) in [
+        ("Entry point", 6),
+        ("Event handler", 2),
+        ("Possibly unused", 1),
+    ] {
+        assert_eq!(before.matches(&chip(label)).count(), procedures, "{label}");
+    }
+
+    let module = &mut report.files[0]
+        .vba_project
+        .as_mut()
+        .expect("a project")
+        .modules[0];
+    module.source_available = false;
+    module.source_missing_suspected = Some(true);
+    let json = serde_json::to_string(&report).expect("a report is JSON");
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+    let after = page(&report, Lang::En);
+    for label in [
+        "Source code unavailable",
+        "Source code possibly missing, p-code present",
+    ] {
+        assert_eq!(before.matches(&chip(label)).count(), 0, "{label}");
+        assert_eq!(after.matches(&chip(label)).count(), 1, "{label}");
     }
 }
 
@@ -846,8 +982,8 @@ fn hostile_for(strings: &mut Vec<String>, place: &str) -> String {
 
 /// The fleet with a hostile string, each one different, as the name of a family,
 /// a signal and a trait, as a place and as a line of evidence, in the first
-/// file and in the summary. The rules know none of those names. The report is
-/// returned with the strings.
+/// file, in one of its procedures and in the summary. The rules know none of
+/// those names. The report is returned with the strings.
 fn hostile_names() -> (Report, Vec<String>) {
     let mut strings = Vec::new();
     let evidence_of = |strings: &mut Vec<String>, place: &str| {
@@ -873,6 +1009,23 @@ fn hostile_names() -> (Report, Vec<String>) {
         procedure: Some(hostile_for(&mut strings, "procedure")),
         evidence: evidence_of(&mut strings, "signal"),
     }]);
+    // The same in a procedure of the file, which has a place of its own.
+    let procedure = &mut file.vba_project.as_mut().expect("a project").modules[0].procedures[0];
+    procedure.primary_family = hostile_for(&mut strings, "procedure primary");
+    procedure.secondary_families = Some(vec![hostile_for(&mut strings, "procedure secondary")]);
+    procedure.traits = Some(vec![hostile_for(&mut strings, "procedure trait")]);
+    procedure.families = vec![FamilyScore {
+        family: hostile_for(&mut strings, "procedure family"),
+        score: 2.0,
+        evidence: evidence_of(&mut strings, "procedure family"),
+    }];
+    procedure.signals = vec![Signal {
+        signal_id: hostile_for(&mut strings, "procedure signal"),
+        severity: Severity::Low,
+        module: None,
+        procedure: None,
+        evidence: evidence_of(&mut strings, "procedure signal"),
+    }];
     let family = hostile_for(&mut strings, "by family");
     report.summary.by_family.insert(family, 1);
     (report, strings)
@@ -902,10 +1055,11 @@ fn the_names_that_a_file_gives_to_families_signals_and_places_are_shown_as_text(
         }
         assert!(words(&markup).contains(score), "{score}");
 
-        // The page asked for a label of each of the five names that carry one
-        // (three families, a signal and a trait), and for no word that is missing.
+        // The page asked for a label of each of the ten names that carry one
+        // (six families, two signals and two traits), and for no word that is
+        // missing.
         let problems = messages.problems();
-        assert_eq!(problems.len(), 5, "{problems:?}");
+        assert_eq!(problems.len(), 10, "{problems:?}");
         assert!(
             problems.iter().all(|p| p.contains(" label '")),
             "{problems:?}"
