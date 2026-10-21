@@ -27,8 +27,8 @@ pub const STREAM_SIZE: usize = 120;
 
 /// A container holding these streams, and the storages of their paths.
 ///
-/// The one place that writes a compound file, which `clippy.toml` bans from
-/// the core: tests build their containers here.
+/// The one place of this test crate that writes a compound file, which
+/// `clippy.toml` bans from the core: its tests build their containers here.
 #[allow(clippy::disallowed_methods)]
 pub fn container(version: Version, streams: &[(&str, &[u8])]) -> Vec<u8> {
     let mut file = CompoundFile::create_with_version(version, Cursor::new(Vec::new())).unwrap();
