@@ -312,7 +312,7 @@ impl<'a> Lexer<'a> {
                     (TokenKind::Unknown, 1)
                 }
             },
-            _ if is_ident_start(c) || c == '_' => self.word(rest),
+            _ if is_ident_start(c) => self.word(rest),
             '0'..='9' => (TokenKind::Number, number(rest)),
             '.' if !self.after_operand() && after(1).is_some_and(|next| next.is_ascii_digit()) => {
                 (TokenKind::Number, number(rest))
@@ -534,5 +534,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_bare_underscore_starts_no_name() {
+        // Only a bracketed name may begin with one, and a name may hold one.
+        let text = "_ _a a_b [_c]";
+        let kinds: Vec<TokenKind> = tokenize(text).iter().map(|token| token.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                TokenKind::Unknown,
+                TokenKind::Unknown,
+                TokenKind::Identifier,
+                TokenKind::Identifier,
+                TokenKind::Identifier
+            ]
+        );
     }
 }
