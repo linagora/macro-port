@@ -129,7 +129,7 @@ pub enum TokenKind {
     /// the closing quote is missing, which VBA does not accept:
     /// [`Token::string_value`] is `None` for it.
     String,
-    /// A number: `42`, `1.5E3`, `10%`.
+    /// A number: `42`, `1.5E3`, `10%`, or in base 16 or 8: `&HFF`, `&O17`.
     Number,
     /// A date or time literal: `#1/2/2000#`.
     Date,
@@ -354,7 +354,16 @@ impl<'a> Lexer<'a> {
             '/' => (TokenKind::Slash, 1),
             '\\' => (TokenKind::Backslash, 1),
             '^' => (TokenKind::Caret, 1),
-            '&' => (TokenKind::Ampersand, 1),
+            '&' => {
+                let literal = prefixed_radix_len(rest).or_else(|| {
+                    // Without a prefix, only where an operand is expected:
+                    // after one, `&` joins.
+                    (!self.after_operand())
+                        .then(|| bare_octal_len(rest))
+                        .flatten()
+                });
+                literal.map_or((TokenKind::Ampersand, 1), |len| (TokenKind::Number, len))
+            }
             ':' if char_at(1) == Some('=') => (TokenKind::ColonEquals, 2),
             ':' => (TokenKind::Colon, 1),
             '=' => match char_at(1) {
@@ -447,6 +456,51 @@ fn type_character_len(tail: &str) -> usize {
         _ => false,
     };
     usize::from(is_type_character)
+}
+
+/// Bytes of the hexadecimal or octal number that starts `rest`, which starts
+/// with `&H` or `&O` in any letter case: `&H1F`, `&o17`. Wherever it stands,
+/// `Sleep &H64` included.
+fn prefixed_radix_len(rest: &str) -> Option<usize> {
+    let digit: fn(&u8) -> bool = match rest.as_bytes().get(1)? {
+        b'h' | b'H' => u8::is_ascii_hexdigit,
+        b'o' | b'O' => is_octal_digit,
+        _ => return None,
+    };
+    radix_len(rest, 2, digit)
+}
+
+/// Bytes of the octal number that starts `rest`, which starts with `&` and an
+/// octal digit: `&17`.
+fn bare_octal_len(rest: &str) -> Option<usize> {
+    radix_len(rest, 1, is_octal_digit)
+}
+
+/// Whether `byte` is a digit from 0 to 7.
+fn is_octal_digit(byte: &u8) -> bool {
+    matches!(byte, b'0'..=b'7')
+}
+
+/// Bytes of the number that starts `rest`: a prefix of `prefix` bytes, then
+/// the digits that `digit` accepts, then the `%` or `&` type character it may
+/// end with. `None` unless there is a digit and the number ends there: a
+/// letter or a digit after it makes the `&` an operator, as in `&Hex(5)`.
+fn radix_len(rest: &str, prefix: usize, digit: fn(&u8) -> bool) -> Option<usize> {
+    let count = rest
+        .as_bytes()
+        .get(prefix..)?
+        .iter()
+        .take_while(|byte| digit(byte))
+        .count();
+    let end = prefix.saturating_add(count);
+    let after = rest.get(end..)?;
+    let suffix = match after.chars().next() {
+        Some('%') => 1,
+        Some('&') if !after.chars().nth(1).is_some_and(starts_operand) => 1,
+        _ => 0,
+    };
+    let tail = after.get(suffix..)?;
+    (count > 0 && !tail.starts_with(is_ident_char)).then_some(end.saturating_add(suffix))
 }
 
 /// Bytes of the number that starts `rest`: digits, a fraction, an exponent
