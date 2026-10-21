@@ -23,6 +23,15 @@ const MAX_MODULE_SOURCE: usize = 8 * 1024 * 1024;
 /// 7 x 8 = 216 MB. The bytes of the file, which the caller holds, come on top.
 const MAX_PROJECT_SOURCE: usize = 32 * 1024 * 1024;
 
+/// The longest compiled part of a module, in bytes before its `TextOffset`,
+/// that is trivial: a module whose source is empty and whose compiled part is
+/// longer is suspected of having lost its source (SPEC M1 step 8).
+///
+/// SPEC gives 512, but the compiled part of an empty module that Excel writes
+/// is 819 or 827 bytes, so 512 would flag all of them. ADR-0005 has the
+/// measurements.
+const TRIVIAL_COMPILED_PART: u32 = 1024;
+
 /// A VBA project as the report shows it, with the source of its modules.
 pub(super) struct Project {
     pub(super) report: VbaProject,
@@ -37,6 +46,11 @@ impl Project {
             .iter()
             .flatten()
             .any(|source| holds_code(source))
+    }
+
+    /// Whether any module is suspected of having lost its source.
+    pub(super) fn has_source_missing(&self) -> bool {
+        (self.report.modules.iter()).any(|module| module.source_missing_suspected == Some(true))
     }
 }
 
@@ -81,15 +95,14 @@ pub(super) fn read(
     drop(dir);
     let mut failures = Vec::new();
     let properties = read_properties(&mut storage, info.code_page, &mut failures);
-    let mut budget = MAX_PROJECT_SOURCE;
+    let mut allowance = Allowance::new();
     let mut modules = Vec::new();
     let mut sources = Vec::new();
     for module in &info.modules {
-        let source = match read_source(&mut storage, module, info.code_page, budget) {
-            Ok(source) => {
-                budget = budget.saturating_sub(source.len());
-                Some(source)
-            }
+        let outcome = allowance
+            .read_next(|max_source| read_source(&mut storage, module, info.code_page, max_source));
+        let source = match outcome {
+            Ok(source) => Some(source),
             Err(failure) => {
                 failures.push(failure.in_module(&module.name));
                 None
@@ -140,23 +153,65 @@ fn oversized(stream: &[u8]) -> Option<Failure> {
     })
 }
 
-/// The source of a module, read from its stream. `budget` is what the sources
-/// of the project may still take, once decoded.
+/// What the sources of a project may still take, and whether they are still
+/// read.
+struct Allowance {
+    /// The bytes that the sources may still take, once decoded.
+    left: usize,
+    /// A module decompressed past its limit. The `dir` stream may name one
+    /// stream for every module, so the modules after it are not read.
+    stopped: bool,
+}
+
+impl Allowance {
+    fn new() -> Self {
+        Self {
+            left: MAX_PROJECT_SOURCE,
+            stopped: false,
+        }
+    }
+
+    /// Reads the next source with `fetch`, which is handed the most bytes that
+    /// the source may decompress to: a third of what is left, as decoding can
+    /// triple a source, and at most [`MAX_MODULE_SOURCE`]. Nothing is read
+    /// once the project has taken its share, or after a module that was
+    /// suspicious.
+    fn read_next(
+        &mut self,
+        fetch: impl FnOnce(usize) -> Result<String, Failure>,
+    ) -> Result<String, Failure> {
+        if self.stopped {
+            return Err(Failure::new(
+                Status::SuspiciousArchive,
+                "ovba.module.not_read",
+                "the module is not read: an earlier one decompressed past its limit",
+            ));
+        }
+        let max_source = (self.left / 3).min(MAX_MODULE_SOURCE);
+        if max_source == 0 {
+            return Err(Failure::new(
+                Status::SuspiciousArchive,
+                "ovba.decompress.too_large",
+                format!("the sources of the project take more than {MAX_PROJECT_SOURCE} bytes"),
+            ));
+        }
+        let source = fetch(max_source);
+        match &source {
+            Ok(source) => self.left = self.left.saturating_sub(source.len()),
+            Err(failure) => self.stopped |= failure.status == Status::SuspiciousArchive,
+        }
+        source
+    }
+}
+
+/// The source of a module, read from its stream, which decompresses to at
+/// most `max_source` bytes.
 fn read_source(
     storage: &mut Storage<'_, '_>,
     module: &DirModule,
     code_page: Option<u16>,
-    budget: usize,
+    max_source: usize,
 ) -> Result<String, Failure> {
-    let max_source = (budget / 3).min(MAX_MODULE_SOURCE);
-    if max_source == 0 {
-        // Not even read: the `dir` stream may name this stream for every module.
-        return Err(Failure::new(
-            Status::SuspiciousArchive,
-            "ovba.decompress.too_large",
-            format!("the sources of the project take more than {MAX_PROJECT_SOURCE} bytes"),
-        ));
-    }
     let Some(stream) = storage.stream(&format!("VBA/{}", module.stream_name))? else {
         return Err(Failure::new(
             Status::Corrupted,
@@ -181,8 +236,7 @@ fn read_source(
 /// [`analyze`](super::analyze) replaces this guess with the procedures that the
 /// front end finds.
 fn holds_code(source: &str) -> bool {
-    source.lines().any(|line| {
-        let word = line.split_whitespace().next().unwrap_or_default();
+    first_words(source).any(|word| {
         let described = ["rem", "attribute", "option"]
             .iter()
             .any(|keyword| word.eq_ignore_ascii_case(keyword));
@@ -190,8 +244,24 @@ fn holds_code(source: &str) -> bool {
     })
 }
 
+/// Whether a module has lost its source, as VBA stomping does (SPEC M1 step 8):
+/// its `source` is empty, or holds blank lines and `Attribute` lines only,
+/// while its compiled part, the `compiled` bytes before its `TextOffset`, is
+/// not trivial.
+fn source_missing(compiled: u32, source: &str) -> bool {
+    compiled > TRIVIAL_COMPILED_PART
+        && first_words(source).all(|word| word.is_empty() || word.eq_ignore_ascii_case("attribute"))
+}
+
+/// The first word of each line of `source`: empty for a blank line.
+fn first_words(source: &str) -> impl Iterator<Item = &str> {
+    (source.lines()).map(|line| line.split_whitespace().next().unwrap_or_default())
+}
+
 /// The report of a module whose source is `source`, or could not be read. Its
 /// metrics and procedures are those of a module that has not been parsed.
+///
+/// Whether the source of the module is missing is unknown without a source.
 fn module_report(
     module: &DirModule,
     properties: &ProjectInfo,
@@ -202,7 +272,7 @@ fn module_report(
         module_type: properties.module_type(module),
         stream_name: Some(module.stream_name.clone()),
         source_available: source.is_some(),
-        source_missing_suspected: None,
+        source_missing_suspected: source.map(|source| source_missing(module.text_offset, source)),
         source_sha256: source.map(|source| sha256_hex(source.as_bytes())),
         metrics: Metrics::default(),
         declarations: None,
@@ -213,7 +283,86 @@ fn module_report(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
+
+    fn failure(status: Status) -> Failure {
+        Failure::new(status, "ovba.test", "a failure")
+    }
+
+    #[test]
+    fn a_source_is_read_with_a_third_of_what_is_left_up_to_the_limit_of_a_module() {
+        let handed = Cell::new(0_usize);
+        let read_four_bytes = |max_source| {
+            handed.set(max_source);
+            Ok("abcd".to_owned())
+        };
+
+        let mut allowance = Allowance::new();
+        assert!(allowance.read_next(read_four_bytes).is_ok());
+        assert_eq!(
+            (handed.get(), allowance.left),
+            (MAX_MODULE_SOURCE, MAX_PROJECT_SOURCE - 4)
+        );
+
+        let mut allowance = Allowance {
+            left: 10,
+            stopped: false,
+        };
+        assert!(allowance.read_next(read_four_bytes).is_ok());
+        assert_eq!((handed.get(), allowance.left), (3, 6));
+    }
+
+    #[test]
+    fn nothing_is_read_once_the_project_has_taken_its_share() {
+        let reads = Cell::new(0_u32);
+        let mut allowance = Allowance {
+            left: 2,
+            stopped: false,
+        };
+
+        let outcome = allowance.read_next(|_| {
+            reads.set(reads.get().saturating_add(1));
+            Ok(String::new())
+        });
+
+        let code = outcome.err().map(|failure| failure.error.code);
+        assert_eq!(code.as_deref(), Some("ovba.decompress.too_large"));
+        assert_eq!(reads.get(), 0);
+    }
+
+    #[test]
+    fn a_suspicious_module_stops_the_reading_and_another_failure_does_not() {
+        let reads = Cell::new(0_u32);
+        let fail_with = |allowance: &mut Allowance, status| {
+            allowance.read_next(|_| {
+                reads.set(reads.get().saturating_add(1));
+                Err(failure(status))
+            })
+        };
+        let mut allowance = Allowance::new();
+
+        let failures = [
+            Status::Corrupted,
+            Status::SuspiciousArchive,
+            Status::Corrupted,
+        ]
+        .map(|status| fail_with(&mut allowance, status).expect_err("a failure"));
+
+        // Two reads happen, and each failure is that of its read. The third
+        // module is not read: the one before it was suspicious.
+        assert_eq!(reads.get(), 2);
+        let found = failures
+            .each_ref()
+            .map(|failure| (failure.status, failure.error.code.as_str()));
+        let expected = [
+            (Status::Corrupted, "ovba.test"),
+            (Status::SuspiciousArchive, "ovba.test"),
+            (Status::SuspiciousArchive, "ovba.module.not_read"),
+        ];
+        assert_eq!(found, expected);
+    }
 
     #[test]
     fn a_project_stream_above_the_limit_is_a_failure_and_one_at_the_limit_is_not() {
@@ -237,6 +386,30 @@ mod tests {
         }
         for source in ["Sub A()\nEnd Sub", "Const X = 1", "Remove = 1"] {
             assert!(holds_code(source), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn a_source_is_missing_when_it_is_empty_and_the_compiled_part_is_not_trivial() {
+        let attributes = "Attribute VB_Name = \"A\"\r\n\n  attribute VB_Base = \"0\"\n";
+        for source in ["", "\n \n", attributes] {
+            assert!(!source_missing(TRIVIAL_COMPILED_PART, source), "{source:?}");
+            assert!(
+                source_missing(TRIVIAL_COMPILED_PART + 1, source),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_source_with_anything_else_is_not_missing_whatever_the_compiled_part() {
+        for source in [
+            "Sub A()\nEnd Sub",
+            "' c",
+            "Option Explicit",
+            "Attributes = 1",
+        ] {
+            assert!(!source_missing(u32::MAX, source), "{source:?}");
         }
     }
 }

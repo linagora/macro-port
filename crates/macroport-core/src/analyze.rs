@@ -14,13 +14,22 @@
 //! The extension only picks the variant of the format within that family: a
 //! file whose extension names another family has the container `unknown`. A
 //! file is `ok` if it has Excel 4.0 macro sheets (XLM), if a module has a
-//! procedure or if it is a workbook whose encryption hides its sheets; else it
-//! is `no_macros`, even with a VBA project of empty modules. [`extract`] reads
-//! no procedure, so it takes a module that holds code for one. A file that
-//! could not be read has the status of the first failure, and the report keeps
-//! what could be read: a module that could not be read is listed without its
-//! source, and a workbook that could not be read still has its project
-//! described.
+//! procedure, if a module is suspected of having lost its source (the
+//! procedures it had are compiled, out of sight) or if it is a workbook whose
+//! encryption hides its sheets; else it is `no_macros`, even with a VBA project
+//! of empty modules. [`extract`] reads no procedure, so it takes a module that
+//! holds code for one. A file that could not be read has the status of the
+//! first failure, and the report keeps what could be read: a module that could
+//! not be read is listed without its source, and a workbook that could not be
+//! read still has its project described.
+//!
+//! The container indicators of `rules/security.yaml` are raised here, and
+//! [`Extraction::indicators`] has their ids: `sec.xlm-macrosheet` for macro
+//! sheets, `sec.vbaproject-in-xlsx` for a VBA project in a package that the
+//! extension declares as `.xlsx` or `.xltx`, `sec.suspicious-archive` for a
+//! failure with that status, and `sec.source-missing` for a module suspected of
+//! having lost its source. The `signals` and the `max_severity` of the report
+//! are those of these indicators until the security stage makes them.
 //!
 //! Nothing here executes or evaluates anything from the file, and nothing
 //! panics on its content: every failure is a status and an error code in the
@@ -35,6 +44,7 @@
 //! | `biff.workbook.missing` | `corrupted` | a workbook with a VBA storage has no `Workbook` stream |
 //! | `ovba.dir.missing` | `corrupted` | the project has no `dir` stream |
 //! | `ovba.module.missing_stream` | `corrupted` | the stream of a module is not in the project |
+//! | `ovba.module.not_read` | `suspicious_archive` | an earlier module decompressed past its limit, so the later ones are not read |
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
@@ -42,6 +52,7 @@
 //! The message of an error about a module starts with `module <name>:`.
 
 mod detect;
+mod indicators;
 mod modules;
 mod project;
 
@@ -49,7 +60,7 @@ use sha2::{Digest, Sha256};
 
 pub use self::modules::analyze_modules;
 use self::project::Project;
-use crate::container::{CfbFile, ContainerError, read_biff_workbook, read_ooxml};
+use crate::container::{CfbFile, ContainerError, XLM_MACROSHEET, read_biff_workbook, read_ooxml};
 use crate::ovba::OvbaError;
 use crate::report::{Container, FileError, FileReport, Orientation, Status, Xlm};
 use crate::rules::RuleSet;
@@ -72,9 +83,9 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 /// What the caller decides about an analysis.
 #[derive(Debug, Clone, Copy)]
 pub struct Options<'a> {
-    /// The rules. The front end takes from them the traits that the parser
-    /// decides (`compile_error_suspected`), and the container indicators that
-    /// extraction will raise take their severity from them.
+    /// The rules. Extraction reads the container indicators from them, with
+    /// their severity, and the front end takes from them the traits that the
+    /// parser decides (`compile_error_suspected`).
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and
@@ -104,6 +115,16 @@ pub struct Extraction {
     /// module whose source could not be read. Empty when the file has no VBA
     /// project.
     pub sources: Vec<Option<String>>,
+    /// The container indicators that the file raised, as ids of
+    /// `container_indicators` in `rules/security.yaml`, each once. The order is
+    /// fixed: those that reading the container raised, in the order it raised
+    /// them (macro sheets, then a VBA project in a package declared without
+    /// macros), then `sec.suspicious-archive`, then `sec.source-missing`, which
+    /// are judged once the whole file is read. `file.signals` and
+    /// `file.max_severity` have the signals they make, for the rules that list
+    /// them. The security stage will make the signals itself from these ids,
+    /// and take over.
+    pub indicators: Vec<&'static str>,
 }
 
 /// Analyses one file: `bytes` are its content, `path` its path as the report
@@ -130,7 +151,7 @@ pub fn extract(bytes: &[u8], path: &str, options: &Options<'_>) -> Extraction {
     } else {
         read(bytes, &detect::extension(path))
     };
-    reading.into_extraction(path, size, sha256_hex(bytes))
+    reading.into_extraction(path, size, sha256_hex(bytes), options.rules)
 }
 
 /// The report of a file above [`Options::max_file_size`], given its `size` and
@@ -141,7 +162,9 @@ pub fn extract(bytes: &[u8], path: &str, options: &Options<'_>) -> Extraction {
 /// hash it as it streams it, and ask for this report instead.
 pub fn too_large(path: &str, size: u64, sha256: String, options: &Options<'_>) -> FileReport {
     let reading = too_large_reading(path, options);
-    reading.into_extraction(path, size, sha256).file
+    reading
+        .into_extraction(path, size, sha256, options.rules)
+        .file
 }
 
 fn too_large_reading(path: &str, options: &Options<'_>) -> Reading {
@@ -214,7 +237,8 @@ impl From<OvbaError> for Failure {
 }
 
 /// What reading a file found: its container, its VBA project and its XLM
-/// sheets if it has any, and what went wrong.
+/// sheets if it has any, the container indicators it raised, and what went
+/// wrong.
 struct Reading {
     container: Container,
     project: Option<Project>,
@@ -222,6 +246,8 @@ struct Reading {
     xlm: Option<Xlm>,
     /// `None` when the workbook was not read.
     workbook_encrypted: Option<bool>,
+    /// The indicators raised so far, each once, in the order raised.
+    indicators: Vec<&'static str>,
     /// In the order they were met: the status of the file is that of the
     /// first.
     failures: Vec<Failure>,
@@ -235,7 +261,15 @@ impl Reading {
             project: None,
             xlm: None,
             workbook_encrypted: None,
+            indicators: Vec::new(),
             failures: Vec::new(),
+        }
+    }
+
+    /// Raises the container indicator `id`, unless it is raised already.
+    fn raise(&mut self, id: &'static str) {
+        if !self.indicators.contains(&id) {
+            self.indicators.push(id);
         }
     }
 
@@ -258,15 +292,24 @@ impl Reading {
     }
 
     /// Reads what the `Workbook` stream says: whether the workbook is
-    /// encrypted, and how many macro sheets it has.
+    /// encrypted, and how many macro sheets it has (a workbook that has some
+    /// raises `sec.xlm-macrosheet`).
     fn read_workbook(&mut self, stream: &[u8]) {
         match read_biff_workbook(stream) {
             Ok(info) => {
                 self.workbook_encrypted = Some(info.file_pass);
                 self.xlm = info.macro_sheets.map(xlm_of);
+                if self.xlm.as_ref().is_some_and(|xlm| xlm.present) {
+                    self.raise(XLM_MACROSHEET);
+                }
             }
             Err(error) => self.failures.push(error.into()),
         }
+    }
+
+    /// Whether a module of the project may have lost its source.
+    fn has_source_missing(&self) -> bool {
+        (self.project.as_ref()).is_some_and(Project::has_source_missing)
     }
 
     /// The status of the file as extraction sees it: that of the first failure
@@ -276,14 +319,30 @@ impl Reading {
         if let Some(failure) = self.failures.first() {
             return failure.status;
         }
-        let code = self.project.as_ref().is_some_and(Project::has_code);
-        readable_status(code, self.xlm.as_ref(), self.workbook_encrypted)
+        let code = (self.project.as_ref()).is_some_and(Project::has_code);
+        let macros = code || self.has_source_missing();
+        readable_status(macros, self.xlm.as_ref(), self.workbook_encrypted)
     }
 
     /// The extraction of the file `path`, of `size` bytes and the hash
-    /// `sha256`. Everything the stages after extraction fill is left empty.
-    fn into_extraction(self, path: &str, size: u64, sha256: String) -> Extraction {
+    /// `sha256`. Everything the stages after extraction fill is left empty,
+    /// but the signals of the container indicators, as `rules` list them.
+    fn into_extraction(
+        mut self,
+        path: &str,
+        size: u64,
+        sha256: String,
+        rules: &RuleSet,
+    ) -> Extraction {
         let status = self.status();
+        if (self.failures.iter()).any(|failure| failure.status == Status::SuspiciousArchive) {
+            self.raise(indicators::SUSPICIOUS_ARCHIVE);
+        }
+        if self.has_source_missing() {
+            self.raise(indicators::SOURCE_MISSING);
+        }
+        let signals = indicators::signals(rules, &self.indicators);
+        let max_severity = indicators::max_severity(&signals);
         let (vba_project, sources) = match self.project {
             Some(project) => (Some(project.report), project.sources),
             None => (None, Vec::new()),
@@ -301,21 +360,29 @@ impl Reading {
             complexity_level: None,
             primary_family: None,
             families: None,
-            max_severity: None,
-            signals: None,
+            max_severity,
+            signals: (!signals.is_empty()).then_some(signals),
             traits: None,
             orientation: Orientation,
             workbook_encrypted: self.workbook_encrypted,
+            // The only note of the SPEC, `encrypted_default_password_possible`, takes a
+            // check of the password of an encrypted package that Lot 1 does not make
+            // (see `CfbFile::is_encrypted_package`).
             notes: None,
         };
-        Extraction { file, sources }
+        Extraction {
+            file,
+            sources,
+            indicators: self.indicators,
+        }
     }
 }
 
 /// The status of a file that was read without a failure: `ok` when it has
-/// code (`macros`: a procedure), Excel 4.0 macro sheets, or an encryption that
-/// hides the sheets that might be macro sheets, and `no_macros` when none of
-/// these holds.
+/// code (`macros`: a procedure, or a module that may have lost its source and
+/// the procedures it had), Excel 4.0 macro sheets, or an encryption that hides
+/// the sheets that might be macro sheets, and `no_macros` when none of these
+/// holds.
 fn readable_status(macros: bool, xlm: Option<&Xlm>, workbook_encrypted: Option<bool>) -> Status {
     let sheets = xlm.is_some_and(|xlm| xlm.present);
     if macros || sheets || workbook_encrypted == Some(true) {
@@ -363,6 +430,9 @@ fn read_package(bytes: &[u8], extension: &str) -> Reading {
     let mut reading = Reading::new(container);
     reading.workbook_encrypted = Some(false);
     reading.xlm = Some(xlm_of(package.macro_sheets));
+    for id in package.indicators(container) {
+        reading.raise(id);
+    }
     if let Some(vba_project) = package.vba_project {
         match CfbFile::open(&vba_project) {
             Ok(mut compound) => reading.read_project(&mut compound, OOXML_PROJECT_STORAGE),

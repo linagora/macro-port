@@ -9,11 +9,12 @@
 //! the text modules that [`analyze_modules`] (in the `text` submodule) wraps in
 //! one.
 //!
-//! The file is `ok` when a module has a procedure, when it has Excel 4.0 macro
-//! sheets or when the encryption of the workbook hides its sheets, and
-//! `no_macros` when none of these holds, the project being described all the
-//! same. A module that cannot be read keeps the report of a module that no stage
-//! measured, and its failure gives the file its status.
+//! The file is `ok` when a module has a procedure or is suspected of having lost
+//! its source, when it has Excel 4.0 macro sheets or when the encryption of the
+//! workbook hides its sheets, and `no_macros` when none of these holds, the
+//! project being described all the same. A module that cannot be read keeps the
+//! report of a module that no stage measured, and its failure gives the file its
+//! status.
 //!
 //! Only what the parser shows is filled so far: the spans and the sizes of the
 //! procedures, and the trait that the recoveries of the parser give. The other
@@ -162,9 +163,12 @@ impl Front {
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
-    /// and without one the file is `ok` if a module has a procedure, or the file
-    /// has macro sheets or a workbook whose encryption hides them, and
-    /// `no_macros` if not.
+    /// and without one the file is `ok` if a module has a procedure or is
+    /// suspected of having lost its source, or the file has macro sheets or a
+    /// workbook whose encryption hides them, and `no_macros` if not.
+    ///
+    /// The signals of the file are not touched: extraction made them from the
+    /// container indicators.
     fn seal(self, file: &mut FileReport) {
         if let Some(project) = &file.vba_project {
             file.metrics = Some(file_metrics(project));
@@ -173,10 +177,9 @@ impl Front {
             file.status = match self.failures.first() {
                 Some(first) => first.status,
                 None => {
-                    let procedures = (file.vba_project.iter())
-                        .flat_map(|project| &project.modules)
-                        .any(|module| !module.procedures.is_empty());
-                    readable_status(procedures, file.xlm.as_ref(), file.workbook_encrypted)
+                    let modules = (file.vba_project.iter()).flat_map(|project| &project.modules);
+                    let macros = modules.into_iter().any(has_macros);
+                    readable_status(macros, file.xlm.as_ref(), file.workbook_encrypted)
                 }
             };
         }
@@ -191,7 +194,9 @@ impl Front {
 /// Reads the modules that extraction found, and completes the report of the
 /// file.
 pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileReport {
-    let Extraction { mut file, sources } = extraction;
+    let Extraction {
+        mut file, sources, ..
+    } = extraction;
     let mut front = Front::new(options.rules);
     if let Some(project) = file.vba_project.as_mut() {
         for (module, source) in project.modules.iter_mut().zip(&sources) {
@@ -202,6 +207,12 @@ pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileRepor
     }
     front.seal(&mut file);
     file
+}
+
+/// Whether a module has macros: a procedure, or a source that is suspected to
+/// be lost with the procedures it had (they are compiled, out of sight).
+fn has_macros(module: &ModuleReport) -> bool {
+    !module.procedures.is_empty() || module.source_missing_suspected == Some(true)
 }
 
 /// The ids of the traits that the rules give to the predicate `parse_recovered`.
