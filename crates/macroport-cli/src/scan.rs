@@ -62,7 +62,7 @@ pub struct Args {
         value_enum,
         value_delimiter = ',',
         value_name = "FORMAT",
-        default_values_t = Format::ALL,
+        default_value = "json,html,csv"
     )]
     pub format: Vec<Format>,
 
