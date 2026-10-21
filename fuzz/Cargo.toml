@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Fuzz targets of the binary parsers (SPEC section 9, A2), run with cargo-fuzz
+# Fuzz targets of the binary parsers and the lexer (A2), run with cargo-fuzz
 # from the repository root: `cargo +nightly fuzz run zip_entry`. Outside the
 # main workspace (the empty [workspace] below): libFuzzer is built from C++ and
 # needs a nightly toolchain, so the stable gates, the wasm32 build and
@@ -81,6 +81,13 @@ bench = false
 [[bin]]
 name = "module_source"
 path = "fuzz_targets/module_source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lexer"
+path = "fuzz_targets/lexer.rs"
 test = false
 doc = false
 bench = false
