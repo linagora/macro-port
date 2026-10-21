@@ -38,7 +38,8 @@ pub struct PrivacyArgs {
 
     /// With `--redact`, hash the names of the modules and procedures too, and
     /// every other name that the project defines: they stay by default, for the
-    /// people who review the report.
+    /// people who review the report. The module of a text file (`.bas`, `.cls`,
+    /// `.frm`) is named after the file, so its name stays by default too.
     #[arg(long, requires = "redact")]
     pub redact_identifiers: bool,
 }
