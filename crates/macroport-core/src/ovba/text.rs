@@ -53,6 +53,38 @@ pub(super) fn decode_mbcs(bytes: &[u8], code_page: Option<u16>) -> String {
     decode(encoding, bytes)
 }
 
+/// Decodes text of a project, such as the source of a module, in its code
+/// page, into UTF-8 with `\n` line endings.
+///
+/// Code page 1200 is UTF-16 little-endian. A code page that is missing, or
+/// that no encoding matches, is read as windows-1252, which gives every byte
+/// a character and so loses none of them. A byte that the code page does not
+/// map, and an unpaired surrogate, become U+FFFD. A byte order mark gets no
+/// special treatment: the bytes are in the code page, whatever they start
+/// with.
+///
+/// Every line terminator of MS-VBAL section 3.2.1 becomes a `\n`: a carriage
+/// return followed by a line feed, a carriage return alone, U+2028 and U+2029.
+/// Any other character stays as it is.
+#[must_use]
+pub fn decode_text(bytes: &[u8], code_page: Option<u16>) -> String {
+    let text = decode_mbcs(bytes, code_page);
+    let mut normalised = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                // The line feed of a carriage return and line feed ends the same line.
+                chars.next_if_eq(&'\n');
+                normalised.push('\n');
+            }
+            '\u{2028}' | '\u{2029}' => normalised.push('\n'),
+            _ => normalised.push(c),
+        }
+    }
+    normalised
+}
+
 /// Decodes `bytes` in `encoding`, ignoring any byte order mark: the bytes
 /// are in the encoding that the project declares, whatever they start with.
 fn decode(encoding: &'static Encoding, bytes: &[u8]) -> String {
