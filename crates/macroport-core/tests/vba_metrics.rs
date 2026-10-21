@@ -36,6 +36,11 @@ fn compared(body: &str) -> Vec<usize> {
     measure(body).nested_loop_compare
 }
 
+/// Whether the blocks of the procedure do not match.
+fn unbalanced(body: &str) -> bool {
+    measure(body).unbalanced_blocks
+}
+
 #[test]
 fn a_procedure_without_a_decision_point_has_a_cyclomatic_complexity_of_one() {
     assert_eq!(cyclomatic(""), 1);
@@ -296,6 +301,67 @@ fn a_closer_closes_the_blocks_left_open_inside_its_block() {
     // The If is never closed: the Next closes it with the For.
     let if_inside = format!("For i = 1 To 3\nIf a Then\nNext i\n{withs}");
     assert_eq!(nesting(&if_inside), 2);
+}
+
+#[test]
+fn blocks_closed_in_the_order_they_open_are_balanced() {
+    assert!(!unbalanced(""));
+    assert!(!unbalanced("x = 1"));
+    let every = "If a Then\nSelect Case n\nCase 1\nFor i = 1 To 3\nFor Each c In r\nDo While p\n\
+                 Loop\nNext c, i\nWhile q\nWend\nWith r\nEnd With\nEnd Select\nEnd If";
+    assert!(!unbalanced(every));
+    // A one-line If is no block, ElseIf and Else need no closer, and an Else If
+    // in two words is a block with its own.
+    assert!(!unbalanced("If a Then x = 1 Else x = 2\nIf b Then: x = 3"));
+    assert!(!unbalanced("If a Then\nElseIf b Then\nElse\nEnd If"));
+    assert!(!unbalanced("If a Then\nElse If b Then\nEnd If\nEnd If"));
+}
+
+#[test]
+fn a_block_never_closed_is_unbalanced() {
+    for opener in [
+        "If a Then",
+        "Select Case n",
+        "For i = 1 To 3",
+        "For Each c In r",
+        "Do",
+        "Do While p",
+        "While q",
+        "With r",
+    ] {
+        assert!(unbalanced(&format!("{opener}\nx = 1")), "{opener}");
+    }
+    assert!(unbalanced("With r\nWith s\nEnd With"));
+    assert!(unbalanced("If a Then\nElse If b Then\nEnd If"));
+    // The prose line of the sample 13-05 starts a Do.
+    assert!(unbalanced("Do manipulations of your file here.\nx = 1"));
+}
+
+#[test]
+fn a_closer_with_no_block_of_its_kind_is_unbalanced() {
+    for closer in ["End If", "End Select", "End With", "Next i", "Loop", "Wend"] {
+        assert!(unbalanced(closer), "{closer}");
+        // The closer of a block that is over, or of another kind than the open one.
+        assert!(
+            unbalanced(&format!("If a Then\nEnd If\n{closer}")),
+            "{closer}"
+        );
+        assert!(
+            unbalanced(&format!("With r\n{closer}\nEnd With")),
+            "{closer}"
+        );
+    }
+    // The second name of a Next with one loop open.
+    assert!(unbalanced("For i = 1 To 3\nNext j, i"));
+    // The Else and the End If that the sample 09-03 has too many.
+    assert!(unbalanced("If a Then\nx = 1\nEnd If\nElse\nEnd If"));
+}
+
+#[test]
+fn a_closer_that_closes_blocks_left_open_inside_its_own_is_unbalanced() {
+    assert!(unbalanced("If a Then\nFor i = 1 To 3\nEnd If"));
+    assert!(unbalanced("For i = 1 To 3\nIf a Then\nNext i"));
+    assert!(unbalanced("With r\nDo\nEnd With"));
 }
 
 #[test]

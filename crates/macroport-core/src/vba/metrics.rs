@@ -2,7 +2,7 @@
 //! The metrics of a procedure (SPEC M2 item 7): its size, its cyclomatic
 //! complexity, how deep its blocks nest and its `GoTo`s, and the comparisons
 //! that it makes in loops nested in loops (`nested_loop_compare`, SPEC
-//! section 7).
+//! section 7), and whether its blocks match (SPEC M2 item 6).
 //!
 //! [`measure_procedure`] reads the logical lines of one procedure in a single
 //! pass, one line at a time as the lexer asks of its callers, so it holds the
@@ -27,6 +27,11 @@ pub struct ProcedureMeasure {
     /// of each line that holds an `If` or an `ElseIf` that compares values with
     /// `=`, `<>` or `StrComp` in a loop that is itself in a loop, in order.
     pub nested_loop_compare: Vec<usize>,
+    /// Whether the blocks do not match: a closer found no block of its kind or
+    /// closed blocks left open inside its own, or a block is still open at the
+    /// end. VBA refuses such a procedure, which is what SPEC M2 item 6 calls
+    /// unbalanced blocks, and the parser (`parse_recovered`) does not see it.
+    pub unbalanced_blocks: bool,
 }
 
 /// Measures a procedure.
@@ -67,6 +72,7 @@ pub fn measure_procedure(
             ..Metrics::default()
         },
         nested_loop_compare: walk.nested_compares,
+        unbalanced_blocks: walk.blocks.is_unbalanced(),
     }
 }
 
@@ -206,9 +212,9 @@ impl Block {
 /// The blocks that are open at a point of the procedure.
 ///
 /// A closer closes the innermost block of its kind and the blocks left open
-/// inside it (the rule of this module: VBA refuses such code). One with no
-/// block of its kind open is ignored, which the count of each kind tells at
-/// once and keeps a hostile run of closers linear.
+/// inside it. One with no block of its kind open is ignored, which the count of
+/// each kind tells at once and keeps a hostile run of closers linear. VBA
+/// refuses both, and so they are noted.
 #[derive(Debug, Default)]
 struct Blocks {
     stack: Vec<Block>,
@@ -216,6 +222,9 @@ struct Blocks {
     open: BTreeMap<Block, u32>,
     /// The most blocks that were open at once.
     deepest: u32,
+    /// Whether a closer found no block of its kind, or closed blocks left open
+    /// inside its own.
+    mismatched: bool,
 }
 
 impl Blocks {
@@ -274,6 +283,7 @@ impl Blocks {
 
     fn close(&mut self, block: Block) {
         if self.count(block) == 0 {
+            self.mismatched = true;
             return;
         }
         while let Some(top) = self.stack.pop() {
@@ -283,7 +293,14 @@ impl Blocks {
             if top == block {
                 break;
             }
+            self.mismatched = true;
         }
+    }
+
+    /// Whether the blocks read so far do not match: a closer did not find its
+    /// block, or a block is still open.
+    fn is_unbalanced(&self) -> bool {
+        self.mismatched || !self.stack.is_empty()
     }
 }
 

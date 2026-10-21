@@ -49,10 +49,20 @@ fn a_procedure_of_many_lines_is_measured_in_linear_time() {
 fn deep_and_unbalanced_blocks_are_measured_in_linear_time() {
     let deep = measure_within_limit(&procedure(&"If a Then\n".repeat(50_000)));
     assert_eq!(deep.metrics.max_nesting, Some(50_000));
+    assert!(deep.unbalanced_blocks);
+    let closed = format!(
+        "{}{}",
+        "If a Then\n".repeat(50_000),
+        "End If\n".repeat(50_000)
+    );
+    let closed = measure_within_limit(&procedure(&closed));
+    assert_eq!(closed.metrics.max_nesting, Some(50_000));
+    assert!(!closed.unbalanced_blocks);
     // Closers that find no block of their kind do not look for one.
     let strays = "End If\nNext\nLoop\nWend\nEnd With\n".repeat(40_000);
     let stray = measure_within_limit(&procedure(&strays));
     assert_eq!(stray.metrics.max_nesting, Some(0));
+    assert!(stray.unbalanced_blocks);
     let withs = format!("{}{}", "With r\n".repeat(50_000), "End If\n".repeat(50_000));
     assert_eq!(
         measure_within_limit(&procedure(&withs)).metrics.max_nesting,
