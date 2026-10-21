@@ -14,14 +14,20 @@
 //!   written as `\u` escapes instead, and neither `</script` nor `<!--` can
 //!   occur in the block.
 //!
-//! That block and the page's own stylesheet, a file of this crate, are the only
-//! values that escape no character. Each is a [`Safe`] field of `Page`, so the
-//! template needs no `safe` filter, and a test counts the uses of [`Safe`].
+//! That block and the page's own stylesheet and script, files of this crate,
+//! are the only values that escape no character. Each is a [`Safe`] field of
+//! `Page`, so the template needs no `safe` filter, and a test counts the uses
+//! of [`Safe`].
 //!
-//! A `<meta>` policy allows the one inline `<style>`, by its SHA-256 hash, and
-//! data URIs for images, and nothing else, so a script that got in would not
-//! run. It is the first element after the character set, and it also forbids
-//! `<base>` and forms.
+//! The script filters the list of files. The page works without it: the toolbar
+//! stays hidden until the script shows it, and the list is the one that the
+//! template wrote. The script reads the text of the page and sets properties of
+//! its elements, and it writes no markup.
+//!
+//! A `<meta>` policy allows the one inline `<style>` and the one inline
+//! `<script>`, each by its SHA-256 hash, and data URIs for images, and nothing
+//! else, so no other script would run and none could connect. It is the first
+//! element after the character set, and it also forbids `<base>` and forms.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -30,15 +36,17 @@ use askama::Template;
 use askama::filters::Safe;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use macroport_core::report::Report;
+use macroport_core::report::{FileError, FileReport, Report};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::i18n::Messages;
 use crate::wire::wire_name;
 
-/// The page's stylesheet, in a file so that editors know what it is. Its hash
-/// is in the policy of the page.
+/// The page's stylesheet and script, in files so that editors know what they
+/// are. Their hashes are in the policy of the page.
 const STYLE: &str = include_str!("../../templates/report.css");
+const SCRIPT: &str = include_str!("../../templates/report.js");
 
 /// The HTML report of `report`, in the language of `messages`.
 ///
@@ -48,16 +56,19 @@ const STYLE: &str = include_str!("../../templates/report.css");
 /// which this model does.
 pub fn render(report: &Report, messages: &Messages) -> Result<String, askama::Error> {
     let style = lf(STYLE);
+    let script = lf(SCRIPT);
     Page {
         messages,
         report,
         lang: wire_name(&messages.lang()),
-        policy: policy(&style),
+        policy: policy(&style, &script),
         style: Safe(&style),
+        script: Safe(&script),
         data: Safe(data_block(report).map_err(askama::Error::custom)?),
         roots: report.scan.roots.as_deref().unwrap_or_default(),
         counts: counts(report, messages),
         distributions: distributions(report, messages),
+        files: file_views(report, messages),
     }
     .render()
 }
@@ -70,8 +81,9 @@ struct Page<'a> {
     /// `en` or `fr`.
     lang: String,
     policy: String,
-    /// The page's stylesheet, a file of this crate: not escaped.
+    /// The page's stylesheet and script, files of this crate: not escaped.
     style: Safe<&'a str>,
+    script: Safe<&'a str>,
     /// The report as JSON that [`data_block`] made safe to put in a `<script>`
     /// element: not escaped for HTML.
     data: Safe<String>,
@@ -79,6 +91,7 @@ struct Page<'a> {
     roots: &'a [String],
     counts: Vec<Count>,
     distributions: Vec<Distribution>,
+    files: Vec<FileView<'a>>,
 }
 
 /// A number and what it counts.
@@ -93,6 +106,37 @@ struct Distribution {
     rows: Vec<Count>,
     /// What a full bar stands for.
     max: u32,
+}
+
+/// A file with the words of its format and chips, and the lists of its report
+/// that are empty when it has none.
+struct FileView<'a> {
+    file: &'a FileReport,
+    container: String,
+    chips: Vec<Chip>,
+    references: &'a [String],
+    errors: &'a [FileError],
+    notes: &'a [String],
+}
+
+/// A word shown as a badge, coloured after the value it names.
+struct Chip {
+    /// What the word is about, shown before it.
+    hint: String,
+    label: String,
+    /// `status-ok`, `level-low`, `severity-high`: the kind of value and its
+    /// name in the schema, never a string of an analysed file.
+    class: String,
+}
+
+impl Chip {
+    fn new<T: Serialize>(hint: String, kind: &'static str, value: &T, label: String) -> Self {
+        Self {
+            hint,
+            label,
+            class: format!("{kind}-{}", wire_name(value)),
+        }
+    }
 }
 
 /// The counts of the scan, then those of the summary that the report has.
@@ -167,11 +211,57 @@ fn distribution<K>(
     Distribution { title, rows, max }
 }
 
-/// The Content-Security-Policy of the page: the one inline style, no script,
-/// and a data URI for the empty icon.
-fn policy(style: &str) -> String {
+/// A view of each file of `report`, in the order of the report.
+fn file_views<'a>(report: &'a Report, messages: &Messages) -> Vec<FileView<'a>> {
+    (report.files.iter())
+        .map(|file| FileView {
+            file,
+            container: messages.container(file.container),
+            chips: chips(file, messages),
+            references: (file.vba_project.as_ref())
+                .and_then(|project| project.references.as_deref())
+                .unwrap_or_default(),
+            errors: file.errors.as_deref().unwrap_or_default(),
+            notes: file.notes.as_deref().unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// The status of a file, then its complexity level and highest severity when
+/// it has them.
+fn chips(file: &FileReport, messages: &Messages) -> Vec<Chip> {
+    let mut chips = vec![Chip::new(
+        messages.text("html-status"),
+        "status",
+        &file.status,
+        messages.status(file.status),
+    )];
+    if let Some(level) = file.complexity_level {
+        chips.push(Chip::new(
+            messages.text("html-complexity"),
+            "level",
+            &level,
+            messages.level(level),
+        ));
+    }
+    if let Some(severity) = file.max_severity {
+        chips.push(Chip::new(
+            messages.text("html-severity"),
+            "severity",
+            &severity,
+            messages.severity(severity),
+        ));
+    }
+    chips
+}
+
+/// The Content-Security-Policy of the page: the one inline script and the one
+/// inline style, a data URI for the empty icon, and no connection.
+fn policy(style: &str, script: &str) -> String {
     format!(
-        "default-src 'none'; style-src {}; img-src data:; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; script-src {}; style-src {}; img-src data:; connect-src 'none'; \
+         base-uri 'none'; form-action 'none'",
+        hash_source(script),
         hash_source(style),
     )
 }

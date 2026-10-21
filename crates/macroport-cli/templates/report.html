@@ -1,5 +1,5 @@
 {#- SPDX-License-Identifier: Apache-2.0 -#}
-{#- The HTML report (see src/render/html.rs). The template applies no filter. Every expression is escaped except `style` and `data`, which the renderer marks as safe in Rust: the page's own style, and the report as JSON. A block tag that ends in `-%}` swallows its line break. -#}
+{#- The HTML report (see src/render/html.rs). The template applies no filter. Every expression is escaped except `style`, `script` and `data`, which the renderer marks as safe in Rust: the page's own style and script, and the report as JSON. A block tag that ends in `-%}` swallows its line break. -#}
 <!doctype html>
 <html lang="{{ lang }}">
 <head>
@@ -53,7 +53,60 @@
 </section>
 {% endfor -%}
 </div>
+<section>
+<h2>{{ messages.text("html-files") }}</h2>
+{% if files.is_empty() -%}
+<p>{{ messages.text("html-none") }}</p>
+{% else -%}
+<div id="toolbar" class="toolbar" hidden>
+<label for="filter">{{ messages.text("html-filter") }}</label>
+<input id="filter" type="search">
+<button id="expand" type="button">{{ messages.text("html-expand-all") }}</button>
+<button id="collapse" type="button">{{ messages.text("html-collapse-all") }}</button>
+<output id="shown">{{ files.len() }} / {{ files.len() }}</output>
+</div>
+{% endif -%}
+{% for view in files -%}
+<details class="file">
+<summary><span class="path">{{ view.file.path }}</span>{% for chip in view.chips %} <span class="chip {{ chip.class }}"><span class="hint">{{ chip.hint }}</span> <span class="value">{{ chip.label }}</span></span>{% endfor %}</summary>
+<dl class="facts">
+<div><dt>{{ messages.text("html-container") }}</dt><dd>{{ view.container }}</dd></div>
+<div><dt>{{ messages.text("html-size") }}</dt><dd>{{ view.file.size }} {{ messages.text("html-bytes") }}</dd></div>
+<div><dt>{{ messages.text("html-sha256") }}</dt><dd><code>{{ view.file.sha256 }}</code></dd></div>
+{% if let Some(project) = view.file.vba_project -%}
+{% if let Some(name) = project.name -%}
+<div><dt>{{ messages.text("html-vba-project") }}</dt><dd><code>{{ name }}</code></dd></div>
+{% endif -%}
+{% if project.protected -%}
+<div><dt>{{ messages.text("html-protected") }}</dt><dd>{{ messages.text("html-yes") }}</dd></div>
+{% endif -%}
+{% endif -%}
+{% if !view.references.is_empty() -%}
+<div><dt>{{ messages.text("html-references") }}</dt><dd><ul>{% for reference in view.references %}<li><code>{{ reference }}</code></li>{% endfor %}</ul></dd></div>
+{% endif -%}
+{% if let Some(xlm) = view.file.xlm -%}
+{% if xlm.present -%}
+<div><dt>{{ messages.text("html-xlm") }}</dt><dd>{{ messages.text("html-yes") }}</dd></div>
+{% if let Some(sheets) = xlm.macro_sheets -%}
+<div><dt>{{ messages.text("html-xlm-sheets") }}</dt><dd>{{ sheets }}</dd></div>
+{% endif -%}
+{% endif -%}
+{% endif -%}
+{% if let Some(true) = view.file.workbook_encrypted -%}
+<div><dt>{{ messages.text("html-encrypted") }}</dt><dd>{{ messages.text("html-yes") }}</dd></div>
+{% endif -%}
+{% if !view.errors.is_empty() -%}
+<div><dt>{{ messages.text("html-errors") }}</dt><dd><ul>{% for error in view.errors %}<li><code>{{ error.code }}</code> {{ error.message }}</li>{% endfor %}</ul></dd></div>
+{% endif -%}
+{% if !view.notes.is_empty() -%}
+<div><dt>{{ messages.text("html-notes") }}</dt><dd><ul>{% for note in view.notes %}<li><code>{{ note }}</code></li>{% endfor %}</ul></dd></div>
+{% endif -%}
+</dl>
+</details>
+{% endfor -%}
+</section>
 </main>
 <script type="application/json" id="report-data">{{ data }}</script>
+<script>{{ script }}</script>
 </body>
 </html>
