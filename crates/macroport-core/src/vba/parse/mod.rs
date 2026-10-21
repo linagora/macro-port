@@ -8,7 +8,8 @@
 //! its code stops, and the parser goes on. A procedure with a recovery is the
 //! one that gets the trait `compile_error_suspected` (predicate
 //! `parse_recovered`, [`Procedure::is_recovered`]); the recoveries outside any
-//! procedure are on the [`ParsedModule`].
+//! procedure are on the [`ParsedModule`], which is recovered as a whole
+//! ([`ParsedModule::is_recovered`]) when a procedure or the module has any.
 
 mod shape;
 
@@ -98,6 +99,15 @@ pub struct ParsedModule {
     /// What the parser stepped over outside any procedure, the first
     /// [`MAX_RECOVERIES`].
     pub recoveries: Vec<Recovery>,
+}
+
+impl ParsedModule {
+    /// The structural predicate `parse_recovered` for the file: the parser
+    /// stepped over something in a procedure or outside any, such as an `End`
+    /// with nothing to close.
+    pub fn is_recovered(&self) -> bool {
+        !self.recoveries.is_empty() || self.procedures.iter().any(Procedure::is_recovered)
+    }
 }
 
 /// Reads the structure of a module from its logical lines. Never fails.

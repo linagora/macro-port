@@ -253,6 +253,22 @@ fn an_end_outside_a_procedure_is_recorded_for_the_module() {
 }
 
 #[test]
+fn a_module_is_recovered_when_a_procedure_is_or_when_something_stands_outside_one() {
+    let cases = [
+        ("", false),
+        ("Sub A()\nEnd Sub\n", false),
+        ("Sub A()\n", true),
+        ("Sub A()\nEnd Function\n", true),
+        // The procedure is fine: the stray end is the module's.
+        ("Sub A()\nEnd Sub\nEnd Sub\n", true),
+        ("End Sub\n", true),
+    ];
+    for (text, recovered) in cases {
+        assert_eq!(module_of(text).is_recovered(), recovered, "{text:?}");
+    }
+}
+
+#[test]
 fn statements_that_look_like_headers_are_not_headers() {
     let text = "Declare Function F Lib \"x\" () As Long\nPublic Declare PtrSafe Sub S Lib \"y\" ()\n\
                 Public WS As Worksheet\nProperty\nSub A()\n    Exit Sub\n    x = \"Sub B()\"\n    \
