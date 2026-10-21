@@ -8,7 +8,7 @@ use macroport_core::report::ProcedureKind::Sub;
 use macroport_core::vba::{
     DeclarationKind, Directive, OptionKind, ParsedModule, Recovery, RecoveryKind,
 };
-use vba_parse_common::{module_of, spans};
+use vba_parse_common::{module_of, spans, unreadable};
 
 use DeclarationKind::{Const, Enum, Event, Implements, Type, Variable};
 
@@ -188,10 +188,11 @@ fn parentheses_after_the_first_word_make_a_member_only_when_an_as_follows_them()
         assert_eq!(kinds(&module), [(Type, 1), (kind, 3)], "{statement}");
         assert_eq!(module.recoveries, [unclosed(1)], "{statement}");
     }
-    // The subscripts are never closed: the line opens a block of its own.
+    // The subscripts are never closed: the line opens a block of its own, and
+    // is a statement that cannot be read.
     let module = module_of("Type T\n    a As Long\nType(0 To 3 As Byte\n");
     assert_eq!(kinds(&module), [(Type, 1), (Type, 3)]);
-    assert_eq!(module.recoveries, [unclosed(1), unclosed(3)]);
+    assert_eq!(module.recoveries, [unclosed(1), unreadable(3), unclosed(3)]);
     // The header of a procedure that names nothing is one.
     let module = module_of("Type T\n    a As Long\nSub (a, b)\nEnd Sub\n");
     assert_eq!(kinds(&module), [(Type, 1)]);
