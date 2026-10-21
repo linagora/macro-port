@@ -53,6 +53,7 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         ("Public Static", 0, 0, 0),
         ("Property", 0, 0, 0),
         ("End", 0, 0, 0),
+        ("End Type", 0, 0, 0),
         // Declarations, one for each line. Directives with nothing to match
         // are declarations too, and every `#If` stays open.
         ("Option Explicit", 0, LINES, 0),
@@ -65,12 +66,20 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         // unit is the other form of the first, and the next unit opens a
         // procedure of its own. Only the first `#If` stands outside one.
         ("#If X Then\nSub a()\n#Else\nSub a()", LINES, 1, 0),
-        // No `End` closes the block: the lines that follow are its members.
-        ("Type T", 0, 1, 1),
-        ("Enum E", 0, 1, 1),
-        ("End Type", 0, 0, 0),
-        // The header of a procedure closes the block: only the first
-        // recoveries are kept.
+        // No `End` closes the block, and each `Type` or `Enum` ends the one
+        // before it: only the first recoveries are kept.
+        ("Type T", 0, LINES, MAX_RECOVERIES),
+        ("Enum E", 0, LINES, MAX_RECOVERIES),
+        // Two forms of the opener in each unit, then the next unit: the `#If`
+        // is a member of the block before it, and its `Type` ends that block.
+        // The first `#If` stands outside any.
+        (
+            "#If X Then\nType T\n#Else\nType T",
+            0,
+            LINES + 1,
+            MAX_RECOVERIES,
+        ),
+        // The header of a procedure ends the block in the same way.
         ("Type T\nSub a()\nEnd Sub", LINES, LINES, MAX_RECOVERIES),
     ];
     for (line, procedures, declarations, recoveries) in cases {
@@ -78,6 +87,32 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         assert_eq!(module.procedures.len(), procedures, "{line:?}");
         assert_eq!(module.declarations.len(), declarations, "{line:?}");
         assert_eq!(module.recoveries.len(), recoveries, "{line:?}");
+    }
+}
+
+#[test]
+fn the_members_of_a_block_with_no_end_are_read_in_linear_time() {
+    // One `Type` or `Enum` takes every line that cannot end it, directives
+    // included, whose `#If` blocks stay open.
+    for opener in ["Type T", "Enum E"] {
+        let members = "x As Long\n#If X Then\n".repeat(LINES / 2);
+        let module = parse_in_time(&format!("{opener}\n{members}"));
+        assert_eq!(module.declarations.len(), 1, "{opener:?}");
+        assert!(module.procedures.is_empty(), "{opener:?}");
+        assert_eq!(module.recoveries.len(), 1, "{opener:?}");
+    }
+}
+
+#[test]
+fn a_member_of_the_most_tokens_a_line_can_hold_is_read_in_linear_time() {
+    // The subscripts of an array member are read up to the parenthesis that
+    // closes them, and none of these lines has one. Each is a `Type` of its
+    // own, and ends the one before it.
+    for piece in ["(", "(x)", ")", "x,"] {
+        let text = format!("Type T\nType({}\nEnd Type\n", piece.repeat(MAX_TOKENS));
+        let module = parse_in_time(&text);
+        assert_eq!(module.declarations.len(), 2, "{piece:?}");
+        assert_eq!(module.recoveries.len(), 1, "{piece:?}");
     }
 }
 
