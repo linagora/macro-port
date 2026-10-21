@@ -2,14 +2,30 @@
 //! Constant folding (SPEC M2 item 4): the strings of a statement, with the
 //! expressions of the closed set replaced by their value, and nothing else
 //! evaluated. The cases are statements of one logical line.
+#![allow(clippy::expect_used)]
 
-use macroport_core::vba::{StatementReader, tokenize};
+use macroport_core::vba::{ConstTable, StatementReader, split_lines, tokenize};
 
-/// The strings of the statement `text`.
-fn strings(text: &str) -> Vec<String> {
-    StatementReader::new()
+/// The strings of the statement `text`, with the module-level constants
+/// `consts`.
+fn strings_with(consts: &ConstTable, text: &str) -> Vec<String> {
+    StatementReader::new(consts)
         .read_tokens(text, &tokenize(text))
         .strings
+}
+
+/// The strings of the statement `text`, with no constant.
+fn strings(text: &str) -> Vec<String> {
+    strings_with(&ConstTable::default(), text)
+}
+
+/// The constants that the statements of `source` declare, in order.
+fn consts_of(source: &str) -> ConstTable {
+    let mut consts = ConstTable::default();
+    for line in &split_lines(source).expect("lines").logical {
+        consts.declare(line);
+    }
+    consts
 }
 
 /// Checks that each statement gives the strings next to it.
@@ -105,6 +121,81 @@ fn a_call_of_the_set_with_an_argument_outside_it_stays_unresolved() {
 }
 
 #[test]
+fn a_module_level_const_folds_into_an_expression() {
+    let consts =
+        consts_of("Private Const P1 = \"WScr\"\nConst P2$ = \"ipt.\", [P 3] = \"Shell\"\n");
+    assert_eq!(consts.get("p1"), Some("WScr"));
+    assert_eq!(consts.get("P2"), Some("ipt."));
+    assert_eq!(consts.get("P 3"), Some("Shell"));
+    assert_eq!(
+        strings_with(&consts, "Set o = CreateObject(p1 & P2 & [P 3])"),
+        ["WScript.Shell"]
+    );
+    assert_eq!(
+        strings_with(&consts, r#"x = UCase(P1) & "-" & Chr(66)"#),
+        ["WSCR-B"]
+    );
+}
+
+#[test]
+fn a_lone_const_adds_no_string_but_a_const_in_an_expression_does() {
+    let consts = consts_of("Const A = \"x\"\n");
+    for lone in ["y = A", "y = (A)", "Foo A, A", "y = A + 1", "y = A.Name"] {
+        assert_eq!(strings_with(&consts, lone), Vec::<String>::new(), "{lone}");
+    }
+    for (text, expected) in [
+        ("y = A & A", "xx"),
+        (r#"y = A & "z""#, "xz"),
+        ("y = UCase(A)", "X"),
+    ] {
+        assert_eq!(strings_with(&consts, text), [expected], "{text}");
+    }
+}
+
+#[test]
+fn the_const_declarations_that_do_not_fold_to_a_string_are_not_recorded() {
+    let consts = consts_of(
+        "Const N = 10\nConst S As String = \"s\"\nConst X = Foo(1)\nConst Y = \"a\" & N\n\
+         Public Const Z = \"z\" ' comment\nConst B = A\nConst A = \"a\"\nConst C = A & \"c\"\n\
+         Dim D As String\nConst\nConst E\nConst F =\n#Const G = \"g\"\n",
+    );
+    let found: Vec<_> = ["N", "S", "X", "Y", "Z", "B", "A", "C", "D", "E", "F", "G"]
+        .into_iter()
+        .map(|name| consts.get(name))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            None,
+            Some("s"),
+            None,
+            None,
+            Some("z"),
+            None,
+            Some("a"),
+            Some("ac"),
+            None,
+            None,
+            None,
+            None,
+        ]
+    );
+    assert_eq!(consts.len(), 4);
+}
+
+#[test]
+fn a_const_declared_twice_keeps_its_first_value() {
+    let consts = consts_of("Const A = \"first\"\nConst a = \"second\"\n");
+    assert_eq!(consts.get("A"), Some("first"));
+}
+
+#[test]
+fn a_const_declared_with_others_in_one_statement_sees_the_ones_before_it() {
+    let consts = consts_of("Const A = \"a\", B = A & \"b\", C = B & A\n");
+    assert_eq!(consts.get("C"), Some("aba"));
+}
+
+#[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
     // Each of these leaves every literal apart, and folds nothing around them.
     check(&[
@@ -182,6 +273,38 @@ fn nesting_beyond_the_depth_limit_gives_up_without_overflowing_the_stack() {
     assert_eq!(strings(&ok), ["a"]);
     let ok = format!("x = {}\"a\"{}", "UCase(".repeat(20), ")".repeat(20));
     assert_eq!(strings(&ok), ["A"]);
+}
+
+#[test]
+fn a_folded_value_that_would_outgrow_its_statement_stays_unresolved() {
+    // A constant of a few kilobytes, doubled by a statement of a few bytes:
+    // the budget of the statement is a small multiple of its own text.
+    let big = "x".repeat(4_000);
+    let consts = consts_of(&format!("Const A = \"{big}\"\n"));
+    assert_eq!(consts.get("a").map(str::len), Some(4_000));
+    for text in ["y = A & A", "y = UCase(A)"] {
+        assert_eq!(strings_with(&consts, text), Vec::<String>::new(), "{text}");
+    }
+    // What is left of the statement is listed as it would be anywhere else.
+    assert_eq!(strings_with(&consts, "y = A & \"z\""), ["z"]);
+    // The literals of the statement itself are never held back.
+    let long = "z".repeat(100_000);
+    let text = format!("y = \"{long}\" & \"{long}\"");
+    assert_eq!(strings(&text), [format!("{long}{long}")]);
+}
+
+#[test]
+fn constants_cannot_double_their_way_to_a_huge_value() {
+    let mut source = String::from("Const C0 = \"0123456789abcdef\"\n");
+    for i in 1..=60 {
+        source.push_str(&format!("Const C{i} = C{} & C{}\n", i - 1, i - 1));
+    }
+    let consts = consts_of(&source);
+    let longest = (0..=60)
+        .filter_map(|i| consts.get(&format!("C{i}")))
+        .map(str::len)
+        .max();
+    assert!(longest.is_some_and(|len| len < 1_000), "{longest:?}");
 }
 
 #[test]

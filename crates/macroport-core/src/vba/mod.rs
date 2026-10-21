@@ -15,6 +15,7 @@ use crate::report::Status;
 use crate::rules::ModuleType;
 
 pub use facts::{Facts, StatementReader};
+pub use fold::ConstTable;
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,

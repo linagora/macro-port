@@ -3,14 +3,21 @@
 //!
 //! The set is closed. An expression has a known value when it is a string
 //! literal; the `Chr`, `ChrW` or `ChrB` of a number literal; the `StrReverse`,
-//! `LCase` or `UCase` of a known value; or known values joined with `&` or
-//! `+`. Everything else is unknown, and nothing is guessed about it:
-//! arithmetic, `Mid`, `Replace`, `vbCrLf`, a variable, a number joined to a
-//! string. Folding never runs anything and reads no state but the text of the
-//! statement.
+//! `LCase` or `UCase` of a known value; a reference to a module-level `Const`
+//! that has one; or known values joined with `&` or `+`. Everything else is
+//! unknown, and nothing is guessed about it: arithmetic, `Mid`, `Replace`,
+//! `vbCrLf`, a variable, a number joined to a string. Folding never runs
+//! anything and reads no state but the text of the statement and the
+//! constants of the module.
 //!
 //! The expression reader ([`super::expr`]) walks the expressions; this module
 //! holds what it folds with.
+
+use std::collections::BTreeMap;
+
+use super::expr::declare_consts;
+use super::lexer::tokenize;
+use super::{LogicalKind, LogicalLine};
 
 /// The functions of the closed set that make or change a string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,15 +54,22 @@ impl Folding {
     }
 
     /// What the function makes of `argument`, if it is one it folds: a whole
-    /// number for the `Chr` family, a string for the others.
-    pub(super) fn apply(self, argument: &Value) -> Option<String> {
+    /// number for the `Chr` family, a string for the others. A string it
+    /// builds out of a longer one is paid for out of `budget`.
+    pub(super) fn apply(self, argument: &Value, budget: &mut Budget) -> Option<String> {
         match (self, argument) {
             (Self::Chr | Self::ChrW | Self::ChrB, Value::Number(code)) => {
                 character(self, *code).map(String::from)
             }
-            (Self::StrReverse, Value::Text(text)) => Some(text.chars().rev().collect()),
-            (Self::LCase, Value::Text(text)) => Some(text.to_lowercase()),
-            (Self::UCase, Value::Text(text)) => Some(text.to_uppercase()),
+            (Self::StrReverse, Value::Text(text)) => budget
+                .take(text.len())
+                .then(|| text.chars().rev().collect()),
+            (Self::LCase, Value::Text(text)) => {
+                budget.take(text.len()).then(|| text.to_lowercase())
+            }
+            (Self::UCase, Value::Text(text)) => {
+                budget.take(text.len()).then(|| text.to_uppercase())
+            }
             _ => None,
         }
     }
@@ -70,6 +84,35 @@ pub(super) enum Value {
     Number(u32),
     /// A string.
     Text(String),
+}
+
+/// How many bytes of string one statement may copy or build, so that the
+/// text of a statement bounds what folding makes of it: four times its length
+/// and a little more. A literal is never held back (it is in the text
+/// already), but what is made out of a constant or of a string function is: a
+/// constant that a statement of a few bytes repeats into megabytes, or that
+/// other constants double along a chain of declarations, stays unresolved
+/// instead.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Budget(usize);
+
+impl Budget {
+    /// The budget of a statement whose text is `text`.
+    pub(super) fn for_text(text: &str) -> Self {
+        Self(text.len().saturating_mul(4).saturating_add(256))
+    }
+
+    /// Takes `bytes` out of the budget. False, and nothing taken, when fewer
+    /// are left.
+    pub(super) fn take(&mut self, bytes: usize) -> bool {
+        match self.0.checked_sub(bytes) {
+            Some(left) => {
+                self.0 = left;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// The value of a number literal that is a whole number, in decimal, in
@@ -106,6 +149,70 @@ fn character(function: Folding, code: u32) -> Option<char> {
         return None;
     }
     char::from_u32(code)
+}
+
+/// The `Const` strings of a module, by name: what a reference to a name folds
+/// to. Only the module-level declarations are read (the caller gives them one
+/// by one, in order), and a constant whose value is not a known string is not
+/// recorded: it folds to nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConstTable {
+    /// The values by name, in lowercase.
+    values: BTreeMap<String, String>,
+}
+
+impl ConstTable {
+    /// Reads `line`, a logical line of the module outside any procedure (the
+    /// caller gives these, in order, before it reads the procedures), and
+    /// records the constants it declares whose value folds to a string. A
+    /// constant can refer to those declared before it, in this statement or
+    /// an earlier one; a name that is declared twice keeps its first value.
+    /// Any other line is left alone, and so is a compile directive
+    /// (`#Const`), which no reference to a name reads.
+    pub fn declare(&mut self, line: &LogicalLine) {
+        if line.kind == LogicalKind::Code {
+            declare_consts(&line.text, &tokenize(&line.text), self);
+        }
+    }
+
+    /// The value of the constant called `name`, in any letter case and with
+    /// or without a type-declaration character or brackets (`P`, `p$`, `[P]`).
+    pub fn get(&self, name: &str) -> Option<&str> {
+        let unwrapped = name
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'));
+        let plain = unwrapped.unwrap_or_else(|| {
+            name.strip_suffix(['$', '%', '&', '!', '#', '@'])
+                .unwrap_or(name)
+        });
+        self.lookup(plain)
+    }
+
+    /// The value of the constant called `name`, which is as `Token::name`
+    /// gives it.
+    pub(super) fn lookup(&self, name: &str) -> Option<&str> {
+        if self.values.is_empty() {
+            // The usual case: nothing to compare the name with.
+            return None;
+        }
+        self.values.get(&name.to_lowercase()).map(String::as_str)
+    }
+
+    /// Records `value` for `name` (as `Token::name` gives it), unless the name
+    /// has a value already.
+    pub(super) fn insert(&mut self, name: &str, value: String) {
+        self.values.entry(name.to_lowercase()).or_insert(value);
+    }
+
+    /// How many constants are recorded.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Whether no constant is recorded.
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
 }
 
 #[cfg(test)]

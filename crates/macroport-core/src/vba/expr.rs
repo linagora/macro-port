@@ -11,9 +11,11 @@
 //! The reader never fails and never recurses deeper than [`MAX_DEPTH`]: a
 //! statement that nests more is given up where it stands. Every token is
 //! read once, and a folded string is built by appending to the left operand,
-//! so the time is linear in the tokens whatever their shape.
+//! so the time is linear in the tokens whatever their shape. What is copied
+//! or built out of a constant is paid for out of a [`Budget`] that the text of
+//! the statement sets, so its memory is too.
 
-use super::fold::{Folding, Value, parse_number};
+use super::fold::{Budget, ConstTable, Folding, Value, parse_number};
 use super::lexer::{Keyword, Token, TokenKind};
 
 /// How deeply expressions may nest before the reader gives up on the rest of
@@ -40,15 +42,26 @@ struct Node {
     /// Index of its first token, which gives a string its place in the
     /// order of the statement.
     start: usize,
+    /// Whether it is nothing but the name of a constant. Its string is the
+    /// one the declaration holds, which is listed there, so it is not listed
+    /// again where the constant is used: only when it becomes part of an
+    /// expression that makes a new string out of it.
+    bare_const: bool,
 }
 
 impl Node {
+    /// An operand with a value, that is not a constant.
+    fn new(value: Value, start: usize) -> Self {
+        Self {
+            value,
+            start,
+            bare_const: false,
+        }
+    }
+
     /// An operand whose value is not known.
     fn unknown(start: usize) -> Self {
-        Self {
-            value: Value::Unknown,
-            start,
-        }
+        Self::new(Value::Unknown, start)
     }
 }
 
@@ -114,22 +127,28 @@ pub(super) struct Reader<'a> {
     text: &'a str,
     /// The tokens of the statement.
     tokens: &'a [Token],
+    /// The constants of the module.
+    consts: &'a ConstTable,
     /// Index of the next token to read.
     pos: usize,
     /// How many expressions are open.
     depth: usize,
+    /// What is left to copy or build out of constants.
+    budget: Budget,
     /// The strings found, by the index of their first token.
     strings: Vec<(usize, String)>,
 }
 
 impl<'a> Reader<'a> {
     /// A reader of the statement `tokens`, which were cut from `text`.
-    pub(super) fn new(text: &'a str, tokens: &'a [Token]) -> Self {
+    pub(super) fn new(text: &'a str, tokens: &'a [Token], consts: &'a ConstTable) -> Self {
         Self {
             text,
             tokens,
+            consts,
             pos: 0,
             depth: 0,
+            budget: Budget::for_text(text),
             strings: Vec::new(),
         }
     }
@@ -146,6 +165,19 @@ impl<'a> Reader<'a> {
         }
         self.strings.sort_by_key(|&(start, _)| start);
         self.strings.into_iter().map(|(_, text)| text).collect()
+    }
+
+    /// Reads a text that is nothing but one expression, and gives its value
+    /// when it is a string. A comment may follow it.
+    fn value(mut self) -> Option<String> {
+        let node = self.expression(0);
+        let rest = self.tokens.get(self.pos..)?;
+        match node.value {
+            Value::Text(text) if rest.iter().all(|token| token.kind == TokenKind::Comment) => {
+                Some(text)
+            }
+            _ => None,
+        }
     }
 
     /// The kind of the next token.
@@ -170,16 +202,14 @@ impl<'a> Reader<'a> {
         self.pos = self.tokens.len();
     }
 
-    /// Lists the string a node holds, if it holds one: its expression ends
-    /// here, so nothing will be folded into it any more.
+    /// Lists the string a node holds, if it holds one that is not a constant
+    /// on its own: its expression ends here, so nothing will be folded into
+    /// it any more.
     fn finish(&mut self, node: Node) {
-        self.finish_value(node.start, node.value);
-    }
-
-    /// Lists `value`, whose expression starts at the token `start`.
-    fn finish_value(&mut self, start: usize, value: Value) {
-        if let Value::Text(text) = value {
-            self.strings.push((start, text));
+        if let Value::Text(text) = node.value
+            && !node.bare_const
+        {
+            self.strings.push((node.start, text));
         }
     }
 
@@ -221,14 +251,17 @@ impl<'a> Reader<'a> {
         match (operator, left.value, right.value) {
             (Operator::Join, Value::Text(mut joined), Value::Text(tail)) => {
                 joined.push_str(&tail);
-                Node {
-                    value: Value::Text(joined),
-                    start,
-                }
+                Node::new(Value::Text(joined), start)
             }
             (_, left_value, right_value) => {
-                self.finish_value(start, left_value);
-                self.finish_value(right.start, right_value);
+                self.finish(Node {
+                    value: left_value,
+                    ..left
+                });
+                self.finish(Node {
+                    value: right_value,
+                    ..right
+                });
                 Node::unknown(start)
             }
         }
@@ -245,18 +278,16 @@ impl<'a> Reader<'a> {
         match token.kind {
             TokenKind::String => {
                 self.advance();
-                Node {
-                    value: token
-                        .string_value(self.text)
-                        .map_or(Value::Unknown, Value::Text),
-                    start,
-                }
+                let value = token
+                    .string_value(self.text)
+                    .map_or(Value::Unknown, Value::Text);
+                Node::new(value, start)
             }
             TokenKind::Number => {
                 self.advance();
                 let value =
                     parse_number(token.text(self.text)).map_or(Value::Unknown, Value::Number);
-                Node { value, start }
+                Node::new(value, start)
             }
             TokenKind::Date => {
                 self.advance();
@@ -301,12 +332,12 @@ impl<'a> Reader<'a> {
     }
 
     /// Reads a name and what follows it: `Foo`, `Foo(1, 2)`, `a.b(c).d`,
-    /// `rs!Name`, or `.Font` in a `With`. Only one shape has a value: a call
-    /// of the closed set, alone or qualified by library names. The arguments
-    /// are expressions of their own.
+    /// `rs!Name`, or `.Font` in a `With`. Only two shapes have a value: a
+    /// call of the closed set, alone or qualified by a library name, and the
+    /// name of a constant. The arguments are expressions of their own.
     fn primary(&mut self) -> Node {
         let start = self.pos;
-        let qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
+        let mut qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
         if qualified {
             self.advance();
         }
@@ -322,11 +353,12 @@ impl<'a> Reader<'a> {
                 None
             };
             if !matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
-                return self.last_element(start, at, arguments, library);
+                return self.last_element(start, at, arguments, library, qualified);
             }
             library = library && arguments.is_none() && self.is_library(at);
             self.finish_all(arguments.unwrap_or_default());
             self.advance();
+            qualified = true;
         }
         Node::unknown(start)
     }
@@ -339,25 +371,31 @@ impl<'a> Reader<'a> {
             .any(|library| library.eq_ignore_ascii_case(name))
     }
 
-    /// What the last element of a name is worth: it is the token at `at`, has
-    /// `arguments` if a `(` followed it, and `library` tells whether the
-    /// elements before it, if there are any, are only library names.
+    /// What the last element of a name is worth: it starts at the token `at`,
+    /// has `arguments` if a `(` followed it, and `library` tells whether the
+    /// elements before it are only library names. Those before it, if there
+    /// are any, are `qualified`.
     fn last_element(
         &mut self,
         start: usize,
         at: usize,
         arguments: Option<Vec<Option<Node>>>,
         library: bool,
+        qualified: bool,
     ) -> Node {
-        let Some(arguments) = arguments else {
-            return Node::unknown(start);
-        };
-        match Folding::named(self.name_at(at)).filter(|_| library) {
-            Some(function) => self.fold(start, function, arguments),
-            None => {
-                self.finish_all(arguments);
-                Node::unknown(start)
+        match arguments {
+            Some(arguments) => {
+                let function = Folding::named(self.name_at(at)).filter(|_| library);
+                match function {
+                    Some(function) => self.fold(start, function, arguments),
+                    None => {
+                        self.finish_all(arguments);
+                        Node::unknown(start)
+                    }
+                }
             }
+            None if !qualified => self.constant(start, at),
+            None => Node::unknown(start),
         }
     }
 
@@ -365,15 +403,27 @@ impl<'a> Reader<'a> {
     /// it folds, or nothing.
     fn fold(&mut self, start: usize, function: Folding, arguments: Vec<Option<Node>>) -> Node {
         if let [Some(argument)] = arguments.as_slice()
-            && let Some(text) = function.apply(&argument.value)
+            && let Some(text) = function.apply(&argument.value, &mut self.budget)
         {
-            return Node {
-                value: Value::Text(text),
-                start,
-            };
+            return Node::new(Value::Text(text), start);
         }
         self.finish_all(arguments);
         Node::unknown(start)
+    }
+
+    /// The value of the name at `at`, if it is a constant of the module whose
+    /// string fits in the budget.
+    fn constant(&mut self, start: usize, at: usize) -> Node {
+        let Some(value) = self.consts.lookup(self.name_at(at)) else {
+            return Node::unknown(start);
+        };
+        if !self.budget.take(value.len()) {
+            return Node::unknown(start);
+        }
+        Node {
+            bare_const: true,
+            ..Node::new(Value::Text(value.to_owned()), start)
+        }
     }
 
     /// Reads the arguments of a call, or the content of a group, up to the
@@ -422,4 +472,66 @@ impl<'a> Reader<'a> {
         }
         first
     }
+}
+
+/// Records in `table` the constants that the statement `tokens`, which were
+/// cut from `text`, declares: `Const A = "a", B = A & "b"`, with a scope
+/// before the `Const` if it has one. A value that is not a known string is not
+/// recorded, and a declarator can use the ones before it.
+pub(super) fn declare_consts(text: &str, tokens: &[Token], table: &mut ConstTable) {
+    let scope = tokens.first().is_some_and(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Keyword(
+                Keyword::Public | Keyword::Private | Keyword::Global | Keyword::Friend
+            )
+        )
+    });
+    let rest = tokens.get(usize::from(scope)..).unwrap_or_default();
+    let Some((first, declarators)) = rest.split_first() else {
+        return;
+    };
+    if first.kind != TokenKind::Keyword(Keyword::Const) {
+        return;
+    }
+    for declarator in split_declarators(declarators) {
+        let Some((name, after)) = declarator.split_first() else {
+            continue;
+        };
+        // The type of the constant, if it is given, lies before the `=`.
+        let Some(equals) = after
+            .iter()
+            .position(|token| token.kind == TokenKind::Equals)
+        else {
+            continue;
+        };
+        if name.kind != TokenKind::Identifier {
+            continue;
+        }
+        let expression = after.get(equals.saturating_add(1)..).unwrap_or_default();
+        if let Some(value) = Reader::new(text, expression, table).value() {
+            table.insert(name.name(text), value);
+        }
+    }
+}
+
+/// The declarators of a `Const` statement: what lies between the commas that
+/// are not inside parentheses.
+fn split_declarators(tokens: &[Token]) -> Vec<&[Token]> {
+    let mut declarators = Vec::new();
+    let mut depth = 0usize;
+    let mut from = 0usize;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::LeftParen => depth = depth.saturating_add(1),
+            TokenKind::RightParen => depth = depth.saturating_sub(1),
+            TokenKind::Comma if depth == 0 => {
+                declarators.push(tokens.get(from..index).unwrap_or_default());
+                from = index.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+    declarators.push(tokens.get(from..).unwrap_or_default());
+    declarators
 }
