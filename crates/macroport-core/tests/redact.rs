@@ -5,11 +5,14 @@
 
 #![allow(clippy::expect_used)]
 
+use std::collections::BTreeSet;
+
 use macroport_core::redact::{Redaction, remove_snippets};
 use macroport_core::report::Report;
 use serde_json::{Value, json};
 
 const EXAMPLE: &str = include_str!("../../../schema/examples/report.example.json");
+const SCHEMA: &str = include_str!("../../../schema/report.schema.json");
 
 const KEY: &[u8] = b"key";
 
@@ -397,4 +400,101 @@ fn a_key_of_any_length_works_and_is_not_shown() {
 
     assert!(shown.contains("identifiers: true"), "{shown}");
     assert!(!shown.contains("hunter2"), "{shown}");
+}
+
+/// What `--redact` does with each field of the schema that holds free text,
+/// named `definition.property`, with `[]` after an array (SPEC section 8,
+/// ADR-0007). The tests above check the treatments of the fields that name or
+/// quote an analysed file; this list is what makes a new field a decision.
+const FREE_TEXT: [(&str, &str); 22] = [
+    ("report.scan.roots[]", "hashed"),
+    ("file.path", "hashed"),
+    ("file.vba_project.name", "hashed"),
+    (
+        "file.vba_project.references[]",
+        "kept: display names of libraries",
+    ),
+    ("file.errors[].code", "kept: a code of the tool"),
+    ("file.errors[].message", "replaced by [redacted]"),
+    ("file.traits[]", "kept: ids of the rules"),
+    ("file.notes[]", "kept: notes of the tool"),
+    ("module.name", "hashed with the identifiers"),
+    ("module.stream_name", "hashed with the identifiers"),
+    ("procedure.name", "hashed with the identifiers"),
+    ("procedure.calls[]", "hashed with the identifiers, by part"),
+    (
+        "procedure.apis[].name",
+        "kept: the vocabulary of the report",
+    ),
+    ("procedure.traits[]", "kept: ids of the rules"),
+    ("signal.signal_id", "kept: ids of the rules"),
+    ("signal.module", "hashed with the identifiers"),
+    ("signal.procedure", "hashed with the identifiers"),
+    ("evidence.rule_id", "kept: ids of the rules"),
+    ("evidence.snippet", "removed"),
+    ("report.tool.version", "kept: the tool's own"),
+    ("report.tool.rules_version", "kept: the tool's own"),
+    ("report.tool.build", "kept: the tool's own"),
+];
+
+/// Whether `schema` describes any text: a string with no enumeration,
+/// constant, pattern or format to say what it holds.
+fn is_free_text(schema: &Value) -> bool {
+    let is_string = match schema.get("type") {
+        Some(Value::String(kind)) => kind == "string",
+        Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind == "string"),
+        _ => false,
+    };
+    is_string
+        && ["enum", "const", "pattern", "format"]
+            .iter()
+            .all(|keyword| schema.get(keyword).is_none())
+}
+
+/// Adds to `found` the properties of `schema` that hold free text, as
+/// `path.property`, and `path.property[]` for the items of an array. The
+/// definitions that a property refers to are walked by name.
+fn collect_free_text(path: &str, schema: &Value, found: &mut BTreeSet<String>) {
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return;
+    };
+    for (name, property) in properties {
+        let path = format!("{path}.{name}");
+        if is_free_text(property) {
+            found.insert(path);
+        } else if let Some(items) = property.get("items") {
+            if is_free_text(items) {
+                found.insert(format!("{path}[]"));
+            } else {
+                collect_free_text(&format!("{path}[]"), items, found);
+            }
+        } else {
+            collect_free_text(&path, property, found);
+        }
+    }
+}
+
+#[test]
+fn every_free_text_field_of_the_schema_has_a_treatment() {
+    let schema: Value = serde_json::from_str(SCHEMA).expect("the schema is JSON");
+    let mut in_schema = BTreeSet::new();
+    collect_free_text("report", &schema, &mut in_schema);
+    let definitions = schema
+        .get("$defs")
+        .and_then(Value::as_object)
+        .expect("the schema has definitions");
+    for (name, definition) in definitions {
+        collect_free_text(name, definition, &mut in_schema);
+    }
+
+    let decided: BTreeSet<String> = FREE_TEXT
+        .iter()
+        .map(|(field, _)| (*field).to_owned())
+        .collect();
+
+    // An analysed file can put its own text in any field that holds some: a
+    // field that the schema gains has to be decided in FREE_TEXT, and in the
+    // redaction, before this test passes again.
+    assert_eq!(in_schema, decided);
+    assert_eq!(decided.len(), FREE_TEXT.len(), "a field is listed twice");
 }
