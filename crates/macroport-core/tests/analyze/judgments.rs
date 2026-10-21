@@ -97,6 +97,20 @@ fn the_event_handler_of_a_document_module_is_an_auto_exec_procedure() {
 }
 
 #[test]
+fn a_function_that_a_formula_could_call_is_classified_as_a_udf() {
+    let udf = "Function Twice(x)\n    Twice = x * 2\nEnd Function\n";
+
+    let standard = report_of(udf);
+    let sheet = report_of_modules(vec![source("Sheet1", ModuleType::Document, udf)]);
+
+    let twice = first(&standard);
+    assert_eq!(twice.primary_family, "08-udf");
+    assert_eq!(twice.families.first().map(|found| found.score), Some(4.0));
+    // The same function in a sheet cannot be called from a formula.
+    assert_eq!(first(&sheet).primary_family, "unclassified");
+}
+
+#[test]
 fn a_procedure_is_judged_on_its_own_measures() {
     let file = report_of(&format!("{BRANCHING}\n{HELLO}"));
 

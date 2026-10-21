@@ -23,7 +23,7 @@
 //!   outside any.
 //!
 //! What the front end does not read yet is left empty, not guessed: the ProgIDs
-//! of the statements, and the predicates `udf_candidate`, `chr_obfuscation` and
+//! of the statements, and the predicates `chr_obfuscation` and
 //! `possibly_unused`.
 //!
 //! The facts of a statement weigh a few dozen times its text, and only the text
@@ -313,6 +313,7 @@ fn read_module(
             end_line: procedure.end_line,
             lines,
             predicates: ParserPredicates {
+                udf_candidate: vba::is_udf_candidate(module_type, procedure, &analysis.lines),
                 nested_loop_compare: measure.nested_loop_compare.clone(),
                 parse_recovered: analysis.procedure_recovered(index) || deep,
                 ..ParserPredicates::default()
@@ -627,6 +628,41 @@ mod tests {
         for line in &procedure.lines {
             assert!(line.progids.is_empty(), "{line:?}");
         }
+    }
+
+    #[test]
+    fn a_function_with_none_of_the_effects_of_the_list_is_a_udf_candidate() {
+        let text = "Function Twice(x)\n    Twice = x * 2\nEnd Function\n\
+                    Function Paint(r)\n    r.Font.Bold = True\nEnd Function\n\
+                    Private Function Hidden(x)\n    Hidden = x\nEnd Function\n\
+                    Sub Run()\n    x = 1\nEnd Sub\n";
+
+        let standard = adapted(text).input;
+
+        let candidates: Vec<_> = (standard.procedures.iter())
+            .map(|procedure| (procedure.name.as_str(), procedure.predicates.udf_candidate))
+            .collect();
+        // Paint assigns to a font, Hidden is private and Run is not a function.
+        assert_eq!(
+            candidates,
+            [
+                ("Twice", true),
+                ("Paint", false),
+                ("Hidden", false),
+                ("Run", false)
+            ]
+        );
+        // Only the functions of a standard module can be called from a sheet.
+        let sheet = adapt(
+            "Sheet1",
+            ModuleType::Document,
+            &analysis(text),
+            &mut Room::of_a_file(),
+        )
+        .expect("a module that fits")
+        .input;
+        let flagged = (sheet.procedures.iter()).any(|procedure| procedure.predicates.udf_candidate);
+        assert!(!flagged);
     }
 
     #[test]
