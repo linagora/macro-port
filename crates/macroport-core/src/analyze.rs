@@ -176,7 +176,7 @@ fn too_large_reading(path: &str, options: &Options<'_>) -> Reading {
             options.max_file_size
         ),
     );
-    let container = detect::container_by_extension(&detect::extension(path));
+    let container = detect::unopened_container(&detect::extension(path));
     Reading::failed(container, failure)
 }
 
