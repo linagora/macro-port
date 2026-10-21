@@ -11,9 +11,10 @@ use super::fold::ConstTable;
 use super::lexer::{Token, tokenize};
 use super::{LogicalKind, LogicalLine};
 
-/// What a statement holds. The facts are small in proportion to the
-/// statement, but a caller that keeps those of many statements bounds the
-/// total, as it bounds the lines themselves.
+/// What a statement holds. The facts weigh a few dozen times the text of the
+/// statement (every name is copied as a member), and the name of a constant
+/// stands for a longer string. A caller that keeps the facts of many
+/// statements bounds the total, as it bounds the lines themselves.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facts {
     /// The strings of the statement, in source order, with the doubled quotes
@@ -25,13 +26,29 @@ pub struct Facts {
     /// module sees the string, unless the string is longer than the statement
     /// may copy. A string literal that is not closed is not listed.
     pub strings: Vec<String>,
+    /// Every identifier of the statement used as a member (`.X`, `!X`) or as
+    /// a standalone object name, in source order, a type name after `As` or
+    /// `New` included. Not a keyword, a literal (`True`, `Nothing`), the label
+    /// of a jump or a name in an `On` statement (`On Error GoTo Handler`).
+    pub members: Vec<MemberUse>,
     /// The statement nests expressions deeper than [`MAX_NESTING`]. The reader
-    /// read the rest of it flat from there: all its strings are listed, as the
-    /// source spells them, with none folded. A caller can count the statement
-    /// among those that did not parse.
+    /// read the rest of it flat from there: its strings are listed as the
+    /// source spells them, with none folded, and its names as members (a label
+    /// or a type name too). A caller can count the statement among those that
+    /// did not parse.
     ///
     /// [`MAX_NESTING`]: super::MAX_NESTING
     pub too_deep: bool,
+}
+
+/// An identifier used as a member or as a standalone object name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberUse {
+    /// The identifier, as the source spells it but for its brackets
+    /// (`[Sheet 1]`) and its type-declaration character (`Left$`).
+    pub name: String,
+    /// The identifier names an argument, as `Pattern` in `Pattern:=xlSolid`.
+    pub named_argument: bool,
 }
 
 /// Reads the statements of a module one after the other.
