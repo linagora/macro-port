@@ -109,11 +109,13 @@ pub fn read_ooxml(bytes: &[u8]) -> Result<OoxmlPackage, ContainerError> {
     })
 }
 
-/// The VBA project: the part that a relationship of the workbook names, else
-/// the first part that the content types make a VBA project, else the usual
-/// one. The workbooks that Excel wrote for the fixtures relate their project to
-/// the workbook and to nothing else. Only one part of each kind is read, so
-/// that a package full of parts typed as VBA projects costs one read.
+/// The VBA project: the part that a relationship of the workbook names, else a
+/// part that the content types make a VBA project, else the usual one. The
+/// workbooks that Excel wrote for the fixtures relate their project to the
+/// workbook and to nothing else. Of several parts typed so, the usual one
+/// comes first, because the fixtures give every `.bin` part one default type,
+/// and then the first by name. Only one part of each kind is read, so that a
+/// package full of parts typed as VBA projects costs one read.
 fn vba_project(
     archive: &Archive<'_>,
     workbook: &Relations,
@@ -121,9 +123,12 @@ fn vba_project(
 ) -> Result<Option<Vec<u8>>, ContainerError> {
     let named = workbook.targets(Role::VbaProject);
     let named = named.filter_map(|target| archive.canonical(&target));
-    let typed = types.parts().find(|(_, kinds)| kinds.vba_project);
-    let typed = typed.map(|(name, _)| name);
     let usual = archive.canonical(VBA_PART);
+    let typed = types.parts().filter(|(_, kinds)| kinds.vba_project);
+    // Of the parts that rank alike, `min_by_key` keeps the first.
+    let typed = typed
+        .map(|(name, _)| name)
+        .min_by_key(|name| Some(*name) != usual);
     for part in named.chain(typed).chain(usual) {
         if let Some(project) = archive.read_canonical(part, MAX_VBA_PART)? {
             return Ok(Some(project));

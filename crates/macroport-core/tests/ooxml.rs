@@ -370,6 +370,22 @@ fn of_several_parts_typed_as_a_vba_project_only_the_first_is_read() {
 }
 
 #[test]
+fn of_several_parts_typed_as_a_vba_project_the_usual_one_comes_first() {
+    // The fixtures type every `.bin` part as a VBA project with one default,
+    // so a part that sorts before `xl/vbaProject.bin` must not take its place.
+    let types = types_of(&[("bin", VBA_TYPE)], &[]);
+    let parts: [(&str, &[u8]); 3] = [
+        ("xl/a.bin", b"another"),
+        (VBA, b"the project"),
+        ("xl/z.bin", b"another"),
+    ];
+    assert_eq!(vba_of(&typed_package(&types, &[], &parts)), b"the project");
+    // Not typed as a project, it is not preferred to the one that is.
+    let types = types_of(&[], &[("/xl/a.bin", VBA_TYPE)]);
+    assert_eq!(vba_of(&typed_package(&types, &[], &parts)), b"another");
+}
+
+#[test]
 fn content_types_that_are_not_what_the_format_says_are_corrupted() {
     let ns = TYPES_NAMESPACE;
     let cases = [
