@@ -6,6 +6,7 @@
 //! alarm costs a procedure the trait `compile_error_suspected`, where a miss
 //! costs nothing.
 
+use crate::vba::expr::is_binary_operator;
 use crate::vba::{Keyword, Token, TokenKind};
 
 /// The offset in `text`, the logical line the `tokens` come from, of the first
@@ -56,94 +57,53 @@ fn unmatched(tokens: &[Token]) -> Option<usize> {
     (depth > 0).then_some(outermost)
 }
 
-/// Whether a statement can end with a token of this kind. An operator has no
-/// right operand, and a `.` or a `!` no member to reach.
+/// Whether a statement can end with a token of this kind. A binary operator has
+/// no right operand, `Not` no operand at all, and a `.` or a `!` no member to
+/// reach.
 fn can_end(kind: TokenKind) -> bool {
-    !matches!(
-        kind,
-        TokenKind::Dot
-            | TokenKind::Bang
-            | TokenKind::Plus
-            | TokenKind::Minus
-            | TokenKind::Star
-            | TokenKind::Slash
-            | TokenKind::Backslash
-            | TokenKind::Caret
-            | TokenKind::Ampersand
-            | TokenKind::Equals
-            | TokenKind::NotEqual
-            | TokenKind::Less
-            | TokenKind::Greater
-            | TokenKind::LessEqual
-            | TokenKind::GreaterEqual
-            | TokenKind::Keyword(
-                Keyword::And
-                    | Keyword::Or
-                    | Keyword::Xor
-                    | Keyword::Eqv
-                    | Keyword::Imp
-                    | Keyword::Mod
-                    | Keyword::Like
-                    | Keyword::Not
-                    | Keyword::Is
-            )
-    )
+    !(is_binary_operator(kind)
+        || matches!(
+            kind,
+            TokenKind::Dot | TokenKind::Bang | TokenKind::Keyword(Keyword::Not)
+        ))
 }
 
 /// Whether a statement can start with a token of this kind. The ones that
-/// cannot are the punctuation and the operators that need a left operand, a
-/// literal, and the words that only continue a statement: `Then`, `To`, `In`,
-/// `Step`, `As`, `Each`, `Preserve`, the operators spelled as words, and the
-/// words of a parameter. A `)` is found by [`unmatched`], and a `:` never starts
-/// a logical line: it splits them.
+/// cannot are a binary operator, which needs a left operand (`-` is one, and no
+/// statement starts with a sign), `Not`, a literal, the separators that sit
+/// between two parts of a statement, and the words that only continue one:
+/// `Then`, `To`, `In`, `Step`, `As`, `Each`, `Preserve`, the words of a
+/// parameter, and the words that begin an operand (`New`, `AddressOf`,
+/// `TypeOf`). A `)` is found by [`unmatched`], and a `:` never starts a logical
+/// line: it splits them.
 fn can_start(kind: TokenKind) -> bool {
-    !matches!(
-        kind,
-        TokenKind::Comma
-            | TokenKind::Semicolon
-            | TokenKind::ColonEquals
-            | TokenKind::Plus
-            | TokenKind::Minus
-            | TokenKind::Star
-            | TokenKind::Slash
-            | TokenKind::Backslash
-            | TokenKind::Caret
-            | TokenKind::Ampersand
-            | TokenKind::Equals
-            | TokenKind::NotEqual
-            | TokenKind::Less
-            | TokenKind::Greater
-            | TokenKind::LessEqual
-            | TokenKind::GreaterEqual
-            | TokenKind::String
-            | TokenKind::Number
-            | TokenKind::Date
-            | TokenKind::Keyword(
-                Keyword::Then
-                    | Keyword::To
-                    | Keyword::In
-                    | Keyword::Step
-                    | Keyword::As
-                    | Keyword::Each
-                    | Keyword::Preserve
-                    | Keyword::Is
-                    | Keyword::Like
-                    | Keyword::Mod
-                    | Keyword::And
-                    | Keyword::Or
-                    | Keyword::Xor
-                    | Keyword::Eqv
-                    | Keyword::Imp
-                    | Keyword::Not
-                    | Keyword::ByVal
-                    | Keyword::ByRef
-                    | Keyword::Optional
-                    | Keyword::ParamArray
-                    | Keyword::New
-                    | Keyword::AddressOf
-                    | Keyword::TypeOf
-            )
-    )
+    !(is_binary_operator(kind)
+        || matches!(
+            kind,
+            TokenKind::Comma
+                | TokenKind::Semicolon
+                | TokenKind::ColonEquals
+                | TokenKind::String
+                | TokenKind::Number
+                | TokenKind::Date
+                | TokenKind::Keyword(
+                    Keyword::Not
+                        | Keyword::Then
+                        | Keyword::To
+                        | Keyword::In
+                        | Keyword::Step
+                        | Keyword::As
+                        | Keyword::Each
+                        | Keyword::Preserve
+                        | Keyword::ByVal
+                        | Keyword::ByRef
+                        | Keyword::Optional
+                        | Keyword::ParamArray
+                        | Keyword::New
+                        | Keyword::AddressOf
+                        | Keyword::TypeOf
+                )
+        ))
 }
 
 /// The offset of a `To`, `Then`, `In` or `Step` outside parentheses in a

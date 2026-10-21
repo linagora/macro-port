@@ -38,13 +38,16 @@
 //! error, unless it cannot be read.
 //!
 //! A statement cannot be read when its tokens fail a check that valid code
-//! never fails: a character that is no token or a string that never closes, a
-//! parenthesis that nothing matches, an operator that ends the statement, a
-//! word that starts none, or a name followed by `To`, `Then`, `In` or `Step`
-//! outside parentheses, which is a line of prose. It is recorded as
-//! [`RecoveryKind::Unparseable`]; a statement that passes the checks is not
-//! claimed to be valid. The members of a `Type` or an `Enum`, the labels, the
-//! comments and the directives are not checked.
+//! never fails: a character that is no token, or a string that never closes; a
+//! parenthesis that nothing matches; a last token that leaves the statement
+//! unfinished, an operator, a `.` or a `!`; a first token that starts no
+//! statement, such as a literal, a `,` or a word that only continues one
+//! (`Then`, `As`...); or, in a statement that starts with a name, a `To`,
+//! `Then`, `In` or `Step` outside parentheses, which is a line of prose. It is
+//! recorded as [`RecoveryKind::Unparseable`], once for a physical line that
+//! holds several of them; a statement that passes the checks is not claimed to
+//! be valid. The members of a `Type` or an `Enum`, the labels, the comments and
+//! the directives are not checked.
 
 mod declaration;
 mod shape;
@@ -84,10 +87,15 @@ pub enum RecoveryKind {
     /// `End Type` or `End Enum` before the header of a procedure, a statement
     /// that declares something, or the end of the module. Found at its opener.
     UnclosedBlock,
-    /// A statement that cannot be read: the header of a procedure that names
-    /// nothing, such as `Sub (a, b)` or `Sub 123()`, found at its keyword; or a
-    /// statement that fails one of the checks of the module documentation, such
-    /// as a string that never closes, found at the token that fails it.
+    /// A statement that cannot be read. Either the header of a procedure that
+    /// names nothing, such as `Sub (a, b)` or `Sub 123()`, found at its
+    /// keyword; or a statement whose tokens fail a check that valid code never
+    /// fails, found at the token that fails it: a character that is no token,
+    /// a string that never closes, a parenthesis that nothing matches, an
+    /// operator, a `.` or a `!` that ends the statement, a first token that
+    /// starts no statement, or a line of prose (a name followed by `To`,
+    /// `Then`, `In` or `Step`). A statement that passes is not claimed to be
+    /// valid.
     Unparseable,
 }
 
@@ -373,11 +381,11 @@ impl Parser<'_> {
             // read as a form of it, so that the recovery is the procedure's.
             Shape::Header(header) => {
                 self.header(index, line, header);
-                self.check(line, tokens);
+                self.record_if_unreadable(line, tokens);
             }
             // The end is checked before it closes the procedure.
             Shape::End(end) => {
-                self.check(line, tokens);
+                self.record_if_unreadable(line, tokens);
                 self.end(index, line, end);
             }
             Shape::Directive(directive) => {
@@ -386,7 +394,7 @@ impl Parser<'_> {
                 self.declare(DeclarationKind::Directive(directive), index, line);
             }
             Shape::Statement => {
-                self.check(line, tokens);
+                self.record_if_unreadable(line, tokens);
                 self.touch(index, line);
                 if let Some(kind) = declared {
                     self.declare(kind, index, line);
@@ -485,20 +493,16 @@ impl Parser<'_> {
         record(&mut self.module.recoveries, Recovery { line, kind });
     }
 
-    /// Records a recovery in the procedure being read, or in the module when
-    /// there is none.
-    fn recover(&mut self, kind: RecoveryKind, line: u32) {
-        match self.open.as_mut() {
-            Some(open) => open.recover(kind, line),
-            None => self.recover_in_module(kind, line),
-        }
-    }
-
     /// Records the statement of `line`, made of `tokens`, when it cannot be
-    /// read.
-    fn check(&mut self, line: &LogicalLine, tokens: &[Token]) {
-        if let Some(offset) = unreadable(tokens, &line.text) {
-            self.recover(RecoveryKind::Unparseable, line.line_at(offset));
+    /// read: in the procedure being read, or in the module when there is none.
+    fn record_if_unreadable(&mut self, line: &LogicalLine, tokens: &[Token]) {
+        let Some(offset) = unreadable(tokens, &line.text) else {
+            return;
+        };
+        let line = line.line_at(offset);
+        match self.open.as_mut() {
+            Some(open) => open.recover(RecoveryKind::Unparseable, line),
+            None => self.recover_in_module(RecoveryKind::Unparseable, line),
         }
     }
 
@@ -572,11 +576,13 @@ impl Parser<'_> {
     }
 }
 
-/// Adds `recovery` to `list`, unless the list holds [`MAX_RECOVERIES`] already
-/// or ends with the same one: a line that holds several statements, or a header
-/// that names nothing and cannot be read either, is recorded once.
+/// Adds `recovery` to `list`, unless the list holds [`MAX_RECOVERIES`] already,
+/// or `recovery` is an `Unparseable` that ends the list already: a physical line
+/// that holds several statements, or a header that names nothing and cannot be
+/// read either, is recorded once.
 fn record(list: &mut Vec<Recovery>, recovery: Recovery) {
-    if list.len() < MAX_RECOVERIES && list.last() != Some(&recovery) {
+    let repeated = recovery.kind == RecoveryKind::Unparseable && list.last() == Some(&recovery);
+    if list.len() < MAX_RECOVERIES && !repeated {
         list.push(recovery);
     }
 }

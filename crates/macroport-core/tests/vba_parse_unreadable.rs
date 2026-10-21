@@ -7,20 +7,12 @@ mod vba_parse_common;
 
 use macroport_core::report::ProcedureKind::Sub;
 use macroport_core::vba::{MAX_RECOVERIES, MAX_TOKENS, ParsedModule, Recovery, RecoveryKind};
-use vba_parse_common::{module_of, spans};
+use vba_parse_common::{module_of, spans, unreadable};
 
 /// A module of one procedure, `P`, with `body` as its body: the header is on
 /// the line 1 and the first line of the body on the line 2.
 fn in_procedure(body: &str) -> String {
     format!("Sub P()\n{body}\nEnd Sub\n")
-}
-
-/// What the parser records for an unreadable statement on the line `line`.
-fn unreadable(line: u32) -> Recovery {
-    Recovery {
-        line,
-        kind: RecoveryKind::Unparseable,
-    }
 }
 
 /// The recoveries of the procedures of `module`, procedure by procedure.
@@ -141,12 +133,11 @@ const UNREADABLE: &[&str] = &[
     "x = 1 + 2)",
     "Foo (1, (2)",
     "Foo 1, 2)",
-    // A statement that stops short: the ones of the corpus.
+    // A statement that stops short, on a `Not`, an operator or a `.`. The
+    // second and the third are in the corpus.
     "x = Not",
     "MsgBox \"a\" &",
     "Do manipulations of your  file here.",
-    "...",
-    "x = rs.Fields(1)!",
     // A line of prose: a name, then a word of the statements that start with a
     // keyword.
     "you need to import the module",
@@ -202,7 +193,7 @@ fn an_operator_that_ends_a_statement_has_no_right_operand() {
 
 #[test]
 fn a_dot_or_a_bang_that_ends_a_statement_reaches_no_member() {
-    assert_all_flagged(["x = a.", "x = a.b.", "x = f(1)!", ".", "!"]);
+    assert_all_flagged(["x = a.", "x = a.b.", "x = rs.Fields(1)!", "...", ".", "!"]);
     // A number may end with its dot, and a name with its type character.
     for statement in ["x = 1.", "x = a!", "x = a.b!", "x = a.b"] {
         let module = module_of(&in_procedure(statement));
@@ -210,28 +201,17 @@ fn a_dot_or_a_bang_that_ends_a_statement_reaches_no_member() {
     }
 }
 
-/// The marks and the words that no statement starts with.
+/// The marks, the literals and the words that no statement starts with, besides
+/// the binary operators.
 const NO_START: &[&str] = &[
     ",",
     ";",
     ":=",
     ")",
-    "+",
-    "-",
-    "*",
-    "/",
-    "\\",
-    "^",
-    "&",
-    "=",
-    "<>",
-    "<",
-    ">",
-    "<=",
-    ">=",
     "\"s\"",
     "1.5",
     "#1/1/2000#",
+    "Not",
     "Then",
     "To",
     "In",
@@ -239,15 +219,6 @@ const NO_START: &[&str] = &[
     "As",
     "Each",
     "Preserve",
-    "Is",
-    "Like",
-    "Mod",
-    "And",
-    "Or",
-    "Xor",
-    "Eqv",
-    "Imp",
-    "Not",
     "ByVal",
     "ByRef",
     "Optional",
@@ -259,7 +230,11 @@ const NO_START: &[&str] = &[
 
 #[test]
 fn a_mark_or_a_word_that_starts_no_statement_is_flagged() {
-    let starting: Vec<String> = NO_START.iter().map(|start| format!("{start} x")).collect();
+    let starting: Vec<String> = BINARY_OPERATORS
+        .iter()
+        .chain(NO_START)
+        .map(|start| format!("{start} x"))
+        .collect();
     assert_all_flagged(starting.iter().map(String::as_str));
 }
 
@@ -328,19 +303,11 @@ fn the_header_and_the_end_of_a_procedure_are_read_like_the_other_statements() {
     assert_eq!(procedure_recoveries(&module), [&[unreadable(4)][..]]);
     // A stray end is read too: it is outside any procedure.
     let module = module_of("End Sub )\n");
-    assert_eq!(
-        module.recoveries,
-        [
-            Recovery {
-                line: 1,
-                kind: RecoveryKind::Unparseable
-            },
-            Recovery {
-                line: 1,
-                kind: RecoveryKind::StrayTerminator
-            },
-        ]
-    );
+    let stray = Recovery {
+        line: 1,
+        kind: RecoveryKind::StrayTerminator,
+    };
+    assert_eq!(module.recoveries, [unreadable(1), stray]);
 }
 
 #[test]
@@ -354,7 +321,7 @@ fn the_members_of_a_block_the_labels_the_directives_and_the_comments_are_not_rea
 }
 
 #[test]
-fn a_physical_line_is_recorded_once() {
+fn an_unreadable_statement_is_recorded_once_for_a_physical_line() {
     // Two statements on a line, both unreadable.
     let module = module_of(&in_procedure("x = ( : y = )"));
     assert_eq!(procedure_recoveries(&module), [&[unreadable(2)][..]]);
@@ -367,6 +334,17 @@ fn a_physical_line_is_recorded_once() {
         procedure_recoveries(&module),
         [&[unreadable(2), unreadable(3)][..]]
     );
+}
+
+#[test]
+fn the_other_recoveries_of_a_physical_line_are_not_merged() {
+    // Two ends with nothing to close, on one line: two events.
+    let stray = Recovery {
+        line: 1,
+        kind: RecoveryKind::StrayTerminator,
+    };
+    let module = module_of("End Sub : End Sub\n");
+    assert_eq!(module.recoveries, [stray, stray]);
 }
 
 #[test]

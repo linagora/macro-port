@@ -8,7 +8,7 @@ use macroport_core::report::ProcedureKind::Sub;
 use macroport_core::vba::{
     DeclarationKind, Directive, OptionKind, ParsedModule, Recovery, RecoveryKind,
 };
-use vba_parse_common::{module_of, spans};
+use vba_parse_common::{module_of, spans, unreadable};
 
 use DeclarationKind::{Const, Enum, Event, Implements, Type, Variable};
 
@@ -41,13 +41,6 @@ fn unclosed(line: u32) -> Recovery {
     Recovery {
         line,
         kind: RecoveryKind::UnclosedBlock,
-    }
-}
-
-fn unreadable(line: u32) -> Recovery {
-    Recovery {
-        line,
-        kind: RecoveryKind::Unparseable,
     }
 }
 

@@ -147,6 +147,15 @@ fn a_header_of_the_most_tokens_a_line_can_hold_is_counted_in_linear_time() {
     }
 }
 
+/// What the parser records for a statement that cannot be read, on the line
+/// `line`.
+fn unreadable(line: u32) -> Recovery {
+    Recovery {
+        line,
+        kind: RecoveryKind::Unparseable,
+    }
+}
+
 #[test]
 fn a_procedure_of_statements_that_cannot_be_read_keeps_the_first_recoveries() {
     let body = "x = (\n".repeat(LINES);
@@ -154,7 +163,9 @@ fn a_procedure_of_statements_that_cannot_be_read_keeps_the_first_recoveries() {
     let [procedure] = module.procedures.as_slice() else {
         panic!("{module:?}");
     };
-    assert_eq!(procedure.recoveries.len(), MAX_RECOVERIES);
+    // The statements start on the line 2, and each is on a line of its own.
+    let first: Vec<_> = (2u32..).take(MAX_RECOVERIES).map(unreadable).collect();
+    assert_eq!(procedure.recoveries, first);
     assert!(module.recoveries.is_empty());
 }
 
@@ -169,10 +180,6 @@ fn a_statement_of_the_most_tokens_a_line_can_hold_is_checked_in_linear_time() {
         let [procedure] = module.procedures.as_slice() else {
             panic!("{piece:?}: {module:?}");
         };
-        let unreadable = Recovery {
-            line: 2,
-            kind: RecoveryKind::Unparseable,
-        };
-        assert_eq!(procedure.recoveries, [unreadable], "{piece:?}");
+        assert_eq!(procedure.recoveries, [unreadable(2)], "{piece:?}");
     }
 }

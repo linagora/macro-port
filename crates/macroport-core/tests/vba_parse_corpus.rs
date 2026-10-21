@@ -404,7 +404,7 @@ const DELIBERATE_ERRORS: [Deliberate; 7] = [
 ];
 
 #[test]
-fn the_deliberate_compile_errors_are_read_like_the_other_samples() {
+fn a_deliberate_compile_error_never_fails_the_module_and_flags_only_what_cannot_be_read() {
     for sample in DELIBERATE_ERRORS {
         let path = format!("families/{}", sample.path);
         let module = module_of(&text_of(&path));
