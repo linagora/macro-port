@@ -440,9 +440,27 @@ impl Iterator for Lexer<'_> {
     }
 }
 
-/// The tokens of `text`, the text of a logical line.
+/// The most tokens [`tokenize`] returns for one text. A real logical line has
+/// a few hundred at most, but a hostile one made of single characters gives 24
+/// bytes of token per byte of text: 1.5 GB for the 64 MB that a module stream
+/// may hold. The cap is per text, so a caller that keeps the tokens of many
+/// lines bounds their sum itself, by reading the lines one at a time.
+pub const MAX_TOKENS: usize = 1 << 20;
+
+/// The tokens of `text`, the text of a logical line: at most [`MAX_TOKENS`].
+/// When the text holds more, the last token is an [`TokenKind::Unknown`] one
+/// that reaches the end of it, so that the tokens still cover the whole text
+/// and the parser reads an unparseable statement.
 pub fn tokenize(text: &str) -> Vec<Token> {
-    Lexer::new(text).collect()
+    let mut lexer = Lexer::new(text);
+    let mut tokens: Vec<Token> = lexer.by_ref().take(MAX_TOKENS).collect();
+    if lexer.next().is_some()
+        && let Some(last) = tokens.last_mut()
+    {
+        last.kind = TokenKind::Unknown;
+        last.end = text.len();
+    }
+    tokens
 }
 
 /// Whether `c` can start an operand, after a character that might be a type

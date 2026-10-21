@@ -5,7 +5,7 @@
 
 mod vba_lexer_common;
 
-use macroport_core::vba::{TokenKind, split_lines, tokenize};
+use macroport_core::vba::{MAX_TOKENS, TokenKind, split_lines, tokenize};
 use macroport_testkit::corpus;
 use vba_lexer_common::tiling_problem;
 
@@ -83,6 +83,8 @@ fn the_code_of_every_module_of_the_corpus_is_cut_without_loss_as_one_line() {
             .map(|line| line.text.as_str())
             .collect();
         let line = code.join(" ");
-        assert_eq!(tiling_problem(&line, &tokenize(&line)), None, "{path}");
+        let found = tokenize(&line);
+        assert!(found.len() < MAX_TOKENS, "{path}: {} tokens", found.len());
+        assert_eq!(tiling_problem(&line, &found), None, "{path}");
     }
 }
