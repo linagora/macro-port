@@ -286,6 +286,31 @@ fn a_module_with_too_many_lines_is_too_large_and_the_others_are_still_read() {
 }
 
 #[test]
+fn the_modules_of_a_file_are_read_up_to_a_budget_of_lines() {
+    // The rule engine keeps what it reads of every module until the last one is
+    // read, so the lines of a file are bounded to bound its memory.
+    let sixty_thousand = "a\n".repeat(60_000);
+
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, &sixty_thousand),
+        source("Second", ModuleType::Standard, &sixty_thousand),
+        source("Third", ModuleType::Standard, "Sub A()\nEnd Sub\n"),
+    ]);
+
+    // The second crosses the budget and is read whole, and the third is not read.
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_many_lines".to_owned(),
+        message: "module Third: the modules of the file have more than 100000 lines".to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let loc: Vec<_> = modules(&file).iter().map(|m| m.metrics.loc).collect();
+    assert_eq!(loc, [60_000, 60_000, 0]);
+    assert!(modules(&file)[2].procedures.is_empty());
+}
+
+#[test]
 fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected() {
     for (text, expected) in [
         ("Sub Broken()\n    x = 1\n", true),

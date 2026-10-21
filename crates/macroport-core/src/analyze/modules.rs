@@ -51,10 +51,18 @@ const UNCLASSIFIED: &str = "unclassified";
 
 /// The most lines that the modules of one file may total, once read.
 /// [`split_lines`] bounds one module, and the sources of a project may total
-/// 32 MiB, which a module of one-character lines turns into far more lines than
-/// the time and the report of a file should take. The modules past this budget
-/// are not read.
-const MAX_FILE_LINES: u32 = 1_000_000;
+/// 32 MiB, which modules of one-character lines turn into millions of lines,
+/// far more than the time, the memory and the report of a file should take: the
+/// rule engine keeps what it reads of every module until the last one is read,
+/// some 330 bytes for each line. The modules past this budget are not read, and
+/// the one that crosses it is read whole, so a file holds this many lines and
+/// those of one module more ([`MAX_LINES`](crate::vba::MAX_LINES)), and nothing
+/// is split once the budget is spent.
+///
+/// Measured on modules of one-character lines, in a release build on macOS, the
+/// peak of a file is 204 MB at the worst, where the limit is 256 MB (ACCEPTANCE
+/// A2); a budget of a million lines took 481 MB.
+const MAX_FILE_LINES: u32 = 100_000;
 
 /// The most bytes that the modules handed to [`analyze_modules`] may total: the
 /// limit of the sources of a VBA project, which keeps the peak memory of a file
