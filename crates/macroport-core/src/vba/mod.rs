@@ -6,6 +6,7 @@
 
 mod lexer;
 mod lines;
+mod metrics;
 mod scan;
 
 use crate::report::Status;
@@ -16,6 +17,7 @@ pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
 };
+pub use metrics::measure_procedure;
 
 /// The source of one module: what the extraction layer, or a text file,
 /// hands to the front end.
