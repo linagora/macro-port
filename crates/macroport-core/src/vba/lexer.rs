@@ -209,7 +209,7 @@ pub struct Token {
 }
 
 /// The type-declaration characters that end an identifier or a number.
-const TYPE_CHARACTERS: [char; 6] = ['$', '%', '&', '!', '#', '@'];
+pub(super) const TYPE_CHARACTERS: [char; 6] = ['$', '%', '&', '!', '#', '@'];
 
 impl Token {
     /// The text of the token in `source`, the text it was cut from.

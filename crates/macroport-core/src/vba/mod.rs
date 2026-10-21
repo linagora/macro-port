@@ -9,6 +9,7 @@ mod facts;
 mod fold;
 mod lexer;
 mod lines;
+mod metrics;
 mod parse;
 mod scan;
 
@@ -23,6 +24,7 @@ pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
 };
+pub use metrics::measure_procedure;
 pub use parse::{
     Declaration, DeclarationKind, Directive, MAX_RECOVERIES, OptionKind, ParsedModule, Procedure,
     Recovery, RecoveryKind, parse,
