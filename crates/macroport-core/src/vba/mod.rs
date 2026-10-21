@@ -6,6 +6,7 @@
 
 mod lexer;
 mod lines;
+mod metrics;
 mod parse;
 mod scan;
 
@@ -17,6 +18,7 @@ pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
 };
+pub use metrics::measure_procedure;
 pub use parse::{MAX_RECOVERIES, ParsedModule, Procedure, Recovery, RecoveryKind, parse};
 
 /// The source of one module: what the extraction layer, or a text file,
