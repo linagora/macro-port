@@ -8,8 +8,10 @@
 //! physical line of a token is [`LogicalLine::line_at`] of its `start`.
 //!
 //! Lexing never fails: a character that starts no token is a
-//! [`TokenKind::Unknown`] one. [`tokenize`] is the way in; the lazy reader
-//! behind it stays private.
+//! [`TokenKind::Unknown`] one. It takes time linear in the text, which is read
+//! from left to right, and no lookahead that found nothing is made again; the
+//! tokens of one text are capped at [`MAX_TOKENS`]. [`tokenize`] is the way
+//! in; the lazy reader behind it stays private.
 //!
 //! Three characters mean something else in another place, and the lexer
 //! settles them from the text around them. `!` is a type character (`n!`) or
