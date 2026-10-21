@@ -17,5 +17,6 @@ pub mod rules;
 pub mod vba;
 
 // The entry points of the core, as the SPEC names them: `macroport_core::analyze`
-// is the function, and the module of that name holds its options and results.
+// and `macroport_core::analyze_modules` are functions, and the module `analyze`
+// holds their options and results.
 pub use analyze::{analyze, analyze_modules};

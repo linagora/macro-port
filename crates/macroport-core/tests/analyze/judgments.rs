@@ -5,15 +5,13 @@
 //! rules read. The modules come as text, through `analyze_modules`, or from a
 //! workbook, through `analyze`.
 
-use macroport_core::analyze::{Options, analyze, analyze_modules};
-use macroport_core::report::{FileReport, Level, ModuleReport, ProcedureReport};
+use macroport_core::analyze::{analyze, analyze_modules};
+use macroport_core::report::{FileReport, Level, ProcedureReport};
 use macroport_core::rules::{ModuleType, Severity};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
 
-use crate::support::{RULES, report_problems_of};
-
-const HELLO: &str = "Option Explicit\n\nSub Hello()\n    MsgBox \"hi\"\nEnd Sub\n";
+use crate::support::{HELLO, checked, modules, options};
 
 /// A procedure of five logical lines, of which one is a decision.
 const BRANCHING: &str =
@@ -29,18 +27,12 @@ fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
 
 /// The report of `modules` as a text file, once checked against the schema.
 fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
-    let file = analyze_modules(modules, "Book.bas", &Options::new(&RULES));
-    assert_eq!(report_problems_of(&file), Vec::<String>::new());
-    file
+    checked(analyze_modules(modules, "Book.bas", &options()))
 }
 
 /// The report of `text` as the only module of a file.
 fn report_of(text: &str) -> FileReport {
     report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
-}
-
-fn modules(file: &FileReport) -> &[ModuleReport] {
-    &file.vba_project.as_ref().expect("a VBA project").modules
 }
 
 /// The first procedure of the first module of a file.
@@ -214,9 +206,8 @@ fn a_file_where_no_module_was_read_is_not_judged() {
 fn a_workbook_is_judged_like_a_text() {
     let bytes = corpus::read("fixtures/generated/14-01-auto-open-shell.xlsm");
 
-    let file = analyze(&bytes, "14-01.xlsm", &Options::new(&RULES));
+    let file = checked(analyze(&bytes, "14-01.xlsm", &options()));
 
-    assert_eq!(report_problems_of(&file), Vec::<String>::new());
     let procedures = modules(&file).iter().flat_map(|module| &module.procedures);
     let auto_exec: Vec<_> = procedures
         .filter(|procedure| signal_ids(procedure).contains(&"sec.auto-exec"))

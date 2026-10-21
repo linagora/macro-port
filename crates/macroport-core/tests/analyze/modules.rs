@@ -11,20 +11,8 @@ use macroport_core::report::{
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
-use sha2::{Digest, Sha256};
 
-use crate::support::{RULES, report_problems_of};
-
-const HELLO: &str = "Option Explicit\n\nSub Hello()\n    MsgBox \"hi\"\nEnd Sub\n";
-
-fn options() -> Options<'static> {
-    Options::new(&RULES)
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
+use crate::support::{HELLO, checked, module, modules, options, sha256};
 
 fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
     ModuleSource {
@@ -32,12 +20,6 @@ fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
         module_type,
         text: text.to_owned(),
     }
-}
-
-/// `file`, once checked against the report schema.
-fn checked(file: FileReport) -> FileReport {
-    assert_eq!(report_problems_of(&file), Vec::<String>::new());
-    file
 }
 
 /// The report of `modules` as a text file.
@@ -50,18 +32,8 @@ fn report_of(text: &str) -> FileReport {
     report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
 }
 
-fn modules(file: &FileReport) -> &[ModuleReport] {
-    &file.vba_project.as_ref().expect("a VBA project").modules
-}
-
-/// The only module of a file.
-fn module(file: &FileReport) -> &ModuleReport {
-    let modules = modules(file);
-    assert_eq!(modules.len(), 1);
-    modules.first().expect("one module")
-}
-
-/// Whether `traits` has the trait `compile_error_suspected`.
+/// Whether `traits` has the trait `compile_error_suspected`. The rule engine
+/// gives every trait of a procedure or a file, so the others come with it.
 fn suspected(traits: &Option<Vec<String>>) -> bool {
     (traits.iter().flatten()).any(|id| id == "compile_error_suspected")
 }
@@ -244,9 +216,9 @@ fn modules_above_the_size_limit_are_too_large_and_not_read() {
         max_file_size: 10,
         ..options()
     };
-    let modules = vec![source("Module1", ModuleType::Standard, HELLO)];
+    let sources = vec![source("Module1", ModuleType::Standard, HELLO)];
 
-    let file = checked(analyze_modules(modules, "Module1.bas", &limited));
+    let file = checked(analyze_modules(sources, "Module1.bas", &limited));
 
     assert_eq!(
         (file.container, file.status),
@@ -276,13 +248,36 @@ fn a_module_with_too_many_lines_is_too_large_and_the_others_are_still_read() {
         message: format!("module Big: more than {MAX_LINES} lines"),
     };
     assert_eq!(errors, &[expected]);
-    let modules = modules(&file);
-    assert!(modules[0].source_available);
-    assert_eq!(
-        (modules[0].procedures.len(), modules[0].metrics.loc),
-        (0, 0)
-    );
-    assert_eq!(modules[1].procedures.len(), 1);
+    let [big, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert!(big.source_available);
+    assert_eq!((big.procedures.len(), big.metrics.loc), (0, 0));
+    assert_eq!(small.procedures.len(), 1);
+}
+
+#[test]
+fn a_module_with_too_many_procedures_is_too_large_and_the_others_are_still_read() {
+    // Each `Sub` line ends the procedure before it, so a line is a procedure.
+    let many = "Sub A\n".repeat(50_001);
+
+    let file = report_of_modules(vec![
+        source("Many", ModuleType::Standard, &many),
+        source("Small", ModuleType::Standard, HELLO),
+    ]);
+
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_many_procedures".to_owned(),
+        message: "module Many: the modules of the file have more than 50000 procedures".to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let [many, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert_eq!(many.procedures.len(), 0);
+    assert_eq!(small.procedures.len(), 1);
 }
 
 #[test]
@@ -316,6 +311,11 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
         ("Sub Broken()\n    x = 1\n", true),
         ("Sub Broken()\n    x = 1\nEnd Function\n", true),
         ("Sub (a, b)\nEnd Sub\n", true),
+        // The blocks do not match: an If has no End If.
+        (
+            "Sub Broken()\n    If x Then\n        y = 1\nEnd Sub\n",
+            true,
+        ),
         ("Sub Fine()\n    x = 1\nEnd Sub\n", false),
     ] {
         let file = report_of(text);
@@ -353,9 +353,13 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
         ..RulesSources::EMBEDDED
     };
     let rules = RuleSet::load(&sources).expect("the changed rules load");
-    let modules = vec![source("Module1", ModuleType::Standard, "Sub Broken()\n")];
+    let broken = vec![source("Module1", ModuleType::Standard, "Sub Broken()\n")];
 
-    let file = analyze_modules(modules, "Module1.bas", &Options::new(&rules));
+    let file = checked(analyze_modules(
+        broken,
+        "Module1.bas",
+        &Options::new(&rules),
+    ));
 
     let has =
         |traits: &Option<Vec<String>>| (traits.iter().flatten()).any(|t| t == "does_not_parse");
@@ -376,8 +380,106 @@ fn the_fields_that_no_stage_fills_yet_are_left_out_not_made_up() {
     assert_eq!(hello.apis, None);
 }
 
+/// A module that declares, outside any procedure, three `Declare` statements
+/// (two forms of one routine, under `#If VBA7`, and another), two `WithEvents`
+/// variables and both options. A `Declare` in a procedure is not a declaration.
+const DECLARING: &str = "\
+Option Explicit
+Option VBASupport 1
+#If VBA7 Then
+Private Declare PtrSafe Function GetTickCount Lib \"kernel32\" () As Long
+#Else
+Private Declare Function GetTickCount Lib \"kernel32\" () As Long
+#End If
+Public Declare PtrSafe Sub Sleep Lib \"kernel32\" (ByVal ms As Long)
+Private WithEvents App As Application
+Public WithEvents Button As MSForms.CommandButton
+Dim Total As Long
+
+Sub Run()
+    Declare Sub Inside Lib \"kernel32\" ()
+End Sub
+";
+
+fn declarations(module: &ModuleReport) -> (Option<u32>, Option<u32>, Option<bool>, Option<bool>) {
+    let declarations = module.declarations.as_ref().expect("the declarations");
+    (
+        declarations.declare_count,
+        declarations.with_events_count,
+        declarations.option_explicit,
+        declarations.option_vba_support,
+    )
+}
+
 #[test]
-fn the_modules_of_a_workbook_are_read_like_those_of_a_text() {
+fn a_module_reports_the_declarations_outside_its_procedures() {
+    let file = report_of(DECLARING);
+
+    let module = module(&file);
+    assert_eq!(
+        declarations(module),
+        (Some(3), Some(2), Some(true), Some(true))
+    );
+    // The metric of the module is the same count of `Declare` statements.
+    assert_eq!(module.metrics.declare_count, Some(3));
+}
+
+#[test]
+fn a_module_without_declarations_says_so_and_does_not_leave_them_out() {
+    let file = report_of("Sub Run()\nEnd Sub\n");
+
+    let module = module(&file);
+    assert_eq!(
+        declarations(module),
+        (Some(0), Some(0), Some(false), Some(false))
+    );
+    assert_eq!(module.metrics.declare_count, Some(0));
+}
+
+#[test]
+fn the_declare_count_of_a_file_sums_those_of_its_modules() {
+    let file = report_of_modules(vec![
+        source("Api", ModuleType::Standard, DECLARING),
+        source("Hello", ModuleType::Standard, HELLO),
+        source(
+            "Other",
+            ModuleType::Standard,
+            "Declare Sub Beep Lib \"user32\" ()\n",
+        ),
+    ]);
+
+    let counts: Vec<_> = (modules(&file).iter())
+        .map(|module| module.metrics.declare_count)
+        .collect();
+    assert_eq!(counts, [Some(3), Some(0), Some(1)]);
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.declare_count, Some(4));
+}
+
+#[test]
+fn a_module_that_was_not_read_has_no_declarations() {
+    let big = "a\n".repeat(MAX_LINES as usize + 1);
+
+    let file = report_of_modules(vec![
+        source("Big", ModuleType::Standard, &big),
+        source("Small", ModuleType::Standard, HELLO),
+    ]);
+
+    let [big, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert_eq!(
+        (&big.declarations, big.metrics.declare_count),
+        (&None, None)
+    );
+    assert_eq!(
+        declarations(small),
+        (Some(0), Some(0), Some(true), Some(false))
+    );
+}
+
+#[test]
+fn analyze_reads_the_procedures_of_the_modules_of_a_workbook() {
     let bytes = corpus::read("fixtures/generated/01-01-hide-unhide-columns-find.xlsm");
 
     let file = checked(analyze(&bytes, "01-01.xlsm", &options()));

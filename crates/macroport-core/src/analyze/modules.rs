@@ -5,45 +5,47 @@
 //! holds what it makes of one: the lines, and the procedures that the parser
 //! finds in them. [`Front`] puts that into the report of the module, keeps what
 //! the rule engine reads of it, and once every module is read, runs the engine
-//! on the project and completes the report of the file. Two doors lead here:
+//! on the project and completes the report of the file. [`finish`] runs it on
+//! the modules of an extraction, those that were found in a workbook. The text
+//! modules have two doors of their own: [`analyze_modules`] (the `text`
+//! submodule) wraps modules that the caller has as text in a file, and
+//! `analyze_text` (the `text_file` submodule) reads a `.bas`, `.cls` or `.frm`
+//! file as the one module of a file.
 //!
-//! - [`finish`] reads the modules that extraction found in a workbook;
-//! - [`analyze_modules`] reads modules that the caller hands over as text.
+//! The file is `ok` when a module has a procedure or is suspected of having lost
+//! its source, when it has Excel 4.0 macro sheets or when the encryption of the
+//! workbook hides its sheets, and `no_macros` when none of these holds, the
+//! project being described all the same. A module that cannot be read keeps the
+//! report of a module that no stage measured, and its failure gives the file its
+//! status. The rule engine runs as soon as one module is read, so that what can
+//! be read of a file is judged whatever else went wrong with it, and when the
+//! extraction raised a container indicator, so that its signal is made.
 //!
-//! The second gives a file whose container is `text_module`, with the modules
-//! as its VBA project (SPEC, "Text entry point"), and skips the container layer.
-//!
-//! The file is `ok` when a module has a procedure, when it has Excel 4.0 macro
-//! sheets or when the encryption of the workbook hides its sheets, and
-//! `no_macros` when none of these holds, the project being described all the
-//! same. A module that cannot be read keeps the report of a module that no stage
-//! measured, and its failure gives the file its status. The rule engine runs as
-//! soon as one module is read, so that what can be read of a file is judged
-//! whatever else went wrong with it.
-//!
-//! The container indicators that extraction raises are not passed to the engine
-//! yet, and the members, chains, calls and ProgIDs of the statements are not
-//! read, nor are the entry points and the call graph: what depends on them is
-//! left out, since a missing value is not a zero (see [`input`](super::input)).
+//! The chains and the ProgIDs of the statements are not read yet, nor are the
+//! entry points and the call graph: what depends on them is left out, since a
+//! missing value is not a zero (see [`input`](super::input)).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
-use sha2::{Digest, Sha256};
+mod text;
+mod text_file;
 
 use super::apply::apply;
 use super::input::{Adapted, Measured, adapt};
 use super::metrics::{count, file_metrics, module_metrics, project_metrics};
-use super::{Extraction, Failure, Options, Project, Reading, hex, readable_status, sha256_hex};
+use super::{Extraction, Failure, Options, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
-    Container, Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport,
-    Status, VbaProject,
+    Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
 };
-use crate::rules::{ModuleType, RuleSet};
+use crate::rules::RuleSet;
 use crate::vba::{
-    DeclarationKind, ModuleSource, OptionKind, ParsedModule, Procedure, SourceLines, VbaError,
+    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, SourceLines, VbaError,
     parse, split_lines,
 };
+
+pub use self::text::analyze_modules;
+pub(super) use self::text_file::{analyze_text, is_text_module};
 
 /// The family of a procedure before the rule engine has scored it, and of the
 /// procedures of a module that it did not run on.
@@ -64,11 +66,12 @@ const UNCLASSIFIED: &str = "unclassified";
 /// A2); a budget of a million lines took 481 MB.
 const MAX_FILE_LINES: u32 = 100_000;
 
-/// The most bytes that the modules handed to [`analyze_modules`] may total: the
-/// limit of the sources of a VBA project, which keeps the peak memory of a file
-/// under 256 MB (SPEC M1). The limit of [`Options::max_file_size`] applies as
-/// well when it is lower.
-const MAX_TEXT_SIZE: u64 = 32 * 1024 * 1024;
+/// The most procedures that the modules of one file may report in all. A
+/// procedure can take a single line, so the line budget alone would let a
+/// hostile file turn a million lines into a million procedure reports. Real
+/// projects are not expected to come near this. A module that would take the
+/// file past it is not reported.
+const MAX_FILE_PROCEDURES: u32 = 50_000;
 
 /// What the front end makes of the text of one module.
 pub(super) struct Analysis {
@@ -93,18 +96,14 @@ impl Analysis {
     }
 }
 
-impl From<VbaError> for Failure {
-    fn from(error: VbaError) -> Self {
-        Self::new(error.status, error.code, error.message)
-    }
-}
-
 /// The front end at work on the modules of one file.
 struct Front<'r> {
     /// The rules that the engine applies once the modules are read.
     rules: &'r RuleSet,
     /// The lines that the modules may still take.
     budget: u32,
+    /// The procedures that the modules may still report.
+    procedures_left: u32,
     /// What the rule engine reads of each module met so far, one entry for each,
     /// in order: the modules of the engine are those of the report.
     inputs: Vec<ModuleInput>,
@@ -119,6 +118,7 @@ impl<'r> Front<'r> {
         Self {
             rules,
             budget: MAX_FILE_LINES,
+            procedures_left: MAX_FILE_PROCEDURES,
             inputs: Vec::new(),
             measured: Vec::new(),
             failures: Vec::new(),
@@ -129,7 +129,19 @@ impl<'r> Front<'r> {
     /// whose source could not be extracted. A module that cannot be read keeps
     /// the report that extraction gave it, and its failure is kept for the file.
     fn read(&mut self, module: &mut ModuleReport, text: Option<&str>) {
-        let adapted = match text.map(|text| self.analyse(text)) {
+        let analysed = text.map(|text| self.analyse(text));
+        self.keep(module, analysed);
+    }
+
+    /// Keeps `module`, the next one of the file, given what [`analyse`] made of
+    /// its text (none for a module with no source): its report is filled, and
+    /// what the engine reads of it is kept. A module that was not read is kept
+    /// all the same, empty, so that the modules of the engine are those of the
+    /// report, in the same order.
+    ///
+    /// [`analyse`]: Self::analyse
+    fn keep(&mut self, module: &mut ModuleReport, analysed: Option<Result<Analysis, VbaError>>) {
+        let adapted = match analysed {
             Some(Ok(analysis)) => Self::fill(module, &analysis),
             Some(Err(error)) => {
                 (self.failures).push(Failure::from(error).in_module(&module.name));
@@ -141,8 +153,9 @@ impl<'r> Front<'r> {
         self.measured.push(adapted.measured);
     }
 
-    /// Reads the next module. One that crosses the budget is read whole, and the
-    /// ones after it are not read, but for the empty ones.
+    /// Reads the next module. One that crosses the budget of lines is read
+    /// whole, and the ones after it are not read, but for the empty ones. One
+    /// that has more procedures than the file may still report is not kept.
     fn analyse(&mut self, text: &str) -> Result<Analysis, VbaError> {
         if self.budget == 0 && !text.is_empty() {
             return Err(VbaError::new(
@@ -153,6 +166,15 @@ impl<'r> Front<'r> {
         }
         let analysis = Analysis::of(text)?;
         self.budget = self.budget.saturating_sub(analysis.weight());
+        let procedures = count(analysis.module.procedures.len());
+        if procedures > self.procedures_left {
+            return Err(VbaError::new(
+                Status::TooLarge,
+                "vba.too_many_procedures",
+                format!("the modules of the file have more than {MAX_FILE_PROCEDURES} procedures"),
+            ));
+        }
+        self.procedures_left = self.procedures_left.saturating_sub(procedures);
         Ok(analysis)
     }
 
@@ -165,8 +187,12 @@ impl<'r> Front<'r> {
         module.procedures = (analysis.module.procedures.iter().zip(metrics))
             .map(|(procedure, metrics)| procedure_report(procedure, metrics))
             .collect();
-        module.metrics = module_metrics(&analysis.lines, metrics);
-        module.declarations = Some(declarations(&analysis.module));
+        let declarations = declarations_report(&analysis.module.declarations);
+        module.metrics = Metrics {
+            declare_count: declarations.declare_count,
+            ..module_metrics(&analysis.lines, metrics)
+        };
+        module.declarations = Some(declarations);
         adapted
     }
 
@@ -174,16 +200,21 @@ impl<'r> Front<'r> {
     /// the file sum those of its modules, the rule engine decides the families,
     /// the signals, the traits and the level, the errors of the front end join
     /// those of the extraction, and the status follows from the procedures.
+    /// `indicators` are the ids of the container indicators that extraction
+    /// raised: the engine makes their signals.
     ///
     /// The engine runs when a module was read, whatever the status of the file:
     /// a file of which some modules could not be read is judged on the others.
+    /// It also runs when an indicator was raised, for the signals of the
+    /// indicators and the severity they give the file: a file where no module
+    /// was read has nothing else decided.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
-    /// and without one the file is `ok` if a module has a procedure, or the file
-    /// has macro sheets or a workbook whose encryption hides them, and
-    /// `no_macros` if not.
-    fn seal(self, file: &mut FileReport) {
+    /// and without one the file is `ok` if a module has a procedure or is
+    /// suspected of having lost its source, or the file has macro sheets or a
+    /// workbook whose encryption hides them, and `no_macros` if not.
+    fn seal(self, file: &mut FileReport, indicators: &[&str]) {
         let Self {
             rules,
             inputs,
@@ -191,28 +222,30 @@ impl<'r> Front<'r> {
             failures,
             ..
         } = self;
-        if let Some(report) = &file.vba_project {
-            let references = report.references.clone().unwrap_or_default();
-            let project = ProjectInput {
-                references,
-                modules: inputs,
-            };
-            let metrics = project_metrics(&project, &measured, file_metrics(report));
+        let has_project = file.vba_project.is_some();
+        let sizes = (file.vba_project.as_ref()).map(file_metrics);
+        let project = ProjectInput {
+            references: (file.vba_project.as_ref())
+                .and_then(|project| project.references.clone())
+                .unwrap_or_default(),
+            modules: inputs,
+        };
+        let metrics = project_metrics(&project, &measured, sizes.unwrap_or_default());
+        if has_project {
             file.metrics = Some(metrics.file.clone());
-            if measured.iter().any(|module| module.read) {
-                // The indicators of the container are not passed yet.
-                let decided = findings::run(&project, rules, &metrics, &[]);
-                apply(file, decided, metrics, &measured);
-            }
+        }
+        let judged = measured.iter().any(|module| module.read);
+        if judged || !indicators.is_empty() {
+            let decided = findings::run(&project, rules, &metrics, indicators);
+            apply(file, decided, metrics, &measured, judged);
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match failures.first() {
                 Some(first) => first.status,
                 None => {
-                    let procedures = (file.vba_project.iter())
-                        .flat_map(|project| &project.modules)
-                        .any(|module| !module.procedures.is_empty());
-                    readable_status(procedures, file.xlm.as_ref(), file.workbook_encrypted)
+                    let modules = (file.vba_project.iter()).flat_map(|project| &project.modules);
+                    let macros = modules.into_iter().any(has_macros);
+                    readable_status(macros, file.xlm.as_ref(), file.workbook_encrypted)
                 }
             };
         }
@@ -221,10 +254,14 @@ impl<'r> Front<'r> {
     }
 }
 
-/// Reads the modules that extraction found in a workbook, and completes its
-/// report.
+/// Reads the modules that extraction found, and completes the report of the
+/// file.
 pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileReport {
-    let Extraction { mut file, sources } = extraction;
+    let Extraction {
+        mut file,
+        sources,
+        indicators,
+    } = extraction;
     let mut front = Front::new(options.rules);
     if let Some(project) = file.vba_project.as_mut() {
         for (at, module) in project.modules.iter_mut().enumerate() {
@@ -232,103 +269,14 @@ pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileRepor
             front.read(module, text);
         }
     }
-    front.seal(&mut file);
+    front.seal(&mut file, &indicators);
     file
 }
 
-/// Analyses VBA modules that the caller hands over as text: a file of
-/// `container: "text_module"` whose VBA project holds them (SPEC, "Text entry
-/// point"). It skips the container layer, and so reads no file.
-///
-/// `path` is the path as the report gives it. The `size` of the file is the
-/// bytes of the texts and its `sha256` the hash of the texts one after the
-/// other, which for one module is its text. Texts above 32 MiB in all, or above
-/// [`Options::max_file_size`] when that is lower, are `too_large` and not
-/// read. A module that cannot be read gets the failure that
-/// [`analyze`](super::analyze) gives, and the other modules are read all the
-/// same. The result never fails.
-pub fn analyze_modules(
-    modules: Vec<ModuleSource>,
-    path: &str,
-    options: &Options<'_>,
-) -> FileReport {
-    let mut hasher = Sha256::new();
-    let mut size = 0u64;
-    for module in &modules {
-        hasher.update(module.text.as_bytes());
-        size = size.saturating_add(u64::try_from(module.text.len()).unwrap_or(u64::MAX));
-    }
-    let sha256 = hex(&hasher.finalize());
-    if size > text_limit(options) {
-        return too_large_text(path, size, sha256, options);
-    }
-    let (reports, sources): (Vec<_>, Vec<_>) = modules
-        .into_iter()
-        .map(|module| {
-            let report = text_module(&module.name, module.module_type, &module.text);
-            (report, Some(module.text))
-        })
-        .unzip();
-    finish(
-        text_extraction(path, size, sha256, reports, sources),
-        options,
-    )
-}
-
-/// The limit on the size of the modules of a text file: that of the options,
-/// and [`MAX_TEXT_SIZE`].
-fn text_limit(options: &Options<'_>) -> u64 {
-    options.max_file_size.min(MAX_TEXT_SIZE)
-}
-
-/// The report of modules above the size limit. Like any file above it, they are
-/// not read.
-fn too_large_text(path: &str, size: u64, sha256: String, options: &Options<'_>) -> FileReport {
-    let limited = Options {
-        max_file_size: text_limit(options),
-        ..*options
-    };
-    let mut file = super::too_large(path, size, sha256, &limited);
-    file.container = Container::TextModule;
-    file
-}
-
-/// The extraction of text modules: their reports, which the front end has not
-/// filled, and their texts.
-fn text_extraction(
-    path: &str,
-    size: u64,
-    sha256: String,
-    modules: Vec<ModuleReport>,
-    sources: Vec<Option<String>>,
-) -> Extraction {
-    let report = VbaProject {
-        name: None,
-        protected: false,
-        code_page: None,
-        references: None,
-        modules,
-    };
-    let mut reading = Reading::new(Container::TextModule);
-    reading.project = Some(Project { report, sources });
-    reading.into_extraction(path, size, sha256)
-}
-
-/// The report of a text module, as extraction would give it before the front
-/// end reads it.
-fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport {
-    ModuleReport {
-        name: name.to_owned(),
-        module_type,
-        stream_name: None,
-        source_available: true,
-        source_missing_suspected: None,
-        source_sha256: Some(sha256_hex(text.as_bytes())),
-        metrics: Metrics::default(),
-        declarations: None,
-        procedures: Vec::new(),
-        signals: None,
-    }
+/// Whether a module has macros: a procedure, or a source that is suspected to
+/// be lost with the procedures it had (they are compiled, out of sight).
+fn has_macros(module: &ModuleReport) -> bool {
+    !module.procedures.is_empty() || module.source_missing_suspected == Some(true)
 }
 
 /// The report of a procedure, as far as the structure of the module shows it,
@@ -356,12 +304,16 @@ fn procedure_report(procedure: &Procedure, metrics: &Metrics) -> ProcedureReport
     }
 }
 
-/// The declarations section of the report of a module.
-fn declarations(module: &ParsedModule) -> Declarations {
-    let (mut declares, mut with_events) = (0usize, 0usize);
+/// What the declarations outside the procedures of a module say: how many
+/// `Declare` statements and `WithEvents` variables, and whether `Option
+/// Explicit` and `Option VBASupport` are set. A routine that `#If VBA7` declares
+/// in two forms counts twice, as its statements do. The conditional
+/// compilation is not evaluated.
+fn declarations_report(declarations: &[Declaration]) -> Declarations {
+    let (mut declares, mut with_events) = (0u32, 0u32);
     let (mut explicit, mut vba_support) = (false, false);
-    for declaration in &module.declarations {
-        match declaration.kind {
+    for declaration in declarations {
+        match &declaration.kind {
             DeclarationKind::Declare { .. } => declares = declares.saturating_add(1),
             DeclarationKind::WithEvents { .. } => with_events = with_events.saturating_add(1),
             DeclarationKind::Option(OptionKind::Explicit) => explicit = true,
@@ -370,8 +322,8 @@ fn declarations(module: &ParsedModule) -> Declarations {
         }
     }
     Declarations {
-        declare_count: Some(count(declares)),
-        with_events_count: Some(count(with_events)),
+        declare_count: Some(declares),
+        with_events_count: Some(with_events),
         option_explicit: Some(explicit),
         option_vba_support: Some(vba_support),
     }
@@ -402,6 +354,25 @@ mod tests {
             (Status::TooLarge, "vba.too_many_lines")
         );
         assert!(front.analyse("").is_ok());
+    }
+
+    #[test]
+    fn the_procedures_of_a_file_are_reported_within_a_budget() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        front.procedures_left = 3;
+        let two = "Sub A()\nEnd Sub\nSub B()\nEnd Sub\n";
+
+        assert!(front.analyse(two).is_ok());
+        // One procedure is left, and a module with more is refused, whole.
+        let error = front.analyse(two).err().expect("over the budget");
+        assert_eq!(
+            (error.status, error.code),
+            (Status::TooLarge, "vba.too_many_procedures")
+        );
+        assert!(front.analyse("Sub C()\nEnd Sub\n").is_ok());
+        assert!(front.analyse("Dim x As Long\n").is_ok());
+        assert!(front.analyse("Sub D()\nEnd Sub\n").is_err());
     }
 
     #[test]

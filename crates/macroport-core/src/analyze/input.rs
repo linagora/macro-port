@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), and measures the procedures on the
-//! way. Three conventions matter to the engine:
+//! way. Four conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -12,19 +12,26 @@
 //!   (ADR-0004): the modules that have no procedure are scored on them.
 //! - The strings of a statement are the ones that constant folding gives, read
 //!   with the constants of the module, whichever procedure uses them.
+//! - `parse_recovered` holds for a procedure when the parser recovered in it,
+//!   when a statement of it nests expressions deeper than the reader follows,
+//!   or when its blocks do not match (SPEC M2 item 6). It holds for the module
+//!   when it holds for one of its procedures, or when the parser recovered
+//!   outside any.
 //!
-//! What the front end does not read yet is left empty, not guessed: the
-//! members, the chains, the calls and the ProgIDs of the statements, and the
-//! predicates `udf_candidate`, `chr_obfuscation` and `possibly_unused`.
+//! What the front end does not read yet is left empty, not guessed: the chains
+//! and the ProgIDs of the statements, and the predicates `udf_candidate`,
+//! `chr_obfuscation` and `possibly_unused`.
 
 use std::ops::Range;
 
 use super::modules::Analysis;
-use crate::engine::{CodeLine, ModuleInput, NameSet, ParserPredicates, ProcedureInput};
+use crate::engine::{
+    CallSite, CodeLine, MemberUse, ModuleInput, NameSet, ParserPredicates, ProcedureInput,
+};
 use crate::report::Metrics;
 use crate::rules::ModuleType;
 use crate::vba::{
-    ConstTable, DeclarationKind, LogicalKind, LogicalLine, Procedure, StatementReader, Token,
+    self, ConstTable, DeclarationKind, LogicalKind, LogicalLine, Procedure, StatementReader, Token,
     TokenKind, measure_procedure, tokenize,
 };
 
@@ -92,11 +99,13 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
     };
 
     let mut input = module_input(name, module_type);
-    let mut too_deep = false;
+    // Whether something in the module did not parse: a statement too deep to be
+    // read, or blocks that do not match.
+    let mut suspect = false;
     for gap in &outside {
         let (code, deep) = converter.code_lines(slice(logical, gap));
         input.declarations.extend(code);
-        too_deep |= deep;
+        suspect |= deep;
     }
     let mut procedures = Vec::with_capacity(parsed.procedures.len());
     let mut metrics = Vec::with_capacity(parsed.procedures.len());
@@ -109,7 +118,8 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
             body,
         );
         let (lines, deep) = converter.code_lines(body);
-        too_deep |= deep;
+        let suspected = deep || measure.unbalanced_blocks;
+        suspect |= suspected;
         procedures.push(ProcedureInput {
             name: procedure.name.clone(),
             kind: procedure.kind,
@@ -118,14 +128,14 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
             lines,
             predicates: ParserPredicates {
                 nested_loop_compare: measure.nested_loop_compare,
-                parse_recovered: procedure.is_recovered() || deep,
+                parse_recovered: procedure.is_recovered() || suspected,
                 ..ParserPredicates::default()
             },
         });
         metrics.push(measure.metrics);
     }
     input.procedures = procedures;
-    input.parse_recovered = parsed.is_recovered() || too_deep;
+    input.parse_recovered = parsed.is_recovered() || suspect;
 
     let with_events =
         parsed
@@ -221,9 +231,27 @@ impl Converter<'_> {
             code: without_strings(&line.text, &tokens),
             comment,
             strings: facts.strings,
+            members: facts.members.into_iter().map(member).collect(),
+            calls: facts.calls.into_iter().map(call).collect(),
             ..CodeLine::default()
         };
         (code, facts.too_deep)
+    }
+}
+
+/// A member that the statement reader found, as the engine reads it.
+fn member(found: vba::MemberUse) -> MemberUse {
+    MemberUse {
+        name: found.name,
+        named_argument: found.named_argument,
+    }
+}
+
+/// A call that the statement reader found, as the engine reads it.
+fn call(found: vba::CallSite) -> CallSite {
+    CallSite {
+        name: found.name,
+        after_dot: found.after_dot,
     }
 }
 
@@ -373,18 +401,42 @@ mod tests {
 
     #[test]
     fn what_the_front_end_does_not_read_yet_is_left_empty() {
-        let adapted =
-            adapted("Sub Run()\n    Shell \"calc\"\n    x = Chr(65) & Chr(66)\nEnd Sub\n");
+        let adapted = adapted(
+            "Sub Run()\n    Set o = CreateObject(\"WScript.Shell\")\n    x = Chr(65) & Chr(66)\n\
+             End Sub\n",
+        );
 
         let procedure = &adapted.input.procedures[0];
         assert_eq!(procedure.predicates, ParserPredicates::default());
         for line in &procedure.lines {
             assert!(
-                line.members.is_empty() && line.chains.is_empty(),
+                line.chains.is_empty() && line.progids.is_empty(),
                 "{line:?}"
             );
-            assert!(line.calls.is_empty() && line.progids.is_empty(), "{line:?}");
         }
+    }
+
+    #[test]
+    fn the_members_and_the_calls_of_a_statement_are_those_the_reader_finds() {
+        let adapted =
+            adapted("Sub Run()\n    Shell \"calc\"\n    ws.Cells(1, 1).Value = 2\nEnd Sub\n");
+
+        fn members(line: &CodeLine) -> Vec<&str> {
+            (line.members.iter())
+                .map(|member| member.name.as_str())
+                .collect()
+        }
+        fn calls(line: &CodeLine) -> Vec<(&str, bool)> {
+            (line.calls.iter())
+                .map(|call| (call.name.as_str(), call.after_dot))
+                .collect()
+        }
+        let lines = &adapted.input.procedures[0].lines;
+        assert_eq!(members(&lines[1]), ["Shell"]);
+        assert_eq!(calls(&lines[1]), [("Shell", false)]);
+        assert_eq!(members(&lines[2]), ["ws", "Cells", "Value"]);
+        assert_eq!(calls(&lines[2]), [("Cells", true)]);
+        assert!(lines[2].members.iter().all(|member| !member.named_argument));
     }
 
     #[test]
@@ -449,6 +501,27 @@ mod tests {
         let outside = adapted(&format!("{deep}\nSub Run()\nEnd Sub\n")).input;
         assert!(!outside.procedures[0].predicates.parse_recovered);
         assert!(outside.parse_recovered);
+    }
+
+    #[test]
+    fn blocks_that_do_not_match_count_as_a_procedure_that_did_not_parse() {
+        // The If has no End If, and the Sub is closed all the same.
+        let open =
+            adapted("Sub Run()\n    If x Then\n        y = 1\nEnd Sub\nSub Fine()\nEnd Sub\n")
+                .input;
+        assert_eq!(
+            (
+                open.procedures[0].predicates.parse_recovered,
+                open.procedures[1].predicates.parse_recovered
+            ),
+            (true, false)
+        );
+        assert!(open.parse_recovered);
+
+        let matched =
+            adapted("Sub Run()\n    If x Then\n        y = 1\n    End If\nEnd Sub\n").input;
+        assert!(!matched.procedures[0].predicates.parse_recovered);
+        assert!(!matched.parse_recovered);
     }
 
     #[test]

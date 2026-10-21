@@ -7,8 +7,8 @@
 //! of the whole pipeline: front end, rule engine and report.
 //!
 //! Some of the signals wait for facts that the front end does not read yet
-//! (the members, the chains, the calls, the ProgIDs and the obfuscated
-//! character codes of the statements). The test is a ratchet: `WAITING` lists
+//! (the chains, the ProgIDs and the obfuscated character codes of the
+//! statements). The test is a ratchet: `WAITING` lists
 //! the signals that are known not to fire, by the sample, and the test fails
 //! both when a signal is missing that is not listed and when a listed signal
 //! fires, so that the list only shrinks and ends empty. The other bullet of
@@ -34,9 +34,8 @@ use macroport_testkit::corpus;
 /// The signals of each sample of family 14 that are known not to fire yet, and
 /// the fact of the front end they wait for.
 const WAITING: &[(&str, &[&str])] = &[
-    // The calls of the statements: `Shell`.
-    ("14-01", &["sec.shell", "sec.chain.autoexec-execution"]),
-    // The ProgIDs of `CreateObject`, the character codes of `Chr`.
+    // The ProgIDs of `CreateObject`, the character codes of `Chr`, and the chains
+    // of signals that the first two complete.
     (
         "14-02",
         &[
@@ -46,13 +45,8 @@ const WAITING: &[(&str, &[&str])] = &[
             "sec.chain.obfuscated-execution",
         ],
     ),
-    // The ProgIDs of `CreateObject`, the members `SaveToFile`.
-    (
-        "14-03",
-        &["sec.http", "sec.stream-save", "sec.chain.download-write"],
-    ),
-    // The members `VBProject` and `CodeModule`.
-    ("14-05", &["sec.vbproject"]),
+    // The ProgIDs of `CreateObject`, and the chain of signals that one completes.
+    ("14-03", &["sec.http", "sec.chain.download-write"]),
     // The chain `Application.ExecuteExcel4Macro`.
     ("14-06", &["sec.xlm"]),
 ];

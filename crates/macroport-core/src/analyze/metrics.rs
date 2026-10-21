@@ -91,9 +91,7 @@ pub(super) fn file_metrics(project: &VbaProject) -> Metrics {
         file.max_nesting = file.max_nesting.max(metrics.max_nesting);
         procedures = procedures.saturating_add(count(module.procedures.len()));
         forms = forms.saturating_add(u32::from(module.module_type == ModuleType::Form));
-        let declared =
-            (module.declarations.as_ref()).and_then(|declarations| declarations.declare_count);
-        declares = declares.saturating_add(declared.unwrap_or(0));
+        declares = declares.saturating_add(metrics.declare_count.unwrap_or(0));
     }
     file.procedures = Some(procedures);
     file.forms = Some(forms);

@@ -14,11 +14,17 @@ use crate::report::FileReport;
 /// engine read. `measured` has an entry for each module of the project of the
 /// file, as `findings` does: a module that the front end did not read keeps the
 /// report it had, since nothing was measured of it.
+///
+/// `judged` tells whether a module was read. A file where none was has only the
+/// signals of its container indicators, and the severity they give it: its
+/// families, its level and its traits would be those of an empty project, which
+/// nothing measured.
 pub(super) fn apply(
     file: &mut FileReport,
     findings: Findings,
     metrics: ProjectMetrics,
     measured: &[Measured],
+    judged: bool,
 ) {
     let Findings {
         modules,
@@ -44,10 +50,12 @@ pub(super) fn apply(
             }
         }
     }
-    file.complexity_level = Some(decided.complexity_level);
-    file.primary_family = Some(decided.primary_family);
-    file.families = Some(decided.families);
     file.max_severity = decided.max_severity;
     file.signals = Some(decided.signals);
-    file.traits = Some(decided.traits);
+    if judged {
+        file.complexity_level = Some(decided.complexity_level);
+        file.primary_family = Some(decided.primary_family);
+        file.families = Some(decided.families);
+        file.traits = Some(decided.traits);
+    }
 }

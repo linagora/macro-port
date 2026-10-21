@@ -49,10 +49,20 @@ fn a_procedure_of_many_lines_is_measured_in_linear_time() {
 fn deep_and_unbalanced_blocks_are_measured_in_linear_time() {
     let deep = measure_within_limit(&procedure(&"If a Then\n".repeat(50_000)));
     assert_eq!(deep.metrics.max_nesting, Some(50_000));
+    assert!(deep.unbalanced_blocks);
+    let closed = format!(
+        "{}{}",
+        "If a Then\n".repeat(50_000),
+        "End If\n".repeat(50_000)
+    );
+    let closed = measure_within_limit(&procedure(&closed));
+    assert_eq!(closed.metrics.max_nesting, Some(50_000));
+    assert!(!closed.unbalanced_blocks);
     // Closers that find no block of their kind do not look for one.
     let strays = "End If\nNext\nLoop\nWend\nEnd With\n".repeat(40_000);
     let stray = measure_within_limit(&procedure(&strays));
     assert_eq!(stray.metrics.max_nesting, Some(0));
+    assert!(stray.unbalanced_blocks);
     let withs = format!("{}{}", "With r\n".repeat(50_000), "End If\n".repeat(50_000));
     assert_eq!(
         measure_within_limit(&procedure(&withs)).metrics.max_nesting,
@@ -66,6 +76,42 @@ fn deep_and_unbalanced_blocks_are_measured_in_linear_time() {
     let thens = format!("{}\n", "Next Then ".repeat(100_000));
     let measure = measure_within_limit(&procedure(&thens));
     assert_eq!(measure.metrics.max_nesting, Some(0));
+}
+
+#[test]
+fn many_directives_and_stray_branches_are_measured_in_linear_time() {
+    // The first side leaves 100 000 blocks open, and the `#Else` drops them at once.
+    let dropped = format!(
+        "#If A Then\n{}{}",
+        "With r\n".repeat(100_000),
+        "#Else\n".repeat(100_000)
+    );
+    let dropped = measure_within_limit(&procedure(&dropped));
+    assert_eq!(dropped.metrics.max_nesting, Some(100_000));
+    assert!(!dropped.unbalanced_blocks);
+    // Each side opens a block that the next drops, and the last one stays open.
+    let sides = "#If A Then\nIf a Then\n#Else\nIf b Then\n#End If\n".repeat(30_000);
+    let sides = measure_within_limit(&procedure(&sides));
+    assert_eq!(sides.metrics.max_nesting, Some(30_000));
+    assert!(sides.unbalanced_blocks);
+    // Switching sides with 50 000 blocks open before the `#If` drops none.
+    let switched = format!(
+        "{}#If A Then\n{}",
+        "With r\n".repeat(50_000),
+        "#Else\n".repeat(50_000)
+    );
+    let switched = measure_within_limit(&procedure(&switched));
+    assert_eq!(switched.metrics.max_nesting, Some(50_000));
+    assert!(switched.unbalanced_blocks);
+    // Directives with nothing to end or to switch drop nothing.
+    let strays = "#End If\n#Else\n#ElseIf A Then\n".repeat(60_000);
+    let stray = measure_within_limit(&procedure(&strays));
+    assert_eq!(stray.metrics.max_nesting, Some(0));
+    assert!(!stray.unbalanced_blocks);
+    // Branches with no block to belong to do not look for one.
+    let branches = "Else\nElseIf a Then\nCase 1\nCase Else\n".repeat(50_000);
+    let branch = measure_within_limit(&procedure(&branches));
+    assert!(branch.unbalanced_blocks);
 }
 
 #[test]

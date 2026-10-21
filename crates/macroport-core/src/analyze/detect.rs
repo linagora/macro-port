@@ -33,6 +33,23 @@ pub(super) fn extension(path: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Whether an extension, in lowercase, is that of a VBA module exported as
+/// text: `bas` for a standard module, `cls` for a class or a document, and
+/// `frm` for a form.
+pub(super) fn is_text_extension(extension: &str) -> bool {
+    matches!(extension, "bas" | "cls" | "frm")
+}
+
+/// The container of a file that is not opened, as its extension says: a text
+/// module, one of the Excel formats, or `Unknown`.
+pub(super) fn unopened_container(extension: &str) -> Container {
+    if is_text_extension(extension) {
+        Container::TextModule
+    } else {
+        container_by_extension(extension)
+    }
+}
+
 /// The container that an extension names: one of the Excel formats, or
 /// `Unknown`.
 pub(super) fn container_by_extension(extension: &str) -> Container {
@@ -113,6 +130,28 @@ mod tests {
         ] {
             assert_eq!(extension(path), extension_of_path, "{path}");
         }
+    }
+
+    #[test]
+    fn three_extensions_are_those_of_text_modules() {
+        for text in ["bas", "cls", "frm"] {
+            assert!(is_text_extension(text), "{text}");
+        }
+        for other in ["", "BAS", "xlsm", "txt", "frx", "bass"] {
+            assert!(!is_text_extension(other), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_file_that_is_not_opened_has_the_container_its_extension_names() {
+        assert_eq!(unopened_container("bas"), Container::TextModule);
+        assert_eq!(unopened_container("frm"), Container::TextModule);
+        assert_eq!(unopened_container("xlsm"), Container::Xlsm);
+        assert_eq!(unopened_container("xls"), Container::Xls);
+        assert_eq!(unopened_container("txt"), Container::Unknown);
+        assert_eq!(unopened_container(""), Container::Unknown);
+        // The Excel formats alone are named by the extension of a file that is read.
+        assert_eq!(container_by_extension("bas"), Container::Unknown);
     }
 
     #[test]
