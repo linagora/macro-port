@@ -3,7 +3,7 @@
 //! then the source of each module (SPEC M1, MS-OVBA).
 
 use super::{Failure, sha256_hex};
-use crate::container::CfbFile;
+use crate::container::{CfbFile, ContainerError};
 use crate::ovba::{
     DirModule, MAX_PROJECT_STREAM, ProjectInfo, module_source, parse_compressed_dir, parse_project,
 };
@@ -40,13 +40,37 @@ impl Project {
     }
 }
 
-/// Reads the project of a `vbaProject.bin`.
+/// The storage of a compound file that holds a VBA project.
+struct Storage<'a, 'b> {
+    compound: &'a mut CfbFile<'b>,
+    /// Where it is in the compound file: empty for the root.
+    path: &'a str,
+}
+
+impl Storage<'_, '_> {
+    /// The stream at `path` below the storage, if it holds one: `PROJECT`, or
+    /// `VBA/dir` for a stream of the `VBA` storage.
+    fn stream(&mut self, path: &str) -> Result<Option<Vec<u8>>, ContainerError> {
+        self.compound.read_stream(&format!("{}/{path}", self.path))
+    }
+}
+
+/// Reads the VBA project in the storage at `storage_path` of a compound file:
+/// the root of the `vbaProject.bin` of a package, `_VBA_PROJECT_CUR` in an
+/// `.xls`.
 ///
 /// A failure to read the `dir` stream is the failure of the project. A stream
 /// or a module that cannot be read does not stop it: its failure is returned
 /// with the project, and a module whose source is lost is listed without it.
-pub(super) fn read(compound: &mut CfbFile<'_>) -> Result<(Project, Vec<Failure>), Failure> {
-    let Some(dir) = compound.read_stream("VBA/dir")? else {
+pub(super) fn read(
+    compound: &mut CfbFile<'_>,
+    storage_path: &str,
+) -> Result<(Project, Vec<Failure>), Failure> {
+    let mut storage = Storage {
+        compound,
+        path: storage_path,
+    };
+    let Some(dir) = storage.stream("VBA/dir")? else {
         return Err(Failure::new(
             Status::Corrupted,
             "ovba.dir.missing",
@@ -56,12 +80,12 @@ pub(super) fn read(compound: &mut CfbFile<'_>) -> Result<(Project, Vec<Failure>)
     let info = parse_compressed_dir(&dir)?;
     drop(dir);
     let mut failures = Vec::new();
-    let properties = read_properties(compound, info.code_page, &mut failures);
+    let properties = read_properties(&mut storage, info.code_page, &mut failures);
     let mut budget = MAX_PROJECT_SOURCE;
     let mut modules = Vec::new();
     let mut sources = Vec::new();
     for module in &info.modules {
-        let source = match read_source(compound, module, info.code_page, budget) {
+        let source = match read_source(&mut storage, module, info.code_page, budget) {
             Ok(source) => {
                 budget = budget.saturating_sub(source.len());
                 Some(source)
@@ -89,11 +113,11 @@ pub(super) fn read(compound: &mut CfbFile<'_>) -> Result<(Project, Vec<Failure>)
 /// whose modules are documents unless the `dir` stream says they are
 /// procedural.
 fn read_properties(
-    compound: &mut CfbFile<'_>,
+    storage: &mut Storage<'_, '_>,
     code_page: Option<u16>,
     failures: &mut Vec<Failure>,
 ) -> ProjectInfo {
-    let stream = match compound.read_stream("PROJECT") {
+    let stream = match storage.stream("PROJECT") {
         Ok(stream) => stream.unwrap_or_default(),
         Err(error) => {
             failures.push(error.into());
@@ -119,7 +143,7 @@ fn oversized(stream: &[u8]) -> Option<Failure> {
 /// The source of a module, read from its stream. `budget` is what the sources
 /// of the project may still take, once decoded.
 fn read_source(
-    compound: &mut CfbFile<'_>,
+    storage: &mut Storage<'_, '_>,
     module: &DirModule,
     code_page: Option<u16>,
     budget: usize,
@@ -133,7 +157,7 @@ fn read_source(
             format!("the sources of the project take more than {MAX_PROJECT_SOURCE} bytes"),
         ));
     }
-    let Some(stream) = compound.read_stream(&format!("VBA/{}", module.stream_name))? else {
+    let Some(stream) = storage.stream(&format!("VBA/{}", module.stream_name))? else {
         return Err(Failure::new(
             Status::Corrupted,
             "ovba.module.missing_stream",
