@@ -13,5 +13,6 @@
 mod failures;
 mod file_report;
 mod fixtures;
+mod indicators;
 mod robustness;
 mod support;
