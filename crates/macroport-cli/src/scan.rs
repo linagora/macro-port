@@ -16,6 +16,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::Args as ClapArgs;
+use macroport_core::analyze::Options;
 use macroport_core::report::{Build, Lang, Report};
 use macroport_core::rules::{RuleSet, RulesSources};
 
@@ -63,10 +64,9 @@ pub struct Args {
 /// What a scan needs to know besides the paths.
 #[derive(Debug, Clone, Copy)]
 pub struct Settings<'a> {
-    pub rules: &'a RuleSet,
-    /// The largest file, in bytes, that is read.
-    pub max_file_size: u64,
-    /// The most threads that analyse files at the same time.
+    /// The rules, and the largest file, in bytes, that is read.
+    pub options: Options<'a>,
+    /// The most threads that analyse files at the same time, and at least one.
     pub jobs: usize,
     pub lang: Lang,
     pub clock: Clock,
@@ -75,9 +75,10 @@ pub struct Settings<'a> {
 impl Args {
     fn settings<'a>(&self, rules: &'a RuleSet) -> Settings<'a> {
         let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        let mut options = Options::new(rules);
+        options.max_file_size = self.analysis.max_file_size_bytes();
         Settings {
-            rules,
-            max_file_size: self.analysis.max_file_size_bytes(),
+            options,
             jobs: self
                 .jobs
                 .map_or(cores, |jobs| usize::try_from(jobs).unwrap_or(cores)),
@@ -147,7 +148,8 @@ pub fn scan(
     let candidates = walk(paths);
     let files = analyse::analyse(&candidates, settings, progress)?;
     let clock = settings.clock;
-    let mut report = Report::from_files(settings.rules, clock.generated_at(), settings.lang, files);
+    let rules = settings.options.rules;
+    let mut report = Report::from_files(rules, clock.generated_at(), settings.lang, files);
     report.tool.build = Some(Build::Cli);
     report.scan.roots = Some(paths.iter().map(|root| root_path(root)).collect());
     report.scan.duration_ms = clock.duration_ms(started);

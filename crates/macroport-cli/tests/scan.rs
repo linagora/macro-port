@@ -331,12 +331,11 @@ fn scan_exits_with_1_when_a_file_cannot_be_read() {
     let dir = scratch("scan_unreadable");
     put(&dir, "tree/a.bas", MODULE);
     let secret = put(&dir, "tree/b.bas", MODULE);
-    if !support::lock(&secret) {
+    let Some(_denied) = support::deny_access(&secret) else {
         return;
-    }
+    };
 
     let output = run_in(&dir, &["scan", "tree", "-o", "out"]);
-    support::unlock(&secret);
 
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let report = read_report(&dir.join("out"));
