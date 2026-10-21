@@ -175,10 +175,11 @@ fn read_source(
 /// Whether `source` holds code: a line that is neither blank, nor a comment,
 /// nor an `Attribute` or `Option` line, which only describe the module.
 ///
-/// A stopgap for the table of SPEC M1, which gives `ok` to a project with a
-/// procedure and `no_macros` to one of empty modules, and says nothing of a
-/// module of declarations only. Until M2 parses the procedures, any code makes
-/// a project `ok`.
+/// What extraction alone can make of the table of SPEC M1, which gives `ok` to
+/// a project with a procedure and `no_macros` to one of empty modules, and says
+/// nothing of a module of declarations only: any code makes a project `ok`.
+/// [`analyze`](super::analyze) replaces this guess with the procedures that the
+/// front end finds.
 fn holds_code(source: &str) -> bool {
     source.lines().any(|line| {
         let word = line.split_whitespace().next().unwrap_or_default();

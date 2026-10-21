@@ -1,23 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //! [`analyze`]: the bytes of one file in, its [`FileReport`] out.
 //!
-//! This is the extraction stage (SPEC M1): what kind of file it is, whether it
-//! can be read, and the modules of its VBA project with their source. The
-//! stages that read the source (M2, M3) fill the fields that extraction leaves
+//! Extraction (SPEC M1) says what kind of file it is, whether it can be read,
+//! and what the modules of its VBA project are, with their source. The front
+//! end (SPEC M2, the `modules` submodule) then reads the source of each module
+//! into procedures and sizes, and the stages after it (M3) fill what is left
 //! empty. [`extract`] runs the extraction alone and also hands back the source
-//! of each module, which the report does not carry.
+//! of each module, which the report does not carry. [`analyze_modules`] starts
+//! at the front end, with modules that the caller already has as text.
 //!
 //! A ZIP archive is read as an OOXML package, and a compound file as a BIFF8
 //! workbook (`.xls`) unless it is an encrypted package, which is not opened.
 //! The extension only picks the variant of the format within that family: a
 //! file whose extension names another family has the container `unknown`. A
-//! file is `ok` if it has Excel 4.0 macro sheets (XLM), if a module holds code
-//! (a stopgap for the procedures that SPEC M1 asks for and M2 will find) or if
-//! it is a workbook whose encryption hides its sheets; else it is `no_macros`,
-//! even with a VBA project of empty modules. A file that could not be read has
-//! the status of the first failure, and the report keeps what could be read: a
-//! module that could not be read is listed without its source, and a workbook
-//! that could not be read still has its project described.
+//! file is `ok` if it has Excel 4.0 macro sheets (XLM), if a module has a
+//! procedure or if it is a workbook whose encryption hides its sheets; else it
+//! is `no_macros`, even with a VBA project of empty modules. [`extract`] reads
+//! no procedure, so it takes a module that holds code for one. A file that
+//! could not be read has the status of the first failure, and the report keeps
+//! what could be read: a module that could not be read is listed without its
+//! source, and a workbook that could not be read still has its project
+//! described.
 //!
 //! Nothing here executes or evaluates anything from the file, and nothing
 //! panics on its content: every failure is a status and an error code in the
@@ -33,14 +36,17 @@
 //! | `ovba.dir.missing` | `corrupted` | the project has no `dir` stream |
 //! | `ovba.module.missing_stream` | `corrupted` | the stream of a module is not in the project |
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
+//! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //!
 //! The message of an error about a module starts with `module <name>:`.
 
 mod detect;
+mod modules;
 mod project;
 
 use sha2::{Digest, Sha256};
 
+pub use self::modules::analyze_modules;
 use self::project::Project;
 use crate::container::{CfbFile, ContainerError, read_biff_workbook, read_ooxml};
 use crate::ovba::OvbaError;
@@ -64,7 +70,8 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 /// What the caller decides about an analysis.
 #[derive(Debug, Clone, Copy)]
 pub struct Options<'a> {
-    /// The rules. Nothing reads them yet: the container indicators that
+    /// The rules. The front end takes from them the traits that the parser
+    /// decides (`compile_error_suspected`), and the container indicators that
     /// extraction will raise take their severity from them.
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
@@ -86,7 +93,9 @@ impl<'a> Options<'a> {
 /// What [`extract`] found in a file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Extraction {
-    /// The report of the file, as far as extraction fills it.
+    /// The report of the file, as far as extraction fills it. Its status is
+    /// that of the extraction: [`analyze`] decides it again once the modules
+    /// are read.
     pub file: FileReport,
     /// The source of each module of `file.vba_project`, in the same order: the
     /// text that the line numbers of the evidence count in. `None` for a
@@ -96,12 +105,14 @@ pub struct Extraction {
 }
 
 /// Analyses one file: `bytes` are its content, `path` its path as the report
-/// gives it (its extension also picks the variant of the format).
+/// gives it (its extension also picks the variant of the format). The
+/// extraction reads the file, then the front end reads the source of each of
+/// its modules.
 ///
 /// The result never fails: a file that cannot be read gets a status other
 /// than `ok` and `no_macros`, and the errors that explain it.
 pub fn analyze(bytes: &[u8], path: &str, options: &Options<'_>) -> FileReport {
-    extract(bytes, path, options).file
+    modules::finish(extract(bytes, path, options), options)
 }
 
 /// Runs the extraction stage alone.
@@ -146,9 +157,13 @@ fn too_large_reading(path: &str, options: &Options<'_>) -> Reading {
 
 /// The SHA-256 of `bytes` as 64 lowercase hexadecimal digits.
 fn sha256_hex(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
+}
+
+/// `bytes` as lowercase hexadecimal digits.
+fn hex(bytes: &[u8]) -> String {
     let digit = |nibble: u8| char::from_digit(u32::from(nibble), 16).unwrap_or('0');
-    Sha256::digest(bytes)
-        .iter()
+    (bytes.iter())
         .flat_map(|byte| [digit(byte >> 4), digit(byte & 0x0F)])
         .collect()
 }
@@ -246,22 +261,15 @@ impl Reading {
         }
     }
 
-    /// The status of the file: that of the first failure if there is one.
-    /// Otherwise `ok` when a module holds code (the stopgap for a procedure,
-    /// which M2 will find), when there are macro sheets, or when the
-    /// encryption of the workbook hides the sheets that might be, and
-    /// `no_macros` when none of these holds.
+    /// The status of the file as extraction sees it: that of the first failure
+    /// if there is one, else [`readable_status`], taking a module that holds
+    /// code for one that has a procedure, which only the front end can tell.
     fn status(&self) -> Status {
         if let Some(failure) = self.failures.first() {
             return failure.status;
         }
         let code = self.project.as_ref().is_some_and(Project::has_code);
-        let sheets = self.xlm.as_ref().is_some_and(|xlm| xlm.present);
-        if code || sheets || self.workbook_encrypted == Some(true) {
-            Status::Ok
-        } else {
-            Status::NoMacros
-        }
+        readable_status(code, self.xlm.as_ref(), self.workbook_encrypted)
     }
 
     /// The extraction of the file `path`, of `size` bytes and the hash
@@ -293,6 +301,19 @@ impl Reading {
             notes: None,
         };
         Extraction { file, sources }
+    }
+}
+
+/// The status of a file that was read without a failure: `ok` when it has
+/// code (`macros`: a procedure), Excel 4.0 macro sheets, or an encryption that
+/// hides the sheets that might be macro sheets, and `no_macros` when none of
+/// these holds.
+fn readable_status(macros: bool, xlm: Option<&Xlm>, workbook_encrypted: Option<bool>) -> Status {
+    let sheets = xlm.is_some_and(|xlm| xlm.present);
+    if macros || sheets || workbook_encrypted == Some(true) {
+        Status::Ok
+    } else {
+        Status::NoMacros
     }
 }
 
