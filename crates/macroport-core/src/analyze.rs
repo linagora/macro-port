@@ -13,6 +13,9 @@
 //! workbook (`.xls`) unless it is an encrypted package, which is not opened.
 //! The extension only picks the variant of the format within that family: a
 //! file whose extension names another family has the container `unknown`. A
+//! file named `.bas`, `.cls` or `.frm` that is neither is a text module, the one
+//! module of a file with the container `text_module`, and it has no extraction;
+//! one that is too large to be read is a `text_module` by its name alone. A
 //! file is `ok` if it has Excel 4.0 macro sheets (XLM), if a module has a
 //! procedure, if a module is suspected of having lost its source (the
 //! procedures it had are compiled, out of sight) or if it is a workbook whose
@@ -132,9 +135,16 @@ pub struct Extraction {
 /// extraction reads the file, then the front end reads the source of each of
 /// its modules.
 ///
+/// A file named `.bas`, `.cls` or `.frm` that is not a ZIP archive or a compound
+/// file is a text module: a file of `container: "text_module"` with one module,
+/// and no extraction.
+///
 /// The result never fails: a file that cannot be read gets a status other
 /// than `ok` and `no_macros`, and the errors that explain it.
 pub fn analyze(bytes: &[u8], path: &str, options: &Options<'_>) -> FileReport {
+    if modules::is_text_module(bytes, path) {
+        return modules::analyze_text(bytes, path, options);
+    }
     modules::finish(extract(bytes, path, options), options)
 }
 
@@ -143,7 +153,8 @@ pub fn analyze(bytes: &[u8], path: &str, options: &Options<'_>) -> FileReport {
 /// A file above [`Options::max_file_size`] gets the status `too_large` and is
 /// not opened. Otherwise its first bytes decide how it is read: a ZIP archive
 /// is an OOXML package, a compound file a BIFF8 workbook or an encrypted
-/// package, and anything else is `unsupported`.
+/// package, and anything else is `unsupported`, a text module included: it
+/// has nothing to extract, and [`analyze`] reads it.
 pub fn extract(bytes: &[u8], path: &str, options: &Options<'_>) -> Extraction {
     let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
     let reading = if size > options.max_file_size {
