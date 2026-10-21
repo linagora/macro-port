@@ -15,7 +15,7 @@ use crate::report::Status;
 use crate::rules::ModuleType;
 
 pub use expr::MAX_NESTING;
-pub use facts::{Facts, MemberUse, StatementReader};
+pub use facts::{CallSite, Facts, MemberUse, StatementReader};
 pub use fold::ConstTable;
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{

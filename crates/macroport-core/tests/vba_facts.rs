@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The members of a statement (SPEC M2 item 3, SPEC section 7). The cases give
-//! them as the names in order, apart by spaces, with `Name:=` for a named
-//! argument.
+//! The members and the calls of a statement (SPEC M2 item 3, SPEC section 7).
+//! The cases give them as the names in order, apart by spaces: `Name:=` for a
+//! named argument, `.Name` for a call after a dot.
 #![allow(clippy::expect_used)]
 // clippy.toml keeps the clock out of the core, not out of its tests.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
@@ -40,10 +40,26 @@ fn members_of(facts: &Facts) -> String {
     names.collect::<Vec<_>>().join(" ")
 }
 
+/// The calls of a set of facts, written as the cases do.
+fn calls_of(facts: &Facts) -> String {
+    let names = facts.calls.iter().map(|call| match call.after_dot {
+        true => format!(".{}", call.name),
+        false => call.name.clone(),
+    });
+    names.collect::<Vec<_>>().join(" ")
+}
+
 /// Checks that each statement gives the members next to it.
 fn check_members(cases: &[(&str, &str)]) {
     for (text, expected) in cases {
         assert_eq!(members_of(&facts(text)), *expected, "{text}");
+    }
+}
+
+/// Checks that each statement gives the calls next to it.
+fn check_calls(cases: &[(&str, &str)]) {
+    for (text, expected) in cases {
+        assert_eq!(calls_of(&facts(text)), *expected, "{text}");
     }
 }
 
@@ -113,7 +129,61 @@ fn the_label_of_a_jump_and_an_on_statement_hold_no_member() {
 }
 
 #[test]
-fn the_name_of_a_constant_is_a_member_and_a_line_that_is_not_code_holds_no_fact() {
+fn a_name_that_is_not_assigned_to_nor_declared_is_a_call() {
+    check_calls(&[
+        (r#"x = Shell("calc")"#, "Shell"),
+        ("Kill path", "Kill path"),
+        ("Call Helper(1, 2)", "Helper"),
+        ("p = CurDir$", "CurDir"),
+        ("x = Left$(s, 2)", "Left s"),
+        (r#"Mid(s, 1, 2) = "ab""#, "Mid s"),
+        // The bounds of a `ReDim` are expressions, not constants.
+        (
+            r#"ReDim Preserve a(Len(s)), b(1 To Shell("x"))"#,
+            "a Len s b Shell",
+        ),
+    ]);
+}
+
+#[test]
+fn a_name_that_is_assigned_to_or_followed_by_a_dot_is_no_call() {
+    check_calls(&[
+        ("Dir = 1", ""),
+        (r#"If Dir = "" Then"#, ""),
+        ("x = Kill.Count", ""),
+        ("For i = 1 To 3", ""),
+        ("For Each c In rng", "rng"),
+        ("Set o = New Collection", ""),
+        ("x = ws.Name", ""),
+        ("If ws.Visible Then x = 1", ""),
+    ]);
+}
+
+#[test]
+fn a_declared_name_is_no_call() {
+    check_calls(&[
+        ("Dim Kill As Long", ""),
+        (r#"Private Declare Function Shell Lib "k" () As Long"#, ""),
+        ("Function Trim(s As String) As String", ""),
+        ("Kill As Long", ""),
+        ("Implements Shell", ""),
+        ("Option Explicit", ""),
+    ]);
+}
+
+#[test]
+fn a_call_after_a_dot_is_flagged() {
+    check_calls(&[
+        (r#"ws.Range("A1").Select"#, ".Range"),
+        ("x = ws.Cells(1, 1).Value", ".Cells"),
+        ("With ws.Item(2)", ".Item"),
+        (r#"Range("A1").Font.Bold = True"#, "Range"),
+        (r#"Application.Run "x""#, ""),
+    ]);
+}
+
+#[test]
+fn the_name_of_a_constant_is_no_call_and_a_line_that_is_not_code_holds_no_fact() {
     let mut consts = ConstTable::default();
     let lines = split_lines("Const P = \"x\"\n' y = Shell(1)\nDone:\nz = P + Q\n")
         .expect("lines")
@@ -121,8 +191,9 @@ fn the_name_of_a_constant_is_a_member_and_a_line_that_is_not_code_holds_no_fact(
     lines.iter().for_each(|line| consts.declare(line));
     let mut reader = StatementReader::new(&consts);
     let read: Vec<_> = lines.iter().map(|line| reader.read(line)).collect();
-    let members: Vec<_> = read.iter().map(members_of).collect();
-    assert_eq!(members, ["P", "", "", "z P Q"]);
+    let calls: Vec<_> = read.iter().map(calls_of).collect();
+    assert_eq!(calls, ["", "", "", "Q"]);
+    assert_eq!(members_of(&read[3]), "z P Q");
     assert_eq!(read[1..3], [Facts::default(), Facts::default()]);
 }
 
@@ -139,15 +210,17 @@ fn a_statement_that_stops_short_is_read_as_far_as_it_goes() {
 #[test]
 fn a_very_long_statement_is_read_in_proportion_to_its_size() {
     let chain = facts_in_time(&format!("x = a{}", ".b".repeat(100_000)));
-    assert_eq!(chain.members.len(), 100_002);
+    assert_eq!((chain.members.len(), chain.calls.len()), (100_002, 0));
     let arguments = facts_in_time(&format!("f({})", "a, ".repeat(100_000)));
     assert_eq!(arguments.members.len(), 100_001);
+    assert_eq!(arguments.calls.len(), 100_001);
 }
 
 #[test]
 fn nesting_beyond_the_limit_hides_no_name() {
     // Read flat, without overflowing the stack and with the statement
-    // flagged: what lies below the limit is listed all the same.
+    // flagged: what lies below the limit is listed all the same, a name
+    // that stands alone (`Shell x`) as a call too.
     let (open, close) = ("(".repeat(100_000), ")".repeat(100_000));
     for text in [
         format!("{}Shell(x){close}", "f(".repeat(100_000)),
@@ -157,7 +230,7 @@ fn nesting_beyond_the_limit_hides_no_name() {
     ] {
         let read = facts_in_time(&text);
         assert!(read.too_deep);
-        assert!(read.members.iter().any(|member| member.name == "Shell"));
+        assert!(read.calls.iter().any(|call| call.name == "Shell"));
         assert!(read.members.iter().any(|member| member.name == "x"));
     }
     let read = facts_in_time(&format!("{open}.Run Path:=1"));
