@@ -215,6 +215,13 @@ impl Token {
         }
     }
 
+    /// Whether the token is an identifier called `name`, in any ASCII letter
+    /// case: the way to read the words that are not keywords, `Lib` and
+    /// `Alias` of a `Declare` or the `Error` of `On Error`.
+    pub fn is_name(&self, source: &str, name: &str) -> bool {
+        self.kind == TokenKind::Identifier && self.name(source).eq_ignore_ascii_case(name)
+    }
+
     /// What a string literal holds, with its quotes off and `""` read as `"`.
     /// `None` for any other token, and for a string whose closing quote is
     /// missing: it is not a literal, and nothing is made of it.
@@ -533,6 +540,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_identifier_is_compared_with_a_name_in_any_letter_case() {
+        let called = |text: &str, name: &str| -> Vec<bool> {
+            tokenize(text)
+                .iter()
+                .map(|token| token.is_name(text, name))
+                .collect()
+        };
+        assert_eq!(
+            called("Lib LIB lib$ [Lib] Libs \"lib\"", "lib"),
+            [true, true, true, true, false, false]
+        );
+        // A keyword is no name, but the same word after a dot is one.
+        assert_eq!(called("If .If", "if"), [false, false, true]);
     }
 
     #[test]
