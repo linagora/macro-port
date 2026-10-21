@@ -201,6 +201,38 @@ fn a_block_with_no_end_is_closed_by_a_statement_that_declares_something() {
 }
 
 #[test]
+fn every_kind_of_declaration_ends_a_type_or_an_enum_with_no_end() {
+    let statements = [
+        (
+            "Option Explicit",
+            DeclarationKind::Option(OptionKind::Explicit),
+        ),
+        (
+            "Private Declare Function F Lib \"x\" ()",
+            declare("F", true),
+        ),
+        ("Public Const K = 1", Const),
+        ("Dim v", Variable),
+        ("Private WithEvents w As Foo", with_events("w")),
+        ("Implements I", Implements),
+        ("Public Event Ev()", Event),
+    ];
+    for (opener, block) in [("Type T", Type), ("Enum E", Enum)] {
+        for (statement, kind) in &statements {
+            let module = module_of(&format!("{opener}\n    a\n{statement}\n"));
+            let why = format!("{opener}, {statement}");
+            assert_eq!(
+                kinds(&module),
+                [(block.clone(), 1), (kind.clone(), 3)],
+                "{why}"
+            );
+            assert_eq!(ranges(&module), [(0, 2), (2, 3)], "{why}");
+            assert_eq!(module.recoveries, [unclosed(1)], "{why}");
+        }
+    }
+}
+
+#[test]
 fn a_block_with_no_end_keeps_the_members_that_read_word_as() {
     let module = module_of("Type T\n    Type As Long\n    Const As Long\nConst K = 1\n");
     assert_eq!(kinds(&module), [(Type, 1), (Const, 4)]);
