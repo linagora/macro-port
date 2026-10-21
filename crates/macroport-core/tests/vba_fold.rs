@@ -158,6 +158,8 @@ fn only_a_library_name_may_qualify_a_function_of_the_set() {
         ("x = VBA!Chr(65)", &[]),
         ("x = Chr(65).Foo", &[]),
         (r#"x = Interaction.UCase("a")"#, &["a"]),
+        // The module that holds `CreateObject` holds none of these functions.
+        (r#"x = VBA.Interaction.UCase("a")"#, &["a"]),
     ]);
 }
 
