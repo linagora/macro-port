@@ -93,3 +93,37 @@ fn what_is_not_a_string_expression_is_left_alone() {
         (r#"f(ByVal "a" As Long, "b")"#, &["a", "b"]),
     ]);
 }
+
+#[test]
+fn nesting_beyond_the_depth_limit_gives_up_without_overflowing_the_stack() {
+    let deep = |open: &str, close: &str, inner: &str| {
+        format!(
+            "x = {}{inner}{}",
+            open.repeat(100_000),
+            close.repeat(100_000)
+        )
+    };
+    for text in [
+        deep("(", ")", r#""a""#),
+        deep("-", "", "1"),
+        deep("Not ", "", "a"),
+        deep("f(", ")", r#""a""#),
+        deep("a.b(", ")", r#""a""#),
+    ] {
+        // Only that it returns: the strings that were read before giving up
+        // are not specified.
+        let _ = strings(&text);
+    }
+    // A reasonable nesting still folds.
+    let ok = format!("x = {}\"a\"{}", "(".repeat(20), ")".repeat(20));
+    assert_eq!(strings(&ok), ["a"]);
+}
+
+#[test]
+fn a_statement_with_many_operands_is_read_without_quadratic_work() {
+    // 600,000 tokens, under the cap of the lexer.
+    let text = format!("x = {}\"a\"", "\"b\" & ".repeat(300_000));
+    let folded = strings(&text);
+    assert_eq!(folded.len(), 1);
+    assert_eq!(folded.first().map(String::len), Some(300_001));
+}
