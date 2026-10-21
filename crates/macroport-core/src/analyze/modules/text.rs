@@ -113,3 +113,56 @@ fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport 
         signals: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::Status;
+    use crate::rules::{RuleSet, RulesSources};
+
+    fn rules() -> RuleSet {
+        RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
+    }
+
+    #[test]
+    fn the_limit_on_texts_is_the_lower_of_the_cap_and_the_option() {
+        let rules = rules();
+        let limit = |max_file_size| {
+            let options = Options {
+                max_file_size,
+                ..Options::new(&rules)
+            };
+            text_limit(&options)
+        };
+
+        assert_eq!(limit(10), 10);
+        assert_eq!(limit(MAX_TEXT_SIZE), MAX_TEXT_SIZE);
+        assert_eq!(limit(u64::MAX), MAX_TEXT_SIZE);
+        // The default option allows more than a text may take.
+        assert_eq!(text_limit(&Options::new(&rules)), MAX_TEXT_SIZE);
+    }
+
+    #[test]
+    fn a_text_above_the_cap_is_too_large_whatever_the_option_allows() {
+        let rules = rules();
+        let options = Options {
+            max_file_size: u64::MAX,
+            ..Options::new(&rules)
+        };
+        let size = MAX_TEXT_SIZE + 1;
+
+        let file = too_large_text("Big.bas", size, "0".repeat(64), &options);
+
+        assert_eq!(
+            (file.container, file.status, file.size),
+            (Container::TextModule, Status::TooLarge, size)
+        );
+        let errors = file.errors.expect("the errors of the file");
+        let [error] = errors.as_slice() else {
+            panic!("one error expected, got {errors:?}");
+        };
+        // The message gives the limit that applied, not the one of the options.
+        assert_eq!(error.code, "file.too_large");
+        assert!(error.message.contains(&MAX_TEXT_SIZE.to_string()));
+    }
+}
