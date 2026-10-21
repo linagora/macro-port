@@ -61,3 +61,32 @@ html-signals = Security signals
 html-traits = Traits
 html-score = score
 html-line = Line
+
+## Metrics
+
+html-loc = Lines of code
+html-cyclomatic = Cyclomatic complexity
+html-cyclomatic-max = Highest cyclomatic complexity
+html-cyclomatic-total = Cyclomatic complexity, total
+html-max-nesting = Maximum nesting depth
+html-parameters = Parameters
+html-goto = GoTo and GoSub statements
+html-forms = Forms
+html-declares = Declare statements
+html-external-dependencies = External dependencies
+
+## Modules and procedures
+
+html-code-page = Code page
+html-stream = Stream
+html-source-sha256 = Source code SHA-256
+html-source-unavailable = Source code unavailable
+html-source-missing = Source code possibly missing, p-code present
+html-visibility = Visibility
+html-entry-point = Entry point
+html-event-handler = Event handler
+html-procedure-unused = Possibly unused
+html-lines = Line range
+html-secondary-families = Secondary families
+html-calls = Calls
+html-apis = APIs
