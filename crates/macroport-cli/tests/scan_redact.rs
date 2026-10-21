@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-//! End-to-end tests of `scan --no-snippets` and `scan --redact` (SPEC section 8,
+//! Tests of `scan --no-snippets` and `scan --redact` (SPEC section 8,
 //! ACCEPTANCE A6): what the reports hide of the files, the key of the hashes,
-//! and the options that go together.
+//! and the options that go together. Most of them run the binary. Those that
+//! name the library (`Privacy`, `reports::documents`) check it against the
+//! core and the renderers that the binary is made of.
+//!
+//! Three of them need `analyze` to read the text modules (PR #133), which the
+//! stub under this branch does not: they are ignored, and pass on a `main` that
+//! has the analysis.
 
 mod common;
 mod support;
@@ -13,9 +19,9 @@ use std::path::Path;
 use macroport_cli::args::Format;
 use macroport_cli::i18n::Messages;
 use macroport_cli::reports;
-use macroport_cli::scan::{Privacy, PrivacyArgs};
-use macroport_core::redact::{Redaction, remove_snippets};
-use macroport_core::report::{Lang, Report};
+use macroport_cli::scan::{EXTENSIONS, Privacy, PrivacyArgs};
+use macroport_core::redact::{KEPT_EXTENSIONS, Redaction, remove_snippets};
+use macroport_core::report::{Lang, Report, Signal};
 use macroport_core::rules::{RuleSet, RulesSources};
 use macroport_testkit::{corpus, report_problems};
 use serde_json::Value;
@@ -24,13 +30,13 @@ use support::{
     text,
 };
 
-/// The options of `--no-snippets` and `--redact`, as the command line gives them.
-fn options(no_snippets: bool, redact: bool, key: Option<&str>, identifiers: bool) -> PrivacyArgs {
+/// `--redact --redact-key k`, with `--redact-identifiers` if asked.
+fn redact_with_key(identifiers: bool) -> PrivacyArgs {
     PrivacyArgs {
-        no_snippets,
-        redact,
-        redact_key: key.map(str::to_owned),
+        redact: true,
+        redact_key: Some("k".to_owned()),
         redact_identifiers: identifiers,
+        ..PrivacyArgs::default()
     }
 }
 
@@ -69,6 +75,20 @@ fn scan_tree(dir: &Path, out: &str, extra: &[&str]) {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
 }
 
+/// Scans `root`, a path of the repository, into `out` with the options `extra`
+/// and gives the report. The exit code is 0, or 1 when the root holds files that
+/// cannot be analysed, as the corpus does (ACCEPTANCE A6).
+fn scan_root(root: &str, out: &Path, extra: &[&str]) -> Report {
+    let mut args = vec!["scan", root, "-o", as_arg(out), "--deterministic"];
+    args.extend(extra);
+    let output = run(&args);
+    assert!(
+        matches!(output.status.code(), Some(0 | 1)),
+        "{args:?}: {output:?}"
+    );
+    read_report(out)
+}
+
 /// Whether `value` has an object with the key `key` anywhere in it.
 fn has_key(value: &Value, key: &str) -> bool {
     match value {
@@ -78,57 +98,91 @@ fn has_key(value: &Value, key: &str) -> bool {
     }
 }
 
-/// Whether `text` is a hash of a redacted report: 16 lowercase hexadecimal
-/// digits, then perhaps the extension of a path.
+/// Whether `text` is what a redacted report puts in place of a path or a name:
+/// 16 lowercase hexadecimal digits, then perhaps a dot and one of the
+/// extensions that a scan reads (in any case).
 fn is_hash(text: &str) -> bool {
-    let hash = text.split('.').next().unwrap_or_default();
-    hash.len() == 16 && hash.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+    let (hash, extension) = match text.split_once('.') {
+        Some((hash, extension)) => (hash, Some(extension)),
+        None => (text, None),
+    };
+    hash.len() == 16
+        && hash.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+        && extension.is_none_or(|extension| {
+            EXTENSIONS
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(extension))
+        })
+}
+
+/// The `module` and the `procedure` that `signals` name.
+fn signal_names<'a>(signals: impl IntoIterator<Item = &'a Signal>) -> Vec<String> {
+    signals
+        .into_iter()
+        .flat_map(|signal| [signal.module.clone(), signal.procedure.clone()])
+        .flatten()
+        .collect()
 }
 
 /// Every name that the project of a report defines, where the report holds
-/// one: the modules, their streams, the procedures, and the parts of the
-/// calls (which all name procedures of the project).
+/// one: the modules, their streams, the procedures, the parts of the calls
+/// (which all name procedures of the project) and the modules and procedures
+/// that the signals of a file, a module and a procedure name.
 fn project_names(report: &Report) -> Vec<String> {
-    let modules = report
-        .files
-        .iter()
-        .filter_map(|file| file.vba_project.as_ref())
-        .flat_map(|project| &project.modules);
     let mut names = Vec::new();
-    for module in modules {
-        names.push(module.name.clone());
-        names.extend(module.stream_name.clone());
-        for procedure in &module.procedures {
-            names.push(procedure.name.clone());
-            let calls = procedure.calls.iter().flatten();
-            names.extend(calls.flat_map(|call| call.split('.')).map(str::to_owned));
+    for file in &report.files {
+        names.extend(signal_names(file.signals.iter().flatten()));
+        let modules = file.vba_project.iter().flat_map(|project| &project.modules);
+        for module in modules {
+            names.push(module.name.clone());
+            names.extend(module.stream_name.clone());
+            names.extend(signal_names(module.signals.iter().flatten()));
+            for procedure in &module.procedures {
+                names.push(procedure.name.clone());
+                let calls = procedure.calls.iter().flatten();
+                names.extend(calls.flat_map(|call| call.split('.')).map(str::to_owned));
+                names.extend(signal_names(&procedure.signals));
+            }
         }
     }
     names
+}
+
+/// The names of the APIs that the procedures of a report use.
+fn api_names(report: &Report) -> Vec<String> {
+    let procedures = report
+        .files
+        .iter()
+        .filter_map(|file| file.vba_project.as_ref())
+        .flat_map(|project| &project.modules)
+        .flat_map(|module| &module.procedures);
+    procedures
+        .flat_map(|procedure| procedure.apis.iter().flatten())
+        .map(|api| api.name.clone())
+        .collect()
 }
 
 /// What a redacted report keeps in clear on purpose, besides the words of the
 /// report itself: the references of the projects and the APIs that the
 /// procedures use (ADR-0007).
 fn kept_names(report: &Report) -> Vec<String> {
-    let mut names = Vec::new();
-    for project in report.files.iter().filter_map(|f| f.vba_project.as_ref()) {
-        names.extend(project.references.iter().flatten().cloned());
-        let procedures = project.modules.iter().flat_map(|m| &m.procedures);
-        for procedure in procedures {
-            names.extend(procedure.apis.iter().flatten().map(|api| api.name.clone()));
-        }
-    }
+    let projects = report.files.iter().filter_map(|f| f.vba_project.as_ref());
+    let mut names: Vec<String> = projects
+        .flat_map(|project| project.references.iter().flatten().cloned())
+        .collect();
+    names.extend(api_names(report));
     names
 }
 
-/// The words of the tool: what a literal of the corpus can spell without
-/// having leaked anything. The files of the scan `trivial` of a trivial file
-/// (the page of the HTML report, the keys and the values of the JSON), the
-/// schema, the rules, the texts of the interface, and the codes of the errors
-/// of `report`.
-fn words_of_the_tool(trivial: &Path, report: &Report) -> Vec<String> {
-    let mut words: Vec<String> = written_reports(trivial)
+/// The words of the tool: what a literal of the corpus, or a name of a
+/// project, can spell without having leaked anything. The reports of a scan of
+/// a trivial file, made in `dir` (the page of the HTML report, the keys and the
+/// values of the JSON), the schema, the rules, the texts of the interface, and
+/// the codes of the errors of `report`.
+fn vocabulary(dir: &Path, report: &Report) -> Vec<String> {
+    put(dir, "tree/m.bas", MODULE);
+    scan_tree(dir, "trivial", &["--redact"]);
+    let mut words: Vec<String> = written_reports(&dir.join("trivial"))
         .values()
         .map(|content| text(content))
         .collect();
@@ -172,6 +226,14 @@ fn string_literals(source: &str) -> Vec<String> {
     literals
 }
 
+/// The string literals of the text modules of the corpus.
+fn corpus_literals() -> BTreeSet<String> {
+    corpus::files("families", &["bas", "cls", "frm"])
+        .iter()
+        .flat_map(|file| string_literals(&text(&corpus::read(file))))
+        .collect()
+}
+
 /// Every string of `value`, the values of the objects and the items of the
 /// arrays, as the JSON text spells it out: with the escapes undone.
 fn strings_of(value: &Value, into: &mut Vec<String>) {
@@ -183,17 +245,34 @@ fn strings_of(value: &Value, into: &mut Vec<String>) {
     }
 }
 
+/// What the reports in `out` show: the text of each, and the strings of the
+/// JSON with their escapes undone, which is how a quote or a backslash of a
+/// literal is written there.
+fn shown_by(out: &Path) -> Vec<String> {
+    let mut shown: Vec<String> = written_reports(out)
+        .values()
+        .map(|content| text(content))
+        .collect();
+    let json: Value = serde_json::from_str(&report_json(out)).expect("report.json is JSON");
+    strings_of(&json, &mut shown);
+    shown
+}
+
 #[test]
 fn the_options_give_the_privacy_that_the_core_applies() {
     let clear = common::fleet();
 
     // Nothing asked for, nothing changes.
-    assert_eq!(after(&options(false, false, None, false), &clear), clear);
+    assert_eq!(after(&PrivacyArgs::default(), &clear), clear);
 
     // --no-snippets leaves the paths, the names and the flag.
     let mut expected = clear.clone();
     remove_snippets(&mut expected);
-    let no_snippets = after(&options(true, false, None, false), &clear);
+    let only_snippets = PrivacyArgs {
+        no_snippets: true,
+        ..PrivacyArgs::default()
+    };
+    let no_snippets = after(&only_snippets, &clear);
     assert_eq!(no_snippets, expected);
     assert!(!no_snippets.redacted);
     assert_ne!(no_snippets, clear, "the fleet has snippets to remove");
@@ -207,7 +286,10 @@ fn the_options_give_the_privacy_that_the_core_applies() {
             .apply(&mut expected);
         assert!(expected.redacted);
         for no_snippets in [false, true] {
-            let args = options(no_snippets, true, Some("k"), identifiers);
+            let args = PrivacyArgs {
+                no_snippets,
+                ..redact_with_key(identifiers)
+            };
             assert_eq!(
                 after(&args, &clear),
                 expected,
@@ -218,9 +300,29 @@ fn the_options_give_the_privacy_that_the_core_applies() {
 }
 
 #[test]
+fn the_debug_text_of_the_arguments_and_of_the_privacy_hides_the_key() {
+    let args = PrivacyArgs {
+        redact: true,
+        redact_key: Some("hunter2".to_owned()),
+        ..PrivacyArgs::default()
+    };
+    let privacy = Privacy::new(&args).expect("the privacy is made");
+
+    let shown = format!("{args:?}");
+    assert!(shown.contains("redact: true"), "{shown}");
+    assert!(!shown.contains("hunter2"), "{shown}");
+    let shown = format!("{privacy:?}");
+    assert!(!shown.contains("hunter2"), "{shown}");
+}
+
+#[test]
 fn without_a_key_each_run_draws_its_own() {
     let clear = common::fleet();
-    let args = options(false, true, None, true);
+    let args = PrivacyArgs {
+        redact: true,
+        redact_identifiers: true,
+        ..PrivacyArgs::default()
+    };
     let paths = |report: &Report| -> Vec<String> {
         report.files.iter().map(|file| file.path.clone()).collect()
     };
@@ -443,76 +545,121 @@ fn a_redacted_scan_of_the_corpus_follows_the_table_of_the_spec() {
 }
 
 #[test]
+fn a_redacted_path_keeps_the_extensions_that_the_walk_collects() {
+    // The core keeps the extension of the files that a scan reads, and the walk
+    // of the CLI has its own list of the same files: they have to be one.
+    assert_eq!(KEPT_EXTENSIONS, EXTENSIONS);
+}
+
+#[test]
+#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
 fn a_redacted_scan_of_the_corpus_shows_none_of_its_string_literals() {
     // The shortest literal that is looked for: shorter ones are the digits, the
     // words and the extensions that any report holds.
     const SHORTEST: usize = 6;
-    let flags = ["--redact", "--redact-key", "k", "--redact-identifiers"];
     let dir = scratch("redact_literals");
-    let out = dir.join("corpus");
-    put(&dir, "tree/m.bas", MODULE);
-    scan_tree(&dir, "trivial", &flags);
-    let mut args = vec!["scan", "corpus", "-o", as_arg(&out), "--deterministic"];
-    args.extend(flags);
-    let output = run(&args);
-    assert!(matches!(output.status.code(), Some(0 | 1)), "{output:?}");
-    let report = read_report(&out);
+    let clear = scan_root("corpus", &dir.join("clear"), &[]);
+    let plain = scan_root(
+        "corpus",
+        &dir.join("plain"),
+        &["--redact", "--redact-key", "k"],
+    );
+    let identifiers = scan_root(
+        "corpus",
+        &dir.join("identifiers"),
+        &["--redact", "--redact-key", "k", "--redact-identifiers"],
+    );
 
     // A literal that spells a word of the tool leaks nothing, so only the others
-    // are looked for. A report keeps the references and the APIs on purpose
-    // (ADR-0007, a point for the owner): a literal in them is not a leak either.
-    let words = words_of_the_tool(&dir.join("trivial"), &report);
-    let kept = kept_names(&report);
-    let literals: BTreeSet<String> = corpus::files("families", &["bas", "cls", "frm"])
-        .iter()
-        .flat_map(|file| string_literals(&text(&corpus::read(file))))
+    // are looked for.
+    let words = vocabulary(&dir, &clear);
+    let literals: BTreeSet<String> = corpus_literals()
+        .into_iter()
         .filter(|literal| literal.chars().count() >= SHORTEST)
-        .filter(|literal| ![&words, &kept].iter().any(|known| is_in(known, literal)))
+        .filter(|literal| !is_in(&words, literal))
         .collect();
     assert!(literals.len() > 100, "the corpus has literals to look for");
 
-    // The text of each report, and the strings of the JSON with their escapes
-    // undone, which is how a quote or a backslash of a literal is written there.
-    let mut shown: Vec<String> = written_reports(&out)
-        .values()
-        .map(|content| text(content))
-        .collect();
-    let json: Value = serde_json::from_str(&report_json(&out)).expect("report.json is JSON");
-    strings_of(&json, &mut shown);
-    for literal in &literals {
-        assert!(!is_in(&shown, literal), "{literal:?}");
+    // The search can find what it looks for: the reports of a scan that hides
+    // nothing show some of the literals. Without this, a report that the
+    // analysis has not filled yet passes for a report that hides everything.
+    let shown_clear = shown_by(&dir.join("clear"));
+    assert!(
+        literals.iter().any(|literal| is_in(&shown_clear, literal)),
+        "no literal of the corpus is in the reports of a scan that hides nothing"
+    );
+
+    // A report keeps the references and the APIs on purpose, and the names of
+    // the project unless --redact-identifiers hashes them (ADR-0007, points for
+    // the owner): a literal that is one of these is not a leak.
+    for (name, report, names_stay) in [
+        ("plain", &plain, true),
+        ("identifiers", &identifiers, false),
+    ] {
+        let mut allowed = kept_names(report);
+        if names_stay {
+            allowed.extend(project_names(report));
+        }
+        let shown = shown_by(&dir.join(name));
+        for literal in literals.iter().filter(|literal| !is_in(&allowed, literal)) {
+            assert!(!is_in(&shown, literal), "{name}: {literal:?}");
+        }
     }
 }
 
 #[test]
-#[ignore = "needs the analysis of text modules, which the stub of this base lacks: remove when the branch has it"]
+#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
 fn a_redacted_scan_of_the_corpus_hashes_the_names_of_the_project() {
     let dir = scratch("redact_identifiers");
-    let scan = |out: &str, extra: &[&str]| {
-        let out = dir.join(out);
-        let mut args = vec!["scan", "corpus/families", "-o", as_arg(&out)];
-        args.extend(["--format", "json", "--deterministic"]);
-        args.extend(extra);
-        let output = run(&args);
-        assert!(matches!(output.status.code(), Some(0 | 1)), "{output:?}");
-        read_report(&out)
-    };
-    let clear = project_names(&scan("clear", &[]));
-    let redacted = project_names(&scan("redacted", &["--redact", "--redact-identifiers"]));
+    let clear = scan_root("corpus/families", &dir.join("clear"), &[]);
+    let redacted = scan_root(
+        "corpus/families",
+        &dir.join("redacted"),
+        &["--redact", "--redact-key", "k", "--redact-identifiers"],
+    );
+    let clear_names = project_names(&clear);
+    let redacted_names = project_names(&redacted);
 
-    assert!(!clear.is_empty(), "the scan found no module or procedure");
+    assert!(
+        !clear_names.is_empty(),
+        "the scan found no module or procedure"
+    );
     // Every name of the project is a hash, and no hash is a name that the
     // project defines (which is lowercased before it is hashed).
-    assert_eq!(redacted.len(), clear.len());
-    let defined: BTreeSet<String> = clear.iter().map(|name| name.to_lowercase()).collect();
-    for name in &redacted {
+    assert_eq!(redacted_names.len(), clear_names.len());
+    let defined: BTreeSet<String> = clear_names.iter().map(|name| name.to_lowercase()).collect();
+    for name in &redacted_names {
         assert!(is_hash(name), "{name}");
         assert!(!defined.contains(name), "{name}");
     }
+    // The APIs keep the names of the object model and of the libraries: none
+    // starts with a name that the project defines.
+    for api in api_names(&redacted) {
+        let root = api.split('.').next().unwrap_or_default();
+        assert!(!defined.contains(&root.to_lowercase()), "{api}");
+    }
+
+    // No report spells a name of the project, in any case. The names that the
+    // vocabulary of the reports spells (a word of the tool, a reference, an
+    // API) are not looked for, and nor are those of fewer than six characters,
+    // which cannot be told from the short words that any report holds.
+    let mut known = vocabulary(&dir, &redacted);
+    known.extend(kept_names(&redacted));
+    let known: Vec<String> = known.iter().map(|text| text.to_lowercase()).collect();
+    let shown: Vec<String> = shown_by(&dir.join("redacted"))
+        .iter()
+        .map(|text| text.to_lowercase())
+        .collect();
+    let looked_for = defined
+        .iter()
+        .filter(|name| name.chars().count() >= 6 && !is_in(&known, name));
+    for name in looked_for {
+        assert!(!is_in(&shown, name), "{name}");
+    }
 }
 
 #[test]
-#[ignore = "needs the analysis of text modules, which the stub of this base lacks: remove when the branch has it"]
+#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
 fn a_text_module_is_named_after_its_file_and_the_name_stays_without_identifiers() {
     // The core names the module of a .bas, .cls or .frm file after the file
     // (without its extension), and the table of SPEC section 8 keeps the names
@@ -550,11 +697,18 @@ fn a_redacted_report_with_hostile_names_shows_none_of_them_in_any_format() {
     let [formula, markup, link] = ["HYPERLINK", "svg onload", "javascript:alert"];
     let messages = messages();
     let documents_of = |report: &Report| -> Vec<(&'static str, String)> {
-        [Format::Json, Format::Html, Format::Csv]
+        let documents: Vec<_> = [Format::Json, Format::Html, Format::Csv]
             .into_iter()
             .flat_map(|format| reports::documents(format, report, &messages).expect("documents"))
             .map(|document| (document.name, text(&document.contents)))
-            .collect()
+            .collect();
+        // A redacted report is still a report.
+        for (name, content) in &documents {
+            if name.ends_with(".json") {
+                assert_eq!(report_problems(content), Vec::<String>::new(), "{name}");
+            }
+        }
+        documents
     };
     let shown = |documents: &[(&str, String)], word: &str| {
         documents.iter().any(|(_, content)| content.contains(word))
@@ -569,18 +723,15 @@ fn a_redacted_report_with_hostile_names_shows_none_of_them_in_any_format() {
 
     // Without --redact-identifiers the names of the project stay, the
     // snippets are gone.
-    let names_stay = documents_of(&after(&options(false, true, Some("k"), false), &injection));
+    let names_stay = documents_of(&after(&redact_with_key(false), &injection));
     assert!(shown(&names_stay, formula));
     assert!(!shown(&names_stay, markup));
     assert!(!shown(&names_stay, link));
 
     // With it, nothing is left of the three, in any report.
-    let redacted = after(&options(false, true, Some("k"), true), &injection);
-    let hidden = documents_of(&redacted);
+    let hidden = documents_of(&after(&redact_with_key(true), &injection));
     assert_eq!(hidden.len(), EVERY_REPORT.len());
     for word in [formula, markup, link] {
         assert!(!shown(&hidden, word), "{word}");
     }
-    let json = redacted.to_json().expect("the report serialises");
-    assert_eq!(report_problems(&json), Vec::<String>::new());
 }
