@@ -37,8 +37,9 @@ const DEFAULT_REFERENCES: [&str; 6] = [
 /// passes to `CreateObject` and `GetObject`, after constant folding. Two that
 /// differ by their letter case are one. `Scripting.Dictionary` and
 /// `VBScript.RegExp` do not count, and neither does a string that is not
-/// shaped like a ProgID (see [`is_progid`]).
-pub(super) fn count_progids<I>(progids: I) -> u32
+/// shaped like a ProgID (see [`is_progid`]). The procedures count their
+/// dependencies the same way (`analyze::metrics`).
+pub(crate) fn count_progids<I>(progids: I) -> u32
 where
     I: IntoIterator,
     I::Item: AsRef<str>,

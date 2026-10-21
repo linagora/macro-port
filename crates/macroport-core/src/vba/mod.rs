@@ -19,6 +19,7 @@ use crate::report::Status;
 use crate::rules::ModuleType;
 
 pub use aggregate::{file_metrics, module_metrics};
+pub(crate) use dependencies::count_progids;
 pub use expr::MAX_NESTING;
 pub use facts::{CallSite, Facts, MemberUse, StatementReader};
 pub use fold::ConstTable;

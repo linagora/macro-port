@@ -32,7 +32,7 @@ mod text_file;
 
 use super::apply::apply;
 use super::input::{Adapted, Measured, adapt};
-use super::metrics::{count, file_metrics, module_metrics, project_metrics};
+use super::metrics::{count, progids, project_metrics};
 use super::{Extraction, Failure, Options, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
@@ -41,7 +41,7 @@ use crate::report::{
 use crate::rules::RuleSet;
 use crate::vba::{
     Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, SourceLines, VbaError,
-    parse, split_lines,
+    file_metrics, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -222,14 +222,14 @@ impl<'r> Front<'r> {
             failures,
             ..
         } = self;
-        let has_project = file.vba_project.is_some();
-        let sizes = (file.vba_project.as_ref()).map(file_metrics);
         let project = ProjectInput {
             references: (file.vba_project.as_ref())
                 .and_then(|project| project.references.clone())
                 .unwrap_or_default(),
             modules: inputs,
         };
+        let sizes = (file.vba_project.as_ref()).map(|vba| file_metrics(vba, progids(&project)));
+        let has_project = sizes.is_some();
         let metrics = project_metrics(&project, &measured, sizes.unwrap_or_default());
         if has_project {
             file.metrics = Some(metrics.file.clone());
