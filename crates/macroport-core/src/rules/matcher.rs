@@ -263,7 +263,7 @@ fn syntax_cause(detail: &str) -> &str {
 }
 
 /// Finds `name` in a closed list of values.
-fn closed<T: Copy, const N: usize>(
+pub(super) fn closed<T: Copy, const N: usize>(
     what: &str,
     name: &str,
     all: [T; N],
