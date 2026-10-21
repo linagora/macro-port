@@ -92,6 +92,13 @@ fn the_fixtures_give_the_modules_and_the_sources_that_excel_wrote() {
             macro_sheets: Some(0),
         };
         assert_eq!(report.xlm, Some(no_sheets), "{file}");
+        // What Excel wrote raises nothing: no indicator, so no signal.
+        assert!(extraction.indicators.is_empty(), "{file}");
+        assert_eq!(
+            (&report.signals, report.max_severity),
+            (&None, None),
+            "{file}"
+        );
         let extension = file.rsplit('.').next().unwrap_or_default();
         let container = serde_json::to_value(report.container).expect("serialises");
         assert_eq!(container, extension, "{file}");
@@ -112,6 +119,11 @@ fn the_fixtures_give_the_modules_and_the_sources_that_excel_wrote() {
             let digest = Sha256::digest(source);
             let hash: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
             assert!(module.source_available, "{file}, {name}");
+            assert_eq!(
+                module.source_missing_suspected,
+                Some(false),
+                "{file}, {name}"
+            );
             assert_eq!(module.source_sha256.as_deref(), Some(hash.as_str()));
             assert_eq!(module.stream_name.as_deref(), Some(name), "{file}");
             let Some(export) = &expected.expected_source else {
@@ -132,8 +144,15 @@ fn the_fixtures_give_the_modules_and_the_sources_that_excel_wrote() {
 fn the_fixtures_that_expect_something_else_have_it() {
     for entry in fixtures().iter().filter(|entry| entry.modules.is_empty()) {
         let file = &entry.file;
-        let report = fixture(file).file;
+        let extraction = fixture(file);
+        let report = &extraction.file;
 
+        let macro_sheets = report.xlm.as_ref().is_some_and(|xlm| xlm.present);
+        let raised = extraction.indicators.contains(&"sec.xlm-macrosheet");
+        assert_eq!(
+            raised, macro_sheets,
+            "{file}: the indicator of macro sheets"
+        );
         if let Some(status) = entry.expected_status {
             assert_eq!(report.status, status, "{file}");
         }
