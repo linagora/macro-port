@@ -1,7 +1,10 @@
 # The core is pure (CLAUDE.md): no file system, network, console,
 # environment, clock, randomness, threads or processes. These are the
-# standard library's ways in; Cargo.toml turns the bans into errors, and the
-# wasm32 build rejects the APIs of a single operating system.
+# standard library's ways in, and the helpers of the `zip` crate that extract
+# to disk; Cargo.toml turns the bans into errors, and the wasm32 build rejects
+# the APIs of a single operating system. The cfb crate adds its own: it opens
+# files by path, writes compound files and stamps them with the clock, while
+# the core only opens a byte slice (ADR-0002).
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
@@ -26,6 +29,30 @@ disallowed-types = [
 ]
 
 disallowed-methods = [
+    { path = "cfb::CompoundFile::copy_to", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create_new_stream", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create_storage", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create_storage_all", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create_stream", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::create_with_version", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::flush", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::remove_storage", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::remove_storage_all", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::remove_stream", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::set_created_time", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::set_modified_time", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::set_state_bits", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::set_storage_clsid", reason = "the core never writes a compound file" },
+    { path = "cfb::CompoundFile::touch", reason = "the core never writes a compound file, and touch reads the clock" },
+    { path = "cfb::OpenOptions::create", reason = "the core never writes a compound file" },
+    { path = "cfb::OpenOptions::create_with", reason = "the core never writes a compound file" },
+    { path = "cfb::OpenOptions::open", reason = "the core does no I/O: open a byte slice with CompoundFile::open" },
+    { path = "cfb::OpenOptions::open_rw", reason = "the core does no I/O: open a byte slice with CompoundFile::open" },
+    { path = "cfb::Stream::set_len", reason = "the core never writes a compound file" },
+    { path = "cfb::create", reason = "the core never writes a compound file" },
+    { path = "cfb::open", reason = "the core does no I/O: open a byte slice with CompoundFile::open" },
+    { path = "cfb::open_rw", reason = "the core does no I/O: open a byte slice with CompoundFile::open" },
     { path = "std::env::args", reason = "the core reads no environment" },
     { path = "std::env::args_os", reason = "the core reads no environment" },
     { path = "std::env::current_dir", reason = "the core reads no environment" },
@@ -81,4 +108,8 @@ disallowed-methods = [
     { path = "std::thread::sleep", reason = "the core starts no thread: the CLI parallelises" },
     { path = "std::thread::spawn", reason = "the core starts no thread: the CLI parallelises" },
     { path = "std::time::SystemTime::elapsed", reason = "the core reads no clock: the caller injects time values" },
+    { path = "zip::ZipArchive::extract", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::ZipArchive::extract_unwrapped_root_dir", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::ZipArchive::extract_with_options", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
+    { path = "zip::unstable::stream::ZipStreamReader::extract", reason = "the core does no I/O: bytes in, report out, and an archive is never extracted" },
 ]
