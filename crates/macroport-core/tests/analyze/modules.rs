@@ -11,20 +11,8 @@ use macroport_core::report::{
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
-use sha2::{Digest, Sha256};
 
-use crate::support::{RULES, report_problems_of};
-
-const HELLO: &str = "Option Explicit\n\nSub Hello()\n    MsgBox \"hi\"\nEnd Sub\n";
-
-fn options() -> Options<'static> {
-    Options::new(&RULES)
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
+use crate::support::{HELLO, checked, module, modules, options, sha256};
 
 fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
     ModuleSource {
@@ -32,12 +20,6 @@ fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
         module_type,
         text: text.to_owned(),
     }
-}
-
-/// `file`, once checked against the report schema.
-fn checked(file: FileReport) -> FileReport {
-    assert_eq!(report_problems_of(&file), Vec::<String>::new());
-    file
 }
 
 /// The report of `modules` as a text file.
@@ -48,17 +30,6 @@ fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
 /// The report of `text` as the only module of a file.
 fn report_of(text: &str) -> FileReport {
     report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
-}
-
-fn modules(file: &FileReport) -> &[ModuleReport] {
-    &file.vba_project.as_ref().expect("a VBA project").modules
-}
-
-/// The only module of a file.
-fn module(file: &FileReport) -> &ModuleReport {
-    let modules = modules(file);
-    assert_eq!(modules.len(), 1);
-    modules.first().expect("one module")
 }
 
 /// The names of the procedures of `module`, with whether each has a trait.
