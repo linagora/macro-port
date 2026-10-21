@@ -107,14 +107,31 @@ pub(super) enum Value {
 /// literal of megabytes stays unresolved after a few levels instead of
 /// copying it at each one, and so does a constant that a statement of a few
 /// bytes repeats into megabytes, or that other constants double along a chain
-/// of declarations.
-#[derive(Debug, Clone, Copy)]
+/// of declarations. The same measure, summed over the statements a reader has
+/// read, bounds what they copy of the object of a `With` block, with a cap on
+/// what one statement leaves to the next.
+#[derive(Debug, Default, Clone, Copy)]
 pub(super) struct Budget(usize);
 
 impl Budget {
     /// The budget of a statement whose text is `text`.
     pub(super) fn for_text(text: &str) -> Self {
-        Self(text.len().saturating_mul(4).saturating_add(BUDGET_FLOOR))
+        let mut budget = Self::default();
+        budget.earn(BUDGET_FLOOR, text);
+        budget
+    }
+
+    /// Adds `floor` and four times the length of `text`.
+    pub(super) fn earn(&mut self, floor: usize, text: &str) {
+        self.0 = self
+            .0
+            .saturating_add(floor)
+            .saturating_add(text.len().saturating_mul(4));
+    }
+
+    /// Drops what is left beyond `limit`.
+    pub(super) fn keep_at_most(&mut self, limit: usize) {
+        self.0 = self.0.min(limit);
     }
 
     /// Takes `bytes` out of the budget. False, and nothing taken, when fewer
@@ -325,6 +342,11 @@ mod tests {
         assert!(!budget.take(1));
         assert!(Budget::for_text("ab").take(BUDGET_FLOOR + 8));
         assert!(!Budget::for_text("ab").take(BUDGET_FLOOR + 9));
+        // It earns on top of what is left (a floor and four times the text),
+        // and the limit drops what lies beyond it.
+        budget.earn(10, "abc");
+        budget.keep_at_most(5);
+        assert!(budget.take(5) && !budget.take(1));
     }
 
     #[test]
