@@ -467,6 +467,47 @@ mod tests {
     use super::*;
     use crate::vba::split_lines;
 
+    #[test]
+    fn the_keyword_table_is_in_order_for_the_search() {
+        for pair in KEYWORDS.windows(2) {
+            assert!(pair[0].0 < pair[1].0, "{} before {}", pair[0].0, pair[1].0);
+        }
+        for (spelling, _) in KEYWORDS {
+            assert!(
+                spelling.bytes().all(|b| b.is_ascii_lowercase()),
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_keyword_is_found_in_any_letter_case() {
+        for &(spelling, expected) in KEYWORDS {
+            let mut letters = spelling.chars();
+            let title: String = letters
+                .next()
+                .map(|first| first.to_ascii_uppercase())
+                .into_iter()
+                .chain(letters)
+                .collect();
+            let alternating: String = spelling
+                .chars()
+                .zip([true, false].into_iter().cycle())
+                .map(|(c, upper)| if upper { c.to_ascii_uppercase() } else { c })
+                .collect();
+            for word in [spelling, &spelling.to_uppercase(), &title, &alternating] {
+                assert_eq!(keyword(word), Some(expected), "{word}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_longer_word_a_shorter_word_or_another_script_is_no_keyword() {
+        for word in ["", "i", "ifx", "xif", "iff", "elsei", "wit", "İf", "ıf"] {
+            assert_eq!(keyword(word), None, "{word}");
+        }
+    }
+
     /// What the comments among the tokens of `text` say.
     fn said(text: &str) -> Vec<&str> {
         tokenize(text)
