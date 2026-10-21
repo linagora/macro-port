@@ -4,21 +4,11 @@
 //! that lost its source is in `failures.rs`, which makes such a module.
 
 use macroport_core::analyze::Options;
-use macroport_core::report::{Signal, Status};
+use macroport_core::report::Status;
 use macroport_core::rules::Severity;
 use macroport_testkit::corpus;
 
-use crate::support::{RULES, extraction, extraction_with, fixture};
-
-fn signal(id: &str, severity: Severity) -> Signal {
-    Signal {
-        signal_id: id.to_owned(),
-        severity,
-        module: None,
-        procedure: None,
-        evidence: None,
-    }
-}
+use crate::support::{RULES, extraction, extraction_with, file_signal, fixture};
 
 #[test]
 fn macro_sheets_raise_their_indicator_in_a_package_and_in_a_workbook() {
@@ -30,7 +20,7 @@ fn macro_sheets_raise_their_indicator_in_a_package_and_in_a_workbook() {
 
         assert_eq!(extraction.indicators, ["sec.xlm-macrosheet"], "{file}");
         let report = &extraction.file;
-        let signals = vec![signal("sec.xlm-macrosheet", Severity::Medium)];
+        let signals = vec![file_signal("sec.xlm-macrosheet", Severity::Medium)];
         assert_eq!(report.signals, Some(signals), "{file}");
         assert_eq!(report.max_severity, Some(Severity::Medium), "{file}");
     }
@@ -45,7 +35,7 @@ fn a_vba_project_in_a_package_declared_without_macros_raises_its_indicator() {
 
         assert_eq!(extraction.file.status, Status::Ok, "{path}");
         assert_eq!(extraction.indicators, ["sec.vbaproject-in-xlsx"], "{path}");
-        let signals = vec![signal("sec.vbaproject-in-xlsx", Severity::High)];
+        let signals = vec![file_signal("sec.vbaproject-in-xlsx", Severity::High)];
         assert_eq!(extraction.file.signals, Some(signals), "{path}");
         assert_eq!(extraction.file.max_severity, Some(Severity::High), "{path}");
     }
@@ -60,7 +50,11 @@ fn the_same_package_declared_with_macros_raises_nothing() {
 
         let report = &extraction.file;
         assert!(extraction.indicators.is_empty(), "{path}");
-        assert_eq!((&report.signals, report.max_severity), (&None, None));
+        assert_eq!(
+            (&report.signals, report.max_severity),
+            (&None, None),
+            "{path}"
+        );
     }
 }
 
@@ -73,7 +67,7 @@ fn a_zip_bomb_raises_the_indicator_of_a_suspicious_archive() {
     let report = &extraction.file;
     assert_eq!(report.status, Status::SuspiciousArchive);
     assert_eq!(extraction.indicators, ["sec.suspicious-archive"]);
-    let signals = vec![signal("sec.suspicious-archive", Severity::Medium)];
+    let signals = vec![file_signal("sec.suspicious-archive", Severity::Medium)];
     assert_eq!(report.signals, Some(signals));
     assert_eq!(report.max_severity, Some(Severity::Medium));
 }
@@ -95,7 +89,11 @@ fn the_files_that_cannot_be_read_for_another_reason_raise_nothing() {
         assert_ne!(report.status, Status::Ok, "{file}");
         assert_ne!(report.status, Status::SuspiciousArchive, "{file}");
         assert!(extraction.indicators.is_empty(), "{file}");
-        assert_eq!((&report.signals, report.max_severity), (&None, None));
+        assert_eq!(
+            (&report.signals, report.max_severity),
+            (&None, None),
+            "{file}"
+        );
     }
 }
 
@@ -109,7 +107,7 @@ fn the_rules_give_the_severity_of_a_signal_and_can_switch_it_off() {
 
     let raised = extraction_with(&bytes, "a.xlsm", &Options::new(&rules));
 
-    let signals = vec![signal("sec.xlm-macrosheet", Severity::Low)];
+    let signals = vec![file_signal("sec.xlm-macrosheet", Severity::Low)];
     assert_eq!(raised.file.signals, Some(signals));
     assert_eq!(raised.file.max_severity, Some(Severity::Low));
 

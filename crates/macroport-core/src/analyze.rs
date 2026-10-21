@@ -54,7 +54,7 @@ mod project;
 use sha2::{Digest, Sha256};
 
 use self::project::Project;
-use crate::container::{CfbFile, ContainerError, read_biff_workbook, read_ooxml};
+use crate::container::{CfbFile, ContainerError, XLM_MACROSHEET, read_biff_workbook, read_ooxml};
 use crate::ovba::OvbaError;
 use crate::report::{Container, FileError, FileReport, Orientation, Status, Xlm};
 use crate::rules::RuleSet;
@@ -106,10 +106,14 @@ pub struct Extraction {
     /// project.
     pub sources: Vec<Option<String>>,
     /// The container indicators that the file raised, as ids of
-    /// `container_indicators` in `rules/security.yaml`: each once, in the order
-    /// they were met. `file.signals` and `file.max_severity` have the signals
-    /// they make, for the rules that list them. The security stage will make
-    /// the signals itself from these ids, and take over.
+    /// `container_indicators` in `rules/security.yaml`, each once. The order is
+    /// fixed: those that reading the container raised, in the order it raised
+    /// them (macro sheets, then a VBA project in a package declared without
+    /// macros), then `sec.suspicious-archive`, then `sec.source-missing`, which
+    /// are judged once the whole file is read. `file.signals` and
+    /// `file.max_severity` have the signals they make, for the rules that list
+    /// them. The security stage will make the signals itself from these ids,
+    /// and take over.
     pub indicators: Vec<&'static str>,
 }
 
@@ -220,7 +224,7 @@ struct Reading {
     xlm: Option<Xlm>,
     /// `None` when the workbook was not read.
     workbook_encrypted: Option<bool>,
-    /// The indicators raised while reading, each once, in the order met.
+    /// The indicators raised so far, each once, in the order raised.
     indicators: Vec<&'static str>,
     /// In the order they were met: the status of the file is that of the
     /// first.
@@ -274,11 +278,16 @@ impl Reading {
                 self.workbook_encrypted = Some(info.file_pass);
                 self.xlm = info.macro_sheets.map(xlm_of);
                 if self.xlm.as_ref().is_some_and(|xlm| xlm.present) {
-                    self.raise(indicators::XLM_MACROSHEET);
+                    self.raise(XLM_MACROSHEET);
                 }
             }
             Err(error) => self.failures.push(error.into()),
         }
+    }
+
+    /// Whether a module of the project may have lost its source.
+    fn has_source_missing(&self) -> bool {
+        (self.project.as_ref()).is_some_and(Project::has_source_missing)
     }
 
     /// The status of the file: that of the first failure if there is one.
@@ -291,11 +300,9 @@ impl Reading {
         if let Some(failure) = self.failures.first() {
             return failure.status;
         }
-        let project = self.project.as_ref();
-        let code = project.is_some_and(Project::has_code);
-        let hidden = project.is_some_and(Project::has_source_missing);
+        let code = (self.project.as_ref()).is_some_and(Project::has_code);
         let sheets = self.xlm.as_ref().is_some_and(|xlm| xlm.present);
-        if code || hidden || sheets || self.workbook_encrypted == Some(true) {
+        if code || self.has_source_missing() || sheets || self.workbook_encrypted == Some(true) {
             Status::Ok
         } else {
             Status::NoMacros
@@ -316,11 +323,7 @@ impl Reading {
         if (self.failures.iter()).any(|failure| failure.status == Status::SuspiciousArchive) {
             self.raise(indicators::SUSPICIOUS_ARCHIVE);
         }
-        if self
-            .project
-            .as_ref()
-            .is_some_and(Project::has_source_missing)
-        {
+        if self.has_source_missing() {
             self.raise(indicators::SOURCE_MISSING);
         }
         let signals = indicators::signals(rules, &self.indicators);

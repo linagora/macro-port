@@ -3,16 +3,16 @@
 //! `rules/security.yaml`): their ids, and the file-scope signals they make in
 //! a report.
 //!
+//! The container layer has the ids of macro sheets and of a VBA project in a
+//! package declared without macros (`OoxmlPackage::indicators`,
+//! `container::XLM_MACROSHEET`). The two below are judged on the whole file.
+//!
 //! The ids stay apart from the report, in `Extraction::indicators`: the
 //! security engine of M3 turns them into signals, once each, and takes the
 //! place of [`signals`] when it is wired in.
 
 use crate::report::Signal;
 use crate::rules::{RuleSet, Severity};
-
-/// Excel 4.0 macro sheets in a workbook. A package raises it through
-/// `OoxmlPackage::indicators`, which spells the same id.
-pub(super) const XLM_MACROSHEET: &str = "sec.xlm-macrosheet";
 
 /// A failure with the status `suspicious_archive`: a compression anomaly.
 pub(super) const SUSPICIOUS_ARCHIVE: &str = "sec.suspicious-archive";
@@ -45,6 +45,8 @@ pub(super) fn max_severity(signals: &[Signal]) -> Option<Severity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::container::{OoxmlPackage, XLM_MACROSHEET};
+    use crate::report::Container;
     use crate::rules::RulesSources;
 
     fn shipped_rules() -> RuleSet {
@@ -82,12 +84,16 @@ mod tests {
             .map(|indicator| indicator.id.as_str())
             .collect();
 
-        for id in [
-            SOURCE_MISSING,
-            XLM_MACROSHEET,
-            SUSPICIOUS_ARCHIVE,
-            "sec.vbaproject-in-xlsx",
-        ] {
+        // A package with macro sheets and a VBA project, declared without macros.
+        let package = OoxmlPackage {
+            vba_project: Some(Vec::new()),
+            macro_sheets: 1,
+        };
+        let of_the_container = package.indicators(Container::Xlsx);
+        assert_eq!(of_the_container.len(), 2);
+
+        let raised = of_the_container.into_iter();
+        for id in raised.chain([SOURCE_MISSING, SUSPICIOUS_ARCHIVE]) {
             assert!(listed.contains(&id), "{id}");
         }
     }

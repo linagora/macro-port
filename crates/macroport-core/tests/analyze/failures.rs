@@ -15,13 +15,13 @@ use std::io::{Cursor, Read, Write};
 use cfb::CompoundFile;
 use macroport_core::container::read_ooxml;
 use macroport_core::ovba::{DirModule, MAX_PROJECT_STREAM, parse_compressed_dir};
-use macroport_core::report::{Signal, Status, Xlm};
+use macroport_core::report::{Status, Xlm};
 use macroport_core::rules::Severity;
 use macroport_testkit::corpus;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-use crate::support::{codes, extraction};
+use crate::support::{codes, extraction, file_signal};
 
 type Compound = CompoundFile<Cursor<Vec<u8>>>;
 
@@ -275,13 +275,7 @@ fn a_module_whose_source_was_taken_out_is_suspected_of_having_lost_it() {
         ]);
         assert_eq!(suspected, expected, "{path}");
         assert_eq!(extraction.indicators, ["sec.source-missing"], "{path}");
-        let signal = Signal {
-            signal_id: "sec.source-missing".to_owned(),
-            severity: Severity::High,
-            module: None,
-            procedure: None,
-            evidence: None,
-        };
+        let signal = file_signal("sec.source-missing", Severity::High);
         assert_eq!(report.signals, Some(vec![signal]), "{path}");
         assert_eq!(report.max_severity, Some(Severity::High), "{path}");
     }

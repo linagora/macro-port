@@ -99,9 +99,9 @@ pub(super) fn read(
     let mut modules = Vec::new();
     let mut sources = Vec::new();
     for module in &info.modules {
-        let source = allowance
-            .read(|max_source| read_source(&mut storage, module, info.code_page, max_source));
-        let source = match source {
+        let outcome = allowance
+            .read_next(|max_source| read_source(&mut storage, module, info.code_page, max_source));
+        let source = match outcome {
             Ok(source) => Some(source),
             Err(failure) => {
                 failures.push(failure.in_module(&module.name));
@@ -171,14 +171,14 @@ impl Allowance {
         }
     }
 
-    /// Reads the next source with `read`, which is handed the most bytes that
+    /// Reads the next source with `fetch`, which is handed the most bytes that
     /// the source may decompress to: a third of what is left, as decoding can
     /// triple a source, and at most [`MAX_MODULE_SOURCE`]. Nothing is read
     /// once the project has taken its share, or after a module that was
     /// suspicious.
-    fn read(
+    fn read_next(
         &mut self,
-        read: impl FnOnce(usize) -> Result<String, Failure>,
+        fetch: impl FnOnce(usize) -> Result<String, Failure>,
     ) -> Result<String, Failure> {
         if self.stopped {
             return Err(Failure::new(
@@ -195,7 +195,7 @@ impl Allowance {
                 format!("the sources of the project take more than {MAX_PROJECT_SOURCE} bytes"),
             ));
         }
-        let source = read(max_source);
+        let source = fetch(max_source);
         match &source {
             Ok(source) => self.left = self.left.saturating_sub(source.len()),
             Err(failure) => self.stopped |= failure.status == Status::SuspiciousArchive,
@@ -235,8 +235,7 @@ fn read_source(
 /// module of declarations only. Until M2 parses the procedures, any code makes
 /// a project `ok`.
 fn holds_code(source: &str) -> bool {
-    source.lines().any(|line| {
-        let word = line.split_whitespace().next().unwrap_or_default();
+    first_words(source).any(|word| {
         let described = ["rem", "attribute", "option"]
             .iter()
             .any(|keyword| word.eq_ignore_ascii_case(keyword));
@@ -245,14 +244,17 @@ fn holds_code(source: &str) -> bool {
 }
 
 /// Whether a module has lost its source, as VBA stomping does (SPEC M1 step 8):
-/// its `source` is empty, or holds `Attribute` lines only, while its compiled
-/// part, the `compiled` bytes before its `TextOffset`, is not trivial.
+/// its `source` is empty, or holds blank lines and `Attribute` lines only,
+/// while its compiled part, the `compiled` bytes before its `TextOffset`, is
+/// not trivial.
 fn source_missing(compiled: u32, source: &str) -> bool {
-    let only_attributes = source.lines().all(|line| {
-        let word = line.split_whitespace().next().unwrap_or_default();
-        word.is_empty() || word.eq_ignore_ascii_case("attribute")
-    });
-    compiled > TRIVIAL_COMPILED_PART && only_attributes
+    compiled > TRIVIAL_COMPILED_PART
+        && first_words(source).all(|word| word.is_empty() || word.eq_ignore_ascii_case("attribute"))
+}
+
+/// The first word of each line of `source`: empty for a blank line.
+fn first_words(source: &str) -> impl Iterator<Item = &str> {
+    (source.lines()).map(|line| line.split_whitespace().next().unwrap_or_default())
 }
 
 /// The report of a module whose source is `source`, or could not be read. Its
@@ -297,7 +299,7 @@ mod tests {
         };
 
         let mut allowance = Allowance::new();
-        assert!(allowance.read(read_four_bytes).is_ok());
+        assert!(allowance.read_next(read_four_bytes).is_ok());
         assert_eq!(
             (handed.get(), allowance.left),
             (MAX_MODULE_SOURCE, MAX_PROJECT_SOURCE - 4)
@@ -307,7 +309,7 @@ mod tests {
             left: 10,
             stopped: false,
         };
-        assert!(allowance.read(read_four_bytes).is_ok());
+        assert!(allowance.read_next(read_four_bytes).is_ok());
         assert_eq!((handed.get(), allowance.left), (3, 6));
     }
 
@@ -319,7 +321,7 @@ mod tests {
             stopped: false,
         };
 
-        let outcome = allowance.read(|_| {
+        let outcome = allowance.read_next(|_| {
             reads.set(reads.get().saturating_add(1));
             Ok(String::new())
         });
@@ -332,22 +334,33 @@ mod tests {
     #[test]
     fn a_suspicious_module_stops_the_reading_and_another_failure_does_not() {
         let reads = Cell::new(0_u32);
-        let read_next = |allowance: &mut Allowance, status| {
-            allowance.read(|_| {
+        let fail_with = |allowance: &mut Allowance, status| {
+            allowance.read_next(|_| {
                 reads.set(reads.get().saturating_add(1));
                 Err(failure(status))
             })
         };
         let mut allowance = Allowance::new();
 
-        assert!(read_next(&mut allowance, Status::Corrupted).is_err());
-        assert!(read_next(&mut allowance, Status::SuspiciousArchive).is_err());
-        let skipped = read_next(&mut allowance, Status::Corrupted).err();
+        let failures = [
+            Status::Corrupted,
+            Status::SuspiciousArchive,
+            Status::Corrupted,
+        ]
+        .map(|status| fail_with(&mut allowance, status).expect_err("a failure"));
 
+        // Two reads happen, and each failure is that of its read. The third
+        // module is not read: the one before it was suspicious.
         assert_eq!(reads.get(), 2);
-        let skipped = skipped.expect("a failure");
-        assert_eq!(skipped.status, Status::SuspiciousArchive);
-        assert_eq!(skipped.error.code, "ovba.module.not_read");
+        let found = failures
+            .each_ref()
+            .map(|failure| (failure.status, failure.error.code.as_str()));
+        let expected = [
+            (Status::Corrupted, "ovba.test"),
+            (Status::SuspiciousArchive, "ovba.test"),
+            (Status::SuspiciousArchive, "ovba.module.not_read"),
+        ];
+        assert_eq!(found, expected);
     }
 
     #[test]
