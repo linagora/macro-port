@@ -84,19 +84,30 @@ fn a_name_is_given_without_its_brackets_or_its_type_character() {
 
 #[test]
 fn the_parameters_of_a_header_are_counted() {
-    let text = "Sub A()\nEnd Sub\nSub B\nEnd Sub\nSub C(x)\nEnd Sub\n\
-                Function D(ByVal a As Long, Optional b As String = \"x,y\", ParamArray c() As Variant) As Long\n\
-                End Function\nSub E(a As Long, _\n    b As Long)\nEnd Sub\n\
-                Property Let F(Optional ByVal i As Long = -1, v)\nEnd Property\n\
-                Sub G(a() As Long, ByRef b() As String, )\nEnd Sub\nSub (a, b)\nEnd Sub\n\
-                Sub H(a, b\nEnd Sub\n";
-    let module = module_of(text);
-    let counts: Vec<_> = module
-        .procedures
-        .iter()
-        .map(|p| p.parameter_count)
-        .collect();
-    assert_eq!(counts, [0, 0, 1, 3, 2, 2, 2, 0, 2]);
+    // Each header stands alone: the End it lacks changes nothing to its count.
+    let headers = [
+        ("Sub A()", 0),
+        ("Sub B", 0),
+        ("Sub C(x)", 1),
+        (
+            "Function D(ByVal a As Long, Optional b As String = \"x,y\", ParamArray c() As Variant) As Long",
+            3,
+        ),
+        ("Sub E(a As Long, _\n    b As Long)", 2),
+        ("Property Let F(Optional ByVal i As Long = -1, v)", 2),
+        ("Sub G(a() As Long, ByRef b() As String, )", 2),
+        ("Sub (a, b)", 0),
+        ("Sub H(a, b", 2),
+    ];
+    for (header, count) in headers {
+        let module = module_of(header);
+        let found: Vec<_> = module
+            .procedures
+            .iter()
+            .map(|p| p.parameter_count)
+            .collect();
+        assert_eq!(found, [count], "{header:?}");
+    }
 }
 
 #[test]
@@ -152,8 +163,13 @@ fn a_procedure_without_an_end_is_closed_by_the_end_of_the_module() {
         panic!("{module:?}");
     };
     assert_eq!((a.start_line, a.end_line, a.lines.clone()), (1, 2, 0..2));
-    assert_eq!(a.recoveries.len(), 1);
-    assert_eq!(a.recoveries[0].kind, RecoveryKind::MissingEnd);
+    assert_eq!(
+        a.recoveries,
+        [Recovery {
+            line: 1,
+            kind: RecoveryKind::MissingEnd
+        }]
+    );
 }
 
 #[test]
@@ -168,18 +184,15 @@ fn an_end_of_another_kind_closes_the_procedure_and_is_recovered() {
             ("F", Function, 5, 6)
         ]
     );
-    let lines: Vec<_> = module
-        .procedures
-        .iter()
-        .map(|p| p.recoveries.clone())
-        .collect();
-    for (recoveries, line) in lines.iter().zip([2, 4, 6]) {
+    for (procedure, line) in module.procedures.iter().zip([2, 4, 6]) {
         assert_eq!(
-            recoveries,
-            &[Recovery {
+            procedure.recoveries,
+            [Recovery {
                 line,
                 kind: RecoveryKind::WrongEnd
-            }]
+            }],
+            "{}",
+            procedure.name
         );
     }
 }
@@ -216,9 +229,9 @@ fn statements_that_look_like_headers_are_not_headers() {
 
 #[test]
 fn the_recoveries_of_a_module_are_capped() {
-    let text = "End Sub\n".repeat(MAX_RECOVERIES * 3);
-    let module = module_of(&text);
+    let module = module_of(&"End Sub\n".repeat(MAX_RECOVERIES * 3));
     assert!(module.procedures.is_empty());
-    assert_eq!(module.recoveries.len(), MAX_RECOVERIES);
-    assert_eq!(module.recoveries[0].line, 1);
+    // The first ones are the ones kept.
+    let lines: Vec<_> = module.recoveries.iter().map(|r| r.line).collect();
+    assert_eq!(lines, (1u32..).take(MAX_RECOVERIES).collect::<Vec<_>>());
 }
