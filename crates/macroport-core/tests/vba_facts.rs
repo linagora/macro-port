@@ -499,7 +499,7 @@ fn a_long_object_is_not_copied_into_every_statement_of_a_long_block() {
 }
 
 #[test]
-fn a_nested_block_continues_what_the_allowance_let_through() {
+fn a_nested_block_keeps_the_end_of_the_chain_when_the_allowance_falls_short() {
     // The allowance falls short for the second statement and the nested
     // `With`: its object is the end of the real chain, and so is what it holds.
     let object = ["aaaaaaaaaa"; 90].join(".");
@@ -507,6 +507,33 @@ fn a_nested_block_continues_what_the_allowance_let_through() {
     let read = block_chains(&format!("With {object}\n{inside}End With\n"));
     assert_eq!(read[1], format!("{object}.x.y"));
     assert_eq!(read[2..=4], ["x.y", "", "z.u.v"]);
+}
+
+#[test]
+fn a_long_statement_does_not_bank_copies_for_the_next_ones() {
+    // Ninety-seven names of ten letters weigh 4,074. The string of 100,000
+    // bytes earns 400,000, and the statement after it, with 200 dots, copies
+    // the object as many times as the 16 KiB it may carry and its own text
+    // allow: five, not a hundred.
+    let object = ["aaaaaaaaaa"; 97].join(".");
+    let string = format!("x = \"{}\"", "a".repeat(100_000));
+    let dots = format!("y = {}", [".a"; 200].join(" + "));
+    let read = block(&format!("With {object}\n{string}\n{dots}\n"));
+    // A dot that gets no object makes a chain of one name, which is not listed.
+    assert_eq!(read[2].chains.len(), 5);
+}
+
+#[test]
+fn a_with_after_the_then_or_the_else_of_a_single_line_if_opens_a_block() {
+    for opener in [
+        "If c Then With b",
+        "If c Then x = 1 Else With b",
+        "ElseIf c Then With b",
+    ] {
+        let source = format!("With a\n{opener}: .x.y = 1: End With\n.z.w = 1\nEnd With\n");
+        let expected = ["", "", "b.x.y", "", "a.z.w", ""];
+        assert_eq!(block_chains(&source), expected, "{opener}");
+    }
 }
 
 #[test]

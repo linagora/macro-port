@@ -20,8 +20,8 @@
 //! left out. A dot continues the chain when it touches the name before it or
 //! opens a continued line (`a.b`, `a _` then `.b`); after a space it starts an
 //! operand of its own, a member of the `With` object (`list.Add .Name`). A
-//! chain that starts with a dot inside a `With` block continues the object of
-//! the block, which the caller hands to the reader.
+//! chain that starts with a dot (or a bang) inside a `With` block continues the
+//! object of the block, which the caller hands to the reader.
 //!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
@@ -170,6 +170,29 @@ fn declares(tokens: &[Token]) -> bool {
     }
 }
 
+/// Where the last statement of the logical line `tokens` starts: at the first
+/// token, or after the last `Then` or `Else` of a single-line `If` (`If a Then
+/// With b`).
+pub(super) fn statement_start(tokens: &[Token]) -> usize {
+    let separator = tokens.iter().rposition(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Keyword(Keyword::Then | Keyword::Else)
+        )
+    });
+    separator.map_or(0, |index| index.saturating_add(1))
+}
+
+/// Where the object of the `With` block that the statement `tokens` opens
+/// would start, if it opens one.
+fn block_object_start(tokens: &[Token]) -> Option<usize> {
+    let head = statement_start(tokens);
+    let opens = tokens
+        .get(head)
+        .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::With));
+    opens.then(|| head.saturating_add(1))
+}
+
 /// The facts `found`, each with the index of the token it was found at, in
 /// the order of the source.
 fn in_order<T>(mut found: Vec<(usize, T)>) -> Vec<T> {
@@ -196,7 +219,7 @@ struct Chain {
 
 /// What a name weighs in memory beyond its bytes: the header of its `String`
 /// (24 bytes) and the share of the allocator. A copy of a name of one letter
-/// takes some forty bytes, not one.
+/// takes thirty to forty bytes, not one.
 const NAME_OVERHEAD: usize = 32;
 
 /// The most that the object of a `With` block may weigh for the reader to keep
@@ -282,15 +305,16 @@ pub(super) struct Reader<'a> {
     calls: Vec<(usize, CallSite)>,
     /// The chains found, by the index of their first token.
     chains: Vec<(usize, Vec<String>)>,
-    /// The innermost `With` block that the statement lies in, if its object is
-    /// known.
+    /// The innermost `With` block that the statement lies in, if the caller
+    /// follows one. Its object has no names when it is unknown.
     enclosing: Option<Enclosing<'a>>,
     /// The indices of the dots and bangs that open a line continued from the
     /// one before, in order: they continue the chain before them, as a dot
     /// after a space does not.
     continued: &'a [usize],
-    /// Whether the statement opens a `With` block.
-    opens_block: bool,
+    /// Where the object of the `With` block that the statement opens would
+    /// start, if it opens one.
+    object_start: Option<usize>,
     /// The object that the statement opens a block on, if it is a chain of
     /// names and nothing else.
     opened: Option<WithObject>,
@@ -315,15 +339,13 @@ impl<'a> Reader<'a> {
             chains: Vec::new(),
             enclosing: None,
             continued: &[],
-            opens_block: tokens
-                .first()
-                .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::With)),
+            object_start: block_object_start(tokens),
             opened: None,
         }
     }
 
-    /// The same reader, inside the `With` block `enclosing`, if it has a known
-    /// object.
+    /// The same reader, inside the `With` block `enclosing`, if the caller
+    /// follows one. The object of a block has no names when it is unknown.
     pub(super) fn within(mut self, enclosing: Option<Enclosing<'a>>) -> Self {
         self.enclosing = enclosing;
         self
@@ -766,22 +788,25 @@ impl<'a> Reader<'a> {
         else {
             return false;
         };
-        let touches = at
-            .checked_sub(1)
-            .and_then(|before| self.tokens.get(before))
+        let touches = self
+            .token_before(at)
             .is_some_and(|before| before.end == dot.start);
         touches || self.continued.binary_search(&at).is_ok()
     }
 
-    /// The names that a chain starting with a dot at the token `at` continues:
-    /// the object of the `With` block that the statement lies in. Empty when a
-    /// `)` lies before the dot, which continues what the parenthesis closed,
-    /// when the block has no known object, and when the allowance for copying
-    /// it falls short.
+    /// The token before the one at `at`.
+    fn token_before(&self, at: usize) -> Option<&'a Token> {
+        at.checked_sub(1).and_then(|before| self.tokens.get(before))
+    }
+
+    /// The names that a chain starting with a dot (or a bang) at the token
+    /// `at` continues: the object of the `With` block that the statement lies
+    /// in. Empty when a `)` lies before the dot, which continues what the
+    /// parenthesis closed, when the block has no known object, and when the
+    /// allowance for copying it falls short.
     fn object_of_block(&mut self, at: usize) -> Vec<String> {
-        let after_group = at
-            .checked_sub(1)
-            .and_then(|before| self.tokens.get(before))
+        let after_group = self
+            .token_before(at)
             .is_some_and(|token| token.kind == TokenKind::RightParen);
         match &mut self.enclosing {
             Some(enclosing) if !after_group => enclosing.object.copy(enclosing.allowance),
@@ -793,7 +818,7 @@ impl<'a> Reader<'a> {
     /// first. It is the object of the block that the statement opens if it is
     /// the whole of the expression after the `With`.
     fn end_chain(&mut self, chain: Chain) {
-        if self.opens_block && chain.start == 1 && self.at_end() {
+        if self.object_start == Some(chain.start) && self.at_end() {
             self.opened = WithObject::new(&chain.elements);
         }
         if chain.elements.len() > chain.inherited.max(1) {
