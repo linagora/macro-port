@@ -1,4 +1,4 @@
-# Invalid: a file level and a trait name metrics that metric_definitions does not define.
+# Invalid: the metric that the report writes as `cyclomatic` is still called max_cyclomatic, in a file level, in the definitions and in a trait, as in version 0.1.0 of the shipped rules. Otherwise valid-minimal.yaml.
 version: 0.1.0
 
 file_levels:
@@ -12,7 +12,7 @@ file_levels:
 
 metric_definitions:
   logical_loc: "Non-blank, non-comment lines, after joining line continuations."
-  forms: "Number of UserForm modules."
+  max_cyclomatic: "Highest per-procedure cyclomatic complexity."
 
 traits:
   - { id: recorded_macro, description: "Typical of the macro recorder.",
@@ -22,7 +22,7 @@ traits:
             { match: ratio, of: [Select, ActiveCell], per_logical_loc_gte: 0.3 }] }
   - { id: trivial, description: "At most 3 logical lines.",
       label: { en: "Trivial", fr: "Trivial" },
-      all: [{ metric: loc, lte: 3 }] }
+      all: [{ metric: logical_loc, lte: 3 }, { metric: max_cyclomatic, lte: 3 }] }
   - { id: possibly_unused, description: "Never referenced from the project.",
       label: { en: "Possibly unused", fr: "Possiblement inutilisée" },
       structural: possibly_unused }
