@@ -54,6 +54,25 @@ impl Format {
     pub const ALL: [Self; 3] = [Self::Json, Self::Html, Self::Csv];
 }
 
+/// A kind of report that `file` prints: one document, so no CSV.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum FileFormat {
+    /// The report that the schema describes, for the one file.
+    #[default]
+    Json,
+    /// One page that holds its data and its style.
+    Html,
+}
+
+impl From<FileFormat> for Format {
+    fn from(format: FileFormat) -> Self {
+        match format {
+            FileFormat::Json => Self::Json,
+            FileFormat::Html => Self::Html,
+        }
+    }
+}
+
 /// How a command analyses the files it is given.
 #[derive(Debug, Clone, Args)]
 pub struct AnalysisArgs {
@@ -101,6 +120,16 @@ pub fn existing_path(value: &str) -> Result<PathBuf, String> {
     match fs::metadata(&path) {
         Ok(metadata) if metadata.is_file() || metadata.is_dir() => Ok(path),
         Ok(_) => Err("neither a file nor a directory".to_owned()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// A path that exists and is a file.
+pub fn existing_file(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    match fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => Ok(path),
+        Ok(_) => Err("not a file".to_owned()),
         Err(error) => Err(error.to_string()),
     }
 }

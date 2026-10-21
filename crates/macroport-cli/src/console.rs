@@ -19,6 +19,23 @@ pub fn say_on_stdout(line: &str) {
     let _ = writeln!(io::stdout().lock(), "{line}");
 }
 
+/// Writes `bytes` on stdout, as they are: the output of a command whose result
+/// is the document, where a write that fails is an error to report.
+///
+/// A reader that went away (`macro-port schema | head`) is not one: it
+/// stopped asking for the document, and the write ends without a word.
+///
+/// # Errors
+///
+/// When stdout cannot be written, for another reason than a closed pipe.
+pub fn write_on_stdout(bytes: &[u8]) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    match stdout.write_all(bytes).and_then(|()| stdout.flush()) {
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        written => written,
+    }
+}
+
 /// Makes a panic print `label` and the place where it happened, and nothing
 /// else.
 ///
