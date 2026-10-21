@@ -14,7 +14,7 @@ use std::io::{Cursor, Read, Write};
 
 use cfb::CompoundFile;
 use macroport_core::analyze::{Options, analyze};
-use macroport_core::container::read_ooxml;
+use macroport_core::container::{MAX_STREAM_SIZE, read_ooxml};
 use macroport_core::ovba::{DirModule, MAX_PROJECT_STREAM, parse_compressed_dir};
 use macroport_core::report::{Status, Xlm};
 use macroport_core::rules::Severity;
@@ -216,6 +216,121 @@ fn the_modules_that_break_after_much_output_take_the_budget_of_the_project() {
     ];
     assert_eq!(codes(report), expected);
     assert_eq!(extraction.indicators, ["sec.suspicious-archive"]);
+}
+
+/// A `dir` stream of `count` procedural modules, `M0`, `M1` and so on, that all
+/// have the stream `stream` and no compiled part. It is compressed the way a
+/// stream can be without a compressor: in raw chunks.
+fn dir_of_modules_with_one_stream(count: usize, stream: &str) -> Vec<u8> {
+    const MODULE_NAME: u16 = 0x0019;
+    const MODULE_STREAM_NAME: u16 = 0x001A;
+    const MODULE_OFFSET: u16 = 0x0031;
+    const MODULE_PROCEDURAL: u16 = 0x0021;
+    const MODULE_TERMINATOR: u16 = 0x002B;
+    const TERMINATOR: u16 = 0x0010;
+    let record = |id: u16, data: &[u8]| {
+        let size = u32::try_from(data.len()).expect("a short record");
+        [id.to_le_bytes().as_slice(), &size.to_le_bytes(), data].concat()
+    };
+    let mut records = Vec::new();
+    for index in 0..count {
+        records.extend(record(MODULE_NAME, format!("M{index}").as_bytes()));
+        records.extend(record(MODULE_STREAM_NAME, stream.as_bytes()));
+        records.extend(record(MODULE_OFFSET, &0_u32.to_le_bytes()));
+        records.extend(record(MODULE_PROCEDURAL, b""));
+        records.extend(record(MODULE_TERMINATOR, b""));
+    }
+    records.extend(record(TERMINATOR, b""));
+
+    let mut container = vec![0x01];
+    for chunk in records.chunks(4096) {
+        container.extend([0xFF, 0x3F]);
+        container.extend_from_slice(chunk);
+        container.resize(container.len() + 4096 - chunk.len(), 0);
+    }
+    container
+}
+
+/// `bytes`, a compound file of 512-byte sectors, in which the directory says
+/// that the stream `name` is `len` bytes long. The sectors are left as they are.
+fn claiming(mut bytes: Vec<u8>, name: &str, len: u64) -> Vec<u8> {
+    // A directory entry takes 128 bytes, from a multiple of 128: its name, in
+    // UTF-16 with a null at the end, in the first 64, the length of that name
+    // in bytes at 64, and the size of the stream at 120.
+    let name: Vec<u8> = (name.encode_utf16().chain([0]))
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let name_len = u16::try_from(name.len())
+        .expect("a short name")
+        .to_le_bytes();
+    let entries: Vec<usize> = (bytes.as_chunks::<128>().0.iter().enumerate())
+        .filter(|(_, entry)| entry.starts_with(&name) && entry.get(64..66) == Some(&name_len[..]))
+        .map(|(index, _)| index * 128)
+        .collect();
+    assert_eq!(entries.len(), 1, "one entry has the name of the stream");
+    let size_at = entries.first().expect("an entry") + 120;
+    let size = bytes.get_mut(size_at..size_at + 8).expect("a size");
+    size.copy_from_slice(&len.to_le_bytes());
+    bytes
+}
+
+/// The `.xls` of the workbook, with a project of `count` modules that all name
+/// one stream. The stream holds 5,000 bytes, and the directory says that it
+/// holds `claimed`.
+fn workbook_with_modules_on_one_stream(count: usize, claimed: u64) -> Vec<u8> {
+    const STREAM: &str = "M_01_01";
+    let workbook = workbook(|c| {
+        let dir = dir_of_modules_with_one_stream(count, STREAM);
+        replace_stream(c, "/_VBA_PROJECT_CUR/VBA/dir", &dir);
+        replace_stream(c, &format!("/_VBA_PROJECT_CUR/VBA/{STREAM}"), &[b' '; 5000]);
+    });
+    claiming(workbook, STREAM, claimed)
+}
+
+#[test]
+fn the_reads_of_a_stream_that_many_modules_name_stop_at_the_limit_of_the_project() {
+    // Every module names the same stream. The directory says that it is 64 MiB,
+    // the longest that is read, and its chain holds 5,000 bytes, so each read
+    // fails after a small copy. The reads are counted at what the directory
+    // says: three make 192 MiB, under the limit of 200 MiB, and the fourth
+    // would make 256 MiB. Counted at what they copy, they would never add up
+    // to the limit.
+    let xls = workbook_with_modules_on_one_stream(6, MAX_STREAM_SIZE);
+
+    let extraction = extraction(&xls, "a.xls");
+
+    let report = &extraction.file;
+    let expected = [
+        "cfb.truncated",
+        "cfb.truncated",
+        "cfb.truncated",
+        "ovba.project.streams_too_large",
+        "ovba.module.not_read",
+        "ovba.module.not_read",
+    ];
+    assert_eq!(codes(report), expected);
+    // The status is that of the first failure. The suspicious one is the
+    // project's, and is raised all the same.
+    assert_eq!(report.status, Status::Corrupted);
+    assert_eq!(extraction.indicators, ["sec.suspicious-archive"]);
+    let project = report.vba_project.as_ref().expect("a described project");
+    assert_eq!(project.modules.len(), 6);
+    assert!(extraction.sources.iter().all(Option::is_none));
+}
+
+#[test]
+fn a_stream_above_the_size_limit_is_refused_by_the_container_and_costs_the_project_nothing() {
+    // The container refuses these streams before it reads a byte, and says
+    // `too_large`. Were they counted, the fourth would make the project
+    // suspicious instead.
+    let xls = workbook_with_modules_on_one_stream(6, MAX_STREAM_SIZE + 1);
+
+    let extraction = extraction(&xls, "a.xls");
+
+    let report = &extraction.file;
+    assert_eq!(codes(report), ["cfb.stream_too_large"; 6]);
+    assert_eq!(report.status, Status::TooLarge);
+    assert!(extraction.indicators.is_empty());
 }
 
 #[test]

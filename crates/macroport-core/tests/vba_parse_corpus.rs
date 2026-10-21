@@ -321,72 +321,208 @@ fn the_parameters_of_every_header_that_fits_a_line_are_counted_as_by_hand() {
     assert!(checked > 1150, "{checked}");
 }
 
+/// A sample with an error on purpose (ACCEPTANCE A2), as found by hand in its
+/// text.
+struct Deliberate {
+    /// Its path in `corpus/families`.
+    path: &'static str,
+    /// The name, the kind, the first and the last line of each procedure.
+    procedures: &'static [(&'static str, ProcedureKind, u32, u32)],
+    /// The procedures in which the parser steps over something.
+    recovered: &'static [&'static str],
+    /// The declarations outside the procedures, in the words of [`describe`],
+    /// and their lines. The `Dim` of a procedure declares nothing at module
+    /// level.
+    declarations: &'static [(&'static str, u32)],
+}
+
+/// The seven samples. The parser steps over a statement it cannot read: the
+/// line of prose in 01-06 and 06-02, which the manifests call a syntax error,
+/// and the continuation line of 05-04 that lost its `_`. The three samples
+/// whose error is one of logic (02-04, 08-05) or has none to be seen in a
+/// statement (08-04), and 09-03, whose extra `Else` and `End If` are blocks
+/// that `measure_procedure` counts, read like any other.
+const DELIBERATE_ERRORS: [Deliberate; 7] = [
+    Deliberate {
+        path: "01-mise-en-forme/01-06-edit-table-report.bas",
+        procedures: &[
+            ("editTable", Sub, 11, 86),
+            ("SelectFirstEmptyRowInColumn", Function, 88, 93),
+            ("AutoSumColumnAF", Sub, 94, 107),
+            ("changeProperties", Sub, 108, 167),
+            ("removeHeaderSpace", Sub, 169, 188),
+            ("removeProductCodeSpace", Sub, 190, 209),
+            ("SaveAsToFolderPath", Sub, 211, 230),
+        ],
+        recovered: &["editTable"],
+        declarations: &[("option explicit", 8), ("variable", 9)],
+    },
+    Deliberate {
+        path: "02-consolidation/02-04-consolidating-workbooks-filedialog.bas",
+        procedures: &[("ConsolidatingMultipleWb", Sub, 9, 71)],
+        recovered: &[],
+        declarations: &[("option explicit", 8)],
+    },
+    Deliberate {
+        path: "05-formulaires-saisie/05-04-formulaire-commercial-region.bas",
+        procedures: &[
+            ("cmdCancel_Click", Sub, 13, 16),
+            ("cmdOK_Click", Sub, 18, 24),
+            ("UserForm_Initialize", Sub, 26, 28),
+            ("LaunchSalesPersonForm", Sub, 31, 40),
+        ],
+        recovered: &["LaunchSalesPersonForm"],
+        declarations: &[("variable", 8), ("variable", 9), ("variable", 10)],
+    },
+    Deliberate {
+        path: "06-generation-rapports/06-02-mise-en-page-impression-rapport.bas",
+        procedures: &[
+            ("editReportNew", Sub, 9, 75),
+            ("editingProperties", Sub, 77, 117),
+        ],
+        recovered: &["editReportNew"],
+        declarations: &[("option explicit", 8)],
+    },
+    Deliberate {
+        path: "08-fonctions-personnalisees/08-04-udf-somme-cellules-visibles.bas",
+        procedures: &[("SumOnlyVisible", Function, 7, 19)],
+        recovered: &[],
+        declarations: &[],
+    },
+    Deliberate {
+        path: "08-fonctions-personnalisees/08-05-udf-montant-en-lettres.bas",
+        procedures: &[("spellNumberAsCurrency", Function, 17, 99)],
+        recovered: &[],
+        declarations: &[],
+    },
+    Deliberate {
+        path: "09-evenements/09-03-horodatage-statut.cls",
+        procedures: &[("Worksheet_Change", Sub, 9, 32)],
+        recovered: &[],
+        declarations: &[],
+    },
+];
+
 #[test]
-fn the_deliberate_compile_errors_are_read_like_the_other_samples() {
-    // The headers and the ends of the samples that hold an error on purpose
-    // (ACCEPTANCE A2), found by hand in the text of each, and whether the
-    // parser steps over something in the sample. It does in none of them yet:
-    // it reads no body so far.
-    type Span = (&'static str, ProcedureKind, u32, u32);
-    let expected: [(&str, bool, &[Span]); 7] = [
-        (
-            "01-mise-en-forme/01-06-edit-table-report.bas",
-            false,
-            &[
-                ("editTable", Sub, 11, 86),
-                ("SelectFirstEmptyRowInColumn", Function, 88, 93),
-                ("AutoSumColumnAF", Sub, 94, 107),
-                ("changeProperties", Sub, 108, 167),
-                ("removeHeaderSpace", Sub, 169, 188),
-                ("removeProductCodeSpace", Sub, 190, 209),
-                ("SaveAsToFolderPath", Sub, 211, 230),
-            ],
-        ),
-        (
-            "02-consolidation/02-04-consolidating-workbooks-filedialog.bas",
-            false,
-            &[("ConsolidatingMultipleWb", Sub, 9, 71)],
-        ),
-        (
-            "05-formulaires-saisie/05-04-formulaire-commercial-region.bas",
-            false,
-            &[
-                ("cmdCancel_Click", Sub, 13, 16),
-                ("cmdOK_Click", Sub, 18, 24),
-                ("UserForm_Initialize", Sub, 26, 28),
-                ("LaunchSalesPersonForm", Sub, 31, 40),
-            ],
-        ),
-        (
-            "06-generation-rapports/06-02-mise-en-page-impression-rapport.bas",
-            false,
-            &[
-                ("editReportNew", Sub, 9, 75),
-                ("editingProperties", Sub, 77, 117),
-            ],
-        ),
-        (
-            "08-fonctions-personnalisees/08-04-udf-somme-cellules-visibles.bas",
-            false,
-            &[("SumOnlyVisible", Function, 7, 19)],
-        ),
-        (
-            "08-fonctions-personnalisees/08-05-udf-montant-en-lettres.bas",
-            false,
-            &[("spellNumberAsCurrency", Function, 17, 99)],
-        ),
-        (
-            "09-evenements/09-03-horodatage-statut.cls",
-            false,
-            &[("Worksheet_Change", Sub, 9, 32)],
-        ),
-    ];
-    for (path, recovered, procedures) in expected {
-        let path = format!("families/{path}");
+fn a_deliberate_compile_error_never_fails_the_module_and_flags_only_what_cannot_be_read() {
+    for sample in DELIBERATE_ERRORS {
+        let path = format!("families/{}", sample.path);
         let module = module_of(&text_of(&path));
-        assert_eq!(spans(&module), procedures, "{path}");
-        assert_eq!(module.is_recovered(), recovered, "{path}");
+        assert_eq!(spans(&module), sample.procedures, "{path}");
+        let recovered: Vec<_> = module
+            .procedures
+            .iter()
+            .filter(|p| p.is_recovered())
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(recovered, sample.recovered, "{path}");
+        assert!(module.recoveries.is_empty(), "{path}");
+        let declarations: Vec<_> = module
+            .declarations
+            .iter()
+            .map(|d| (describe(&d.kind), d.line))
+            .collect();
+        let expected: Vec<_> = sample
+            .declarations
+            .iter()
+            .map(|&(words, line)| (words.to_owned(), line))
+            .collect();
+        assert_eq!(declarations, expected, "{path}");
     }
+}
+
+/// A statement of the corpus that cannot be read, found by hand.
+struct Unreadable {
+    /// The sample, without its extension, in `corpus/families`.
+    sample: &'static str,
+    /// The procedure that holds the statement.
+    procedure: &'static str,
+    /// Its line in the sample, and in Excel's exports of it.
+    line: u32,
+    exported_line: u32,
+    /// What the line says.
+    says: &'static str,
+}
+
+const UNREADABLE: [Unreadable; 4] = [
+    Unreadable {
+        sample: "01-mise-en-forme/01-06-edit-table-report",
+        procedure: "editTable",
+        line: 13,
+        exported_line: 8,
+        says: "Please note: you need to import ConfigProgressCode module and ProgressDialogue form in order to work",
+    },
+    Unreadable {
+        sample: "05-formulaires-saisie/05-04-formulaire-commercial-region",
+        procedure: "LaunchSalesPersonForm",
+        line: 36,
+        exported_line: 31,
+        says: "MsgBox \"The Salesperson's ID is: \" &",
+    },
+    Unreadable {
+        sample: "06-generation-rapports/06-02-mise-en-page-impression-rapport",
+        procedure: "editReportNew",
+        line: 11,
+        exported_line: 6,
+        says: "Please note: you need to import ConfigProgressCode module and ProgressDialogue form in order to work",
+    },
+    Unreadable {
+        sample: "13-api-windows-activex/13-05-getobject-findwindow-sendmessage",
+        procedure: "GetExcel",
+        line: 43,
+        exported_line: 38,
+        says: "Do manipulations of your  file here.",
+    },
+];
+
+#[test]
+fn the_only_statements_of_the_corpus_that_cannot_be_read_are_the_four_listed() {
+    // In the samples and in the three exports of each, in no other file, and
+    // all in a procedure.
+    let mut found = Vec::new();
+    for (path, text) in modules() {
+        let module = module_of(&text);
+        let in_module = module.recoveries.iter().map(|r| (r, "<module>"));
+        let in_procedures = module
+            .procedures
+            .iter()
+            .flat_map(|p| p.recoveries.iter().map(|r| (r, p.name.as_str())));
+        for (recovery, holder) in in_module.chain(in_procedures) {
+            if recovery.kind == RecoveryKind::Unparseable {
+                found.push(format!("{path}:{}: {holder}", recovery.line));
+            }
+        }
+    }
+    let mut expected = Vec::new();
+    for sample in UNREADABLE {
+        let Unreadable {
+            procedure,
+            line,
+            exported_line,
+            says,
+            ..
+        } = sample;
+        let stem = sample.sample.rsplit('/').next().unwrap_or_default();
+        let sample_path = format!("families/{}.bas", sample.sample);
+        let exports = ["xls", "xlsb", "xlsm"]
+            .map(|format| format!("fixtures/generated/{stem}.{format}.expected.bas"));
+        expected.push(format!("{sample_path}:{line}: {procedure}"));
+        for export in &exports {
+            expected.push(format!("{export}:{exported_line}: {procedure}"));
+        }
+        // The line is the one of the statement, in the sample and in the exports.
+        for (path, at) in
+            std::iter::once((&sample_path, line)).chain(exports.iter().map(|e| (e, exported_line)))
+        {
+            let text = text_of(path);
+            let physical: Vec<&str> = text.lines().collect();
+            let said = physical_line(&physical, at);
+            assert!(said.contains(says), "{path}:{at}: {said}");
+        }
+    }
+    found.sort();
+    expected.sort();
+    assert_eq!(found, expected);
 }
 
 #[test]
@@ -626,52 +762,4 @@ fn the_declare_statements_and_the_variables_with_events_of_the_samples_are_all_f
         samples_with(|kind| matches!(kind, DeclarationKind::WithEvents { .. })),
         ["09-01-ecouteur-evenements-controles.cls: 7"]
     );
-}
-
-#[test]
-fn the_declarations_of_the_deliberate_compile_errors_are_the_ones_outside_the_procedures() {
-    // Found by hand in the text of each (ACCEPTANCE A2): the `Dim` of a
-    // procedure declares nothing at module level.
-    let expected: [(&str, &[(&str, u32)]); 7] = [
-        (
-            "01-mise-en-forme/01-06-edit-table-report.bas",
-            &[("option explicit", 8), ("variable", 9)],
-        ),
-        (
-            "02-consolidation/02-04-consolidating-workbooks-filedialog.bas",
-            &[("option explicit", 8)],
-        ),
-        (
-            "05-formulaires-saisie/05-04-formulaire-commercial-region.bas",
-            &[("variable", 8), ("variable", 9), ("variable", 10)],
-        ),
-        (
-            "06-generation-rapports/06-02-mise-en-page-impression-rapport.bas",
-            &[("option explicit", 8)],
-        ),
-        (
-            "08-fonctions-personnalisees/08-04-udf-somme-cellules-visibles.bas",
-            &[],
-        ),
-        (
-            "08-fonctions-personnalisees/08-05-udf-montant-en-lettres.bas",
-            &[],
-        ),
-        ("09-evenements/09-03-horodatage-statut.cls", &[]),
-    ];
-    for (path, declarations) in expected {
-        let path = format!("families/{path}");
-        let module = module_of(&text_of(&path));
-        let found: Vec<_> = module
-            .declarations
-            .iter()
-            .map(|d| (describe(&d.kind), d.line))
-            .collect();
-        let expected: Vec<_> = declarations
-            .iter()
-            .map(|&(words, line)| (words.to_owned(), line))
-            .collect();
-        assert_eq!(found, expected, "{path}");
-        assert!(module.recoveries.is_empty(), "{path}");
-    }
 }
