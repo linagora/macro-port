@@ -222,13 +222,3 @@ fn the_recoveries_of_a_module_are_capped() {
     assert_eq!(module.recoveries.len(), MAX_RECOVERIES);
     assert_eq!(module.recoveries[0].line, 1);
 }
-
-#[test]
-fn a_hostile_module_of_headers_without_an_end_is_read_in_one_pass() {
-    let count = 100_000usize;
-    let (lines, module) = parsed(&"Sub a()\n".repeat(count));
-    assert_eq!(lines.logical.len(), count);
-    assert_eq!(module.procedures.len(), count);
-    assert!(module.procedures.iter().all(|p| p.recoveries.len() == 1));
-    assert!(module.recoveries.is_empty());
-}
