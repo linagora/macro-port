@@ -138,6 +138,40 @@ fn the_metrics_of_a_module_and_of_its_file_sum_up_the_lines() {
     assert_eq!((metrics.procedures, metrics.forms), (Some(2), Some(2)));
 }
 
+/// A procedure with two parameters and seven decision points: an `If` with an
+/// `And`, a loop, a one-line `If`, an `ElseIf` and two `Case` clauses (`Case
+/// Else` is none). Its blocks nest twice, and it has one `GoTo`.
+const BRANCHING: &str = "\
+Sub Work(a As Long, b As Long)
+    If a > 0 And b > 0 Then
+        For i = 1 To a
+            If i = 2 Then GoTo Done
+        Next i
+    ElseIf a = 0 Then
+        Select Case b
+            Case 1
+                x = 1
+            Case 2, 3
+                x = 2
+            Case Else
+                x = 3
+        End Select
+    End If
+Done:
+End Sub
+";
+
+#[test]
+fn a_procedure_reports_its_complexity_nesting_parameters_and_jumps() {
+    let file = report_of(BRANCHING);
+
+    let work = &module(&file).procedures[0].metrics;
+    assert_eq!(work.cyclomatic, Some(8));
+    assert_eq!(work.max_nesting, Some(2));
+    assert_eq!((work.parameters, work.goto_count), (Some(2), Some(1)));
+    assert_eq!((work.loc, work.logical_loc), (17, 17));
+}
+
 #[test]
 fn the_lines_of_a_module_count_as_the_file_presents_them() {
     let file = report_of(
