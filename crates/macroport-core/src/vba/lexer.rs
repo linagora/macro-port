@@ -11,6 +11,13 @@
 //! [`TokenKind::Unknown`] one. [`tokenize`] is the way in; the lazy reader
 //! behind it stays private.
 //!
+//! Three characters mean something else in another place, and the lexer
+//! settles them from the text around them. `!` is a type character (`n!`) or
+//! reaches a member (`rs!Name`). `#` is a type character (`x#`), the mark of a
+//! file number (`Print #1, x`) or the edge of a date (`#1/2/2000#`). `&` joins
+//! strings (`a & b`), is a type character (`n&`) or starts a hexadecimal or
+//! octal number (`&HFF`).
+//!
 //! [`LogicalLine::line_at`]: super::LogicalLine::line_at
 
 use super::scan::{
@@ -128,7 +135,7 @@ pub enum TokenKind {
     /// the closing quote is missing, which VBA does not accept:
     /// [`Token::string_value`] is `None` for it.
     String,
-    /// A number: `42`, `1.5E3`, `10%`.
+    /// A number: `42`, `1.5E3`, `10%`, or in base 16 or 8: `&HFF`, `&O17`.
     Number,
     /// A date or time literal: `#1/2/2000#`.
     Date,
@@ -199,7 +206,7 @@ pub struct Token {
     pub end: usize,
 }
 
-/// The type-declaration characters of identifiers.
+/// The type-declaration characters that end an identifier or a number.
 const TYPE_CHARACTERS: [char; 6] = ['$', '%', '&', '!', '#', '@'];
 
 impl Token {
@@ -285,8 +292,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Whether the last token ends an operand: a name, a literal or `)`. A
-    /// `.` that follows one reaches a member, and anywhere else it may start
-    /// a number.
+    /// `&` that follows one joins strings, where a `&` that starts an octal
+    /// number needs the place of an operand.
     fn after_operand(&self) -> bool {
         matches!(
             self.last_kind,
@@ -314,9 +321,10 @@ impl<'a> Lexer<'a> {
         )
     }
 
-    /// The kind and the length in bytes of the token that starts `rest`,
-    /// which starts with `c`.
-    fn read(&mut self, c: char, rest: &str) -> (TokenKind, usize) {
+    /// The kind and the length in bytes of the token that starts at byte
+    /// `start` of the text: `rest` is the text from there, and starts with
+    /// `c`.
+    fn read(&mut self, start: usize, c: char, rest: &str) -> (TokenKind, usize) {
         let char_at = |len: usize| rest.get(len..).and_then(|tail| tail.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
@@ -330,15 +338,20 @@ impl<'a> Lexer<'a> {
             },
             _ if is_ident_start(c) => self.word(rest),
             '0'..='9' => (TokenKind::Number, number_len(rest)),
-            '.' if !self.after_operand()
-                && char_at(1).is_some_and(|next| next.is_ascii_digit()) =>
-            {
+            // No member is named with a digit, so `.5` is a number even after
+            // a name: `MsgBox .5`.
+            '.' if char_at(1).is_some_and(|next| next.is_ascii_digit()) => {
                 (TokenKind::Number, number_len(rest))
             }
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
             '#' => {
-                date_literal_len(rest).map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
+                // A date never starts after a name, as the line splitter reads
+                // it, and `#1, ` is a file number, not the start of one.
+                let date = (!follows_name(self.text, start) && !opens_file_number(rest))
+                    .then(|| date_literal_len(rest))
+                    .flatten();
+                date.map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
             }
             ',' => (TokenKind::Comma, 1),
             ';' => (TokenKind::Semicolon, 1),
@@ -350,7 +363,16 @@ impl<'a> Lexer<'a> {
             '/' => (TokenKind::Slash, 1),
             '\\' => (TokenKind::Backslash, 1),
             '^' => (TokenKind::Caret, 1),
-            '&' => (TokenKind::Ampersand, 1),
+            '&' => {
+                let literal = prefixed_radix_len(rest).or_else(|| {
+                    // Without a prefix, only where an operand is expected:
+                    // after one, `&` joins.
+                    (!self.after_operand())
+                        .then(|| bare_octal_len(rest))
+                        .flatten()
+                });
+                literal.map_or((TokenKind::Ampersand, 1), |len| (TokenKind::Number, len))
+            }
             ':' if char_at(1) == Some('=') => (TokenKind::ColonEquals, 2),
             ':' => (TokenKind::Colon, 1),
             '=' => match char_at(1) {
@@ -405,7 +427,7 @@ impl Iterator for Lexer<'_> {
         let c = rest.chars().next()?;
         // `rest` is the end of the text, so it starts where its length says.
         let start = self.text.len().saturating_sub(rest.len());
-        let (kind, len) = self.read(c, rest);
+        let (kind, len) = self.read(start, c, rest);
         // Every token covers its first character: the lexer always advances.
         let end = start.saturating_add(len.max(c.len_utf8()));
         self.at = end;
@@ -429,20 +451,91 @@ fn starts_operand(c: char) -> bool {
 /// name or a number: 0 or 1. `$`, `%` and `@` always are one. The others are
 /// not when what follows takes them for something else: `!` before a name
 /// reaches a member (`rs!Name`), `&` before an operand joins strings (`a&b`),
-/// and `#` before a digit opens a file number (`Print#1`).
+/// and `#` before a digit or a name opens a file number (`Print#1`,
+/// `Print#fn`).
 fn type_character_len(tail: &str) -> usize {
     let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
         return 0;
     };
     let is_type_character = match c {
-        '$' | '%' | '@' => true,
         '!' => !next.is_some_and(|n| is_ident_start(n) || n == '[' || n == '_'),
         '&' => !next.is_some_and(starts_operand),
-        '#' => !next.is_some_and(|n| n.is_ascii_digit()),
-        _ => false,
+        '#' => !next.is_some_and(|n| n.is_ascii_digit() || is_ident_start(n)),
+        _ => TYPE_CHARACTERS.contains(&c),
     };
     usize::from(is_type_character)
+}
+
+/// Whether the character before byte `at` of `text` ends a name, or is a `)`
+/// or a `]`. The line splitter reads a `#` right after one as a type
+/// character, never as the start of a date, and so does the lexer.
+fn follows_name(text: &str, at: usize) -> bool {
+    text.get(..at)
+        .and_then(|read| read.chars().next_back())
+        .is_some_and(|c| is_ident_char(c) || c == ')' || c == ']')
+}
+
+/// Whether the `#` that starts `rest` opens a file number: a number or a name
+/// and then a `,` or a `;`, as in `Print #1, x` and `Input #fn; x`. A date
+/// goes on with something else, as `#Jan 1, 2000#` and `#1/2/2000#` do.
+fn opens_file_number(rest: &str) -> bool {
+    let after_hash = rest
+        .strip_prefix('#')
+        .unwrap_or_default()
+        .trim_start_matches(is_space);
+    let end = after_hash
+        .find(|c: char| !is_ident_char(c))
+        .unwrap_or(after_hash.len());
+    let after_number = after_hash.get(end..).unwrap_or_default();
+    end > 0
+        && after_number
+            .trim_start_matches(is_space)
+            .starts_with([',', ';'])
+}
+
+/// Bytes of the hexadecimal or octal number that starts `rest`, which starts
+/// with `&H` or `&O` in any letter case: `&H1F`, `&o17`. Wherever it stands,
+/// `Sleep &H64` included.
+fn prefixed_radix_len(rest: &str) -> Option<usize> {
+    let digit: fn(&u8) -> bool = match rest.as_bytes().get(1)? {
+        b'h' | b'H' => u8::is_ascii_hexdigit,
+        b'o' | b'O' => is_octal_digit,
+        _ => return None,
+    };
+    radix_len(rest, 2, digit)
+}
+
+/// Bytes of the octal number that starts `rest`, which starts with `&` and an
+/// octal digit: `&17`.
+fn bare_octal_len(rest: &str) -> Option<usize> {
+    radix_len(rest, 1, is_octal_digit)
+}
+
+/// Whether `byte` is a digit from 0 to 7.
+fn is_octal_digit(byte: &u8) -> bool {
+    matches!(byte, b'0'..=b'7')
+}
+
+/// Bytes of the number that starts `rest`: a prefix of `prefix` bytes, then
+/// the digits that `digit` accepts, then the `%` or `&` type character it may
+/// end with. `None` unless there is a digit and the number ends there: a
+/// letter or a digit after it makes the `&` an operator, as in `&Hex(5)`.
+fn radix_len(rest: &str, prefix: usize, digit: fn(&u8) -> bool) -> Option<usize> {
+    let count = rest
+        .as_bytes()
+        .get(prefix..)?
+        .iter()
+        .take_while(|byte| digit(byte))
+        .count();
+    let end = prefix.saturating_add(count);
+    // `%` and `&` may end the number, `&` where it is a type character.
+    let suffix = match rest.get(end..)? {
+        tail if tail.starts_with(['%', '&']) => type_character_len(tail),
+        _ => 0,
+    };
+    let len = end.saturating_add(suffix);
+    (count > 0 && !rest.get(len..)?.starts_with(is_ident_char)).then_some(len)
 }
 
 /// Bytes of the number that starts `rest`: digits, a fraction, an exponent
