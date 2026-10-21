@@ -359,8 +359,9 @@ pub struct ApiUse {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Orientation;
 
-/// The size and complexity metrics of a procedure, a module or a file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// The size and complexity metrics of a procedure, a module or a file. The
+/// default is that of a module that no stage has measured yet.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metrics {
     pub loc: u32,
