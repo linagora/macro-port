@@ -151,9 +151,8 @@ impl<'a> Reader<'a> {
 
     /// Reads the statement and gives the facts it holds, in source order.
     pub(super) fn read(mut self) -> Facts {
-        // Whether the statement is a `Const` one, and whether the tokens are
-        // the name of a constant it declares (`A As String`): that name is
-        // not a use of the constant.
+        // Whether the statement is a `Const` one, and whether the next name
+        // is one it declares: that name is not a use of the constant.
         let mut const_statement = false;
         let mut declaring = false;
         while let Some(kind) = self.kind() {
@@ -162,15 +161,15 @@ impl<'a> Reader<'a> {
                     (const_statement, declaring) = (true, true);
                     self.advance();
                 }
-                TokenKind::Equals if declaring => {
-                    declaring = false;
-                    self.advance();
-                }
                 TokenKind::Comma if const_statement => {
                     declaring = true;
                     self.advance();
                 }
-                _ if starts_operand(kind) && !declaring => {
+                TokenKind::Identifier if declaring => {
+                    declaring = false;
+                    self.advance();
+                }
+                _ if starts_operand(kind) => {
                     let node = self.expression_here();
                     self.finish(node);
                 }
