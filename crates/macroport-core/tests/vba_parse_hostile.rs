@@ -14,7 +14,9 @@
 
 use std::time::{Duration, Instant};
 
-use macroport_core::vba::{MAX_RECOVERIES, MAX_TOKENS, ParsedModule, parse, split_lines};
+use macroport_core::vba::{
+    MAX_RECOVERIES, MAX_TOKENS, ParsedModule, Recovery, RecoveryKind, parse, split_lines,
+};
 
 /// The lines of the hostile modules: far more than a real module has.
 const LINES: usize = 50_000;
@@ -54,6 +56,11 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         ("Property", 0, 0, 0),
         ("End", 0, 0, 0),
         ("End Type", 0, 0, 0),
+        // A statement that cannot be read: outside any procedure only the
+        // first recoveries are kept, and inside one it is the procedure's, so
+        // the module has none.
+        ("x = (", 0, 0, MAX_RECOVERIES),
+        ("Sub a()\nx = (", LINES, 0, 0),
         // Declarations, one for each line. Directives with nothing to match
         // are declarations too, and every `#If` stays open.
         ("Option Explicit", 0, LINES, 0),
@@ -112,7 +119,8 @@ fn a_member_of_the_most_tokens_a_line_can_hold_is_read_in_linear_time() {
         let text = format!("Type T\nType({}\nEnd Type\n", piece.repeat(MAX_TOKENS));
         let module = parse_in_time(&text);
         assert_eq!(module.declarations.len(), 2, "{piece:?}");
-        assert_eq!(module.recoveries.len(), 1, "{piece:?}");
+        // The first `Type` has no end, and the second cannot be read.
+        assert_eq!(module.recoveries.len(), 2, "{piece:?}");
     }
 }
 
@@ -136,5 +144,42 @@ fn a_header_of_the_most_tokens_a_line_can_hold_is_counted_in_linear_time() {
             "{piece:?}: {}",
             procedure.parameter_count
         );
+    }
+}
+
+/// What the parser records for a statement that cannot be read, on the line
+/// `line`.
+fn unreadable(line: u32) -> Recovery {
+    Recovery {
+        line,
+        kind: RecoveryKind::Unparseable,
+    }
+}
+
+#[test]
+fn a_procedure_of_statements_that_cannot_be_read_keeps_the_first_recoveries() {
+    let body = "x = (\n".repeat(LINES);
+    let module = parse_in_time(&format!("Sub a()\n{body}End Sub\n"));
+    let [procedure] = module.procedures.as_slice() else {
+        panic!("{module:?}");
+    };
+    // The statements start on the line 2, and each is on a line of its own.
+    let first: Vec<_> = (2u32..).take(MAX_RECOVERIES).map(unreadable).collect();
+    assert_eq!(procedure.recoveries, first);
+    assert!(module.recoveries.is_empty());
+}
+
+#[test]
+fn a_statement_of_the_most_tokens_a_line_can_hold_is_checked_in_linear_time() {
+    // What follows `x = `, repeated: each statement fails a check, or is cut
+    // by the lexer, and is one recovery of the procedure whatever its length.
+    let pieces = ["(", ")", "+ 1 ", "To "];
+    for piece in pieces {
+        let statement = format!("x = {}", piece.repeat(MAX_TOKENS));
+        let module = parse_in_time(&format!("Sub a()\n{statement}\nEnd Sub\n"));
+        let [procedure] = module.procedures.as_slice() else {
+            panic!("{piece:?}: {module:?}");
+        };
+        assert_eq!(procedure.recoveries, [unreadable(2)], "{piece:?}");
     }
 }
