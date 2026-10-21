@@ -799,6 +799,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "unic-langid",
+ "walkdir",
 ]
 
 [[package]]
