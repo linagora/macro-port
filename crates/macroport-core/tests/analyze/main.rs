@@ -6,8 +6,10 @@
 //! `schema/report.schema.json` (`support::extraction_with`).
 
 // The helpers are test code: a panic in one is a failed test. `clippy.toml`
-// only exempts the bodies of `#[test]` functions.
-#![allow(clippy::expect_used)]
+// only exempts the bodies of `#[test]` functions, and not their arithmetic: a
+// counter in a test adds one.
+#![allow(clippy::arithmetic_side_effects, clippy::expect_used)]
 
 mod file_report;
+mod fixtures;
 mod support;

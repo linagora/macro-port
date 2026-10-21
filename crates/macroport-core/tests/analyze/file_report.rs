@@ -121,10 +121,11 @@ fn the_extension_names_the_container_in_any_case() {
 }
 
 #[test]
-fn a_file_that_is_not_read_yet_is_unsupported() {
-    let report = extraction(b"PK\x03\x04", "a.xlsm").file;
+fn text_with_the_extension_of_a_workbook_is_unsupported() {
+    let report = extraction(b"Sub A()\nEnd Sub\n", "a.xlsm").file;
 
     assert_eq!(report.status, Status::Unsupported);
+    assert_eq!(report.container, Container::Xlsm);
     let errors = report.errors.unwrap_or_default();
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].code, "file.unsupported_format");
