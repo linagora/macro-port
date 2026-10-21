@@ -120,10 +120,12 @@ fn vba_project(
     types: &ContentTypes<'_>,
 ) -> Result<Option<Vec<u8>>, ContainerError> {
     let named = workbook.targets(Role::VbaProject);
+    let named = named.filter_map(|target| archive.canonical(&target));
     let typed = types.parts().find(|(_, kinds)| kinds.vba_project);
-    let typed = typed.map(|(name, _)| name.to_owned());
-    for part in named.chain(typed).chain([VBA_PART.to_owned()]) {
-        if let Some(project) = archive.read(&part, MAX_VBA_PART)? {
+    let typed = typed.map(|(name, _)| name);
+    let usual = archive.canonical(VBA_PART);
+    for part in named.chain(typed).chain(usual) {
+        if let Some(project) = archive.read_canonical(part, MAX_VBA_PART)? {
             return Ok(Some(project));
         }
     }
@@ -200,8 +202,8 @@ impl Relations {
 /// `directory`, or `None` when the text is longer than [`MAX_PART_NAME`] or
 /// names the root of the package, which is no part. A `..` that climbs above
 /// the root is dropped, as RFC 3986 section 5.2.4 has it. The name is not
-/// normalised: the archive does that when it looks the part up.
-/// Percent-encoding is not decoded.
+/// normalised: the archive does that when it looks the part up, and decodes
+/// its percent-escapes then, so that a `%2E` is no dot segment here.
 fn resolve(directory: &str, target: &str) -> Option<String> {
     if directory.len().saturating_add(target.len()) > MAX_PART_NAME {
         return None;

@@ -131,7 +131,19 @@ impl<'a> Archive<'a> {
     /// The content of the entry called `name`, or `None` when there is no such
     /// entry. At most `cap` bytes are inflated.
     pub(super) fn read(&self, name: &str, cap: u64) -> Result<Option<Vec<u8>>, ContainerError> {
-        let Some(&index) = self.names.get(&normalize(name)) else {
+        self.read_canonical(&normalize(name), cap)
+    }
+
+    /// The content of the entry that `canonical`, a name as [`Archive::names`]
+    /// and [`Archive::canonical`] give it, stands for. Such a name is not
+    /// normalised again: decoding the escapes of a name twice could lead to
+    /// another entry.
+    pub(super) fn read_canonical(
+        &self,
+        canonical: &str,
+        cap: u64,
+    ) -> Result<Option<Vec<u8>>, ContainerError> {
+        let Some(&index) = self.names.get(canonical) else {
             return Ok(None);
         };
         let entry = self.entries.entry(index).map_err(|_| invalid_archive())?;
@@ -167,11 +179,44 @@ impl<'a> Archive<'a> {
 }
 
 /// The name an entry is looked up by: slashes, not backslashes, no leading
-/// slash, and lowercase, as OPC compares part names without regard to case.
+/// slash, the percent-escapes decoded, and lowercase. OPC compares part names
+/// without regard to case, and `my%20file` and `my file` name one part.
 fn normalize(name: &str) -> String {
-    name.replace('\\', "/")
-        .trim_start_matches('/')
-        .to_ascii_lowercase()
+    let name = name.replace('\\', "/");
+    unescape(name.trim_start_matches('/')).to_ascii_lowercase()
+}
+
+/// `text` with its percent-escapes decoded. An escape stays as written when it
+/// is not a `%` and two hexadecimal digits, or when it stands for a slash or a
+/// backslash, which no segment of a part name holds. The whole text stays as
+/// written when the escapes decode to bytes that are not UTF-8.
+fn unescape(text: &str) -> String {
+    if !text.contains('%') {
+        return text.to_owned();
+    }
+    let mut decoded = Vec::with_capacity(text.len());
+    let mut rest = text.as_bytes();
+    while let Some((&byte, tail)) = rest.split_first() {
+        let escape = if byte == b'%' { escaped(tail) } else { None };
+        if let Some(value) = escape {
+            decoded.push(value);
+            rest = tail.get(2..).unwrap_or_default();
+        } else {
+            decoded.push(byte);
+            rest = tail;
+        }
+    }
+    String::from_utf8(decoded).unwrap_or_else(|_| text.to_owned())
+}
+
+/// The byte that the two hexadecimal digits at the start of `digits` stand
+/// for, unless it is a slash or a backslash.
+fn escaped(digits: &[u8]) -> Option<u8> {
+    let digit = |at: usize| char::from(*digits.get(at)?).to_digit(16);
+    let value = digit(0)?.checked_mul(16)?.checked_add(digit(1)?)?;
+    u8::try_from(value)
+        .ok()
+        .filter(|value| !matches!(value, b'/' | b'\\'))
 }
 
 fn entry_name(entries: &ZipArchiveMetadata, index: usize) -> Option<String> {

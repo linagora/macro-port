@@ -599,6 +599,124 @@ fn a_directory_of_the_archive_is_not_a_part() {
 }
 
 #[test]
+fn percent_escapes_in_a_target_name_the_part_that_they_decode_to() {
+    // The entry as the archive names it and the target as the relationship
+    // writes it: one part, whichever way each of them is spelled.
+    let cases = [
+        ("xl/my vba.bin", "my%20vba.bin"),
+        ("xl/my%20vba.bin", "my%20vba.bin"),
+        ("xl/my%20vba.bin", "my vba.bin"),
+        ("xl/my vba.bin", "%6dy%20vba.bin"),
+        ("xl/my vba.bin", "%6Dy%20vba.bin"),
+        ("xl/my vba.bin", "/xl/my%20vba.bin"),
+        ("xl/my vba.bin", "../xl/my%20vba.bin"),
+        ("xl/some dir/vba.bin", "some%20dir/vba.bin"),
+        ("xl/é.bin", "%C3%A9.bin"),
+        ("xl/%c3%a9.bin", "é.bin"),
+    ];
+    for (entry, target) in cases {
+        let parts: [(&str, &[u8]); 2] = [(entry, b"by relationship"), (VBA, b"by name")];
+        let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
+        assert_eq!(vba_of(&package), b"by relationship", "{entry} and {target}");
+    }
+}
+
+#[test]
+fn percent_escapes_in_the_content_types_name_the_part_that_they_decode_to() {
+    let projects = [
+        ("xl/my vba.bin", "/xl/my%20vba.bin"),
+        ("xl/my%20vba.bin", "/xl/my vba.bin"),
+        ("xl/my%20vba.bin", "/XL/MY%20VBA.BIN"),
+    ];
+    for (entry, part_name) in projects {
+        let types = types_of(&[], &[(part_name, VBA_TYPE)]);
+        let parts: [(&str, &[u8]); 1] = [(entry, b"by type")];
+        let package = typed_package(&types, &[], &parts);
+        assert_eq!(vba_of(&package), b"by type", "{entry} and {part_name}");
+    }
+    let sheets = [
+        (
+            "xl/macrosheets/my sheet.xml",
+            "/xl/macrosheets/my%20sheet.xml",
+        ),
+        (
+            "xl/macrosheets/my%20sheet.xml",
+            "/xl/macrosheets/my sheet.xml",
+        ),
+    ];
+    for (entry, part_name) in sheets {
+        let types = types_of(&[], &[(part_name, MACRO_SHEET_TYPE)]);
+        let parts: [(&str, &[u8]); 1] = [(entry, b"<macro/>")];
+        let package = typed_package(&types, &[], &parts);
+        assert_eq!(macro_sheets_of(&package), 1, "{entry} and {part_name}");
+    }
+    // A relationship names a macro sheet the same way.
+    let related = [(MACRO_SHEET_RELATIONSHIP, "macrosheets/my%20sheet.xml")];
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/my sheet.xml", b"<macro/>")];
+    assert_eq!(macro_sheets_of(&workbook_package(&related, &parts)), 1);
+}
+
+#[test]
+fn escapes_that_decode_to_no_name_stay_as_written() {
+    // The entry, the target, and whether the target leads to the entry.
+    let cases = [
+        // Bytes that are not UTF-8 are no character, and U+00FF is not 0xFF.
+        ("xl/%ff.bin", "%ff.bin", true),
+        ("xl/%FF.bin", "%ff.bin", true),
+        ("xl/ÿ.bin", "%ff.bin", false),
+        ("xl/%c3.bin", "%c3.bin", true),
+        // Not a pair of hexadecimal digits.
+        ("xl/100%.bin", "100%.bin", true),
+        ("xl/%zz.bin", "%zz.bin", true),
+        ("xl/%2.bin", "%2.bin", true),
+        // A slash or a backslash is never made by an escape.
+        ("xl/a%2fb.bin", "a%2Fb.bin", true),
+        ("xl/a/b.bin", "a%2fb.bin", false),
+        ("xl/a%5cb.bin", "a%5Cb.bin", true),
+        ("xl/a/b.bin", "a%5cb.bin", false),
+        // An escape is decoded once, not again in what it decodes to.
+        ("xl/a%2520b.bin", "a%2520b.bin", true),
+        ("xl/a%20b.bin", "a%2520b.bin", false),
+        ("xl/a b.bin", "a%2520b.bin", false),
+    ];
+    for (entry, target, found) in cases {
+        let parts: [(&str, &[u8]); 2] = [(entry, b"by relationship"), (VBA, b"by name")];
+        let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
+        let expected: &[u8] = if found {
+            b"by relationship"
+        } else {
+            b"by name"
+        };
+        assert_eq!(vba_of(&package), expected, "{entry} and {target}");
+    }
+}
+
+#[test]
+fn a_part_found_by_its_type_is_not_decoded_a_second_time() {
+    // `a%2541.bin` is the part `a%41.bin`, not `aA.bin`: the decoy.
+    let types = types_of(&[], &[("/xl/a%2541.bin", VBA_TYPE)]);
+    let parts: [(&str, &[u8]); 2] = [("xl/a%2541.bin", b"by type"), ("xl/aa.bin", b"decoy")];
+    assert_eq!(vba_of(&typed_package(&types, &[], &parts)), b"by type");
+}
+
+#[test]
+fn two_entries_that_name_one_part_through_an_escape_are_ambiguous() {
+    let pairs = [
+        ("xl/a b.bin", "xl/a%20b.bin"),
+        ("xl/a.bin", "xl/%61.bin"),
+        ("xl/A.bin", "xl/%61.BIN"),
+    ];
+    for (first, second) in pairs {
+        let parts: [(&str, &[u8]); 2] = [(first, b"1"), (second, b"2")];
+        let package = workbook_package(&[], &parts);
+        assert_fails(&package, Corrupted, "zip.duplicate_entry");
+    }
+    // `%25` is a percent sign, so these two are not one part.
+    let parts: [(&str, &[u8]); 2] = [("xl/a%2520b.bin", b"1"), ("xl/a%20b.bin", b"2")];
+    assert!(read_ooxml(&workbook_package(&[], &parts)).is_ok());
+}
+
+#[test]
 fn the_content_types_part_is_not_a_part() {
     // A type given to every `.xml` part does not reach `[Content_Types].xml`.
     let types = types_of(&[("xml", MACRO_SHEET_TYPE)], &[]);
