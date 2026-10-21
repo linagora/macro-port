@@ -4,7 +4,7 @@
 //! take over from these deterministic runs.)
 
 use cfb::Version;
-use macroport_core::container::CfbFile;
+use macroport_core::container::{CfbFile, MAX_STREAM_SIZE};
 use macroport_core::report::Status;
 use macroport_testkit::corpus;
 
@@ -41,15 +41,28 @@ fn exercise(bytes: &[u8], paths: &[String]) {
         Err(error) => return assert_typed(&error),
     };
     for path in paths {
-        file.has_stream(path);
         file.has_storage(path);
+        // The directory gives a length exactly where there is a stream.
+        let claimed = file.stream_len(path);
+        assert_eq!(claimed.is_some(), file.has_stream(path), "{path}");
+        // Such a stream is refused before a byte is read, whatever its chain.
+        let above_cap = claimed.is_some_and(|len| len > MAX_STREAM_SIZE);
         match file.read_stream(path) {
-            Ok(_) => {}
-            // A size that the container only claims.
+            // A read that succeeds gives as many bytes as the directory says.
+            Ok(Some(stream)) => {
+                assert!(!above_cap, "{path}");
+                assert_eq!(claimed, Some(stream.len() as u64), "{path}");
+            }
+            Ok(None) => assert_eq!(claimed, None, "{path}"),
+            // A size that the container only claims, or a read that cannot
+            // reserve what the chain holds.
             Err(error) if error.status == Status::TooLarge => {
                 assert_eq!(error.code, "cfb.stream_too_large", "{error}");
             }
-            Err(error) => assert_typed(&error),
+            Err(error) => {
+                assert!(!above_cap, "{path}: {error}");
+                assert_typed(&error);
+            }
         }
     }
 }
