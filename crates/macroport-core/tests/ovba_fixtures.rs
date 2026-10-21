@@ -4,8 +4,9 @@
 //! list agree with `fixtures.yaml`, and the source of each module decompresses
 //! from the offset that the dir stream gives. The `PROJECT` stream of every
 //! workbook, `.xlsm` and `.xlsb` included: the protection and the type of each
-//! module agree with `fixtures.yaml`. A1, which compares the decoded sources
-//! with Excel's own export, belongs to the ticket that decodes them.
+//! module agree with `fixtures.yaml`, and the decoded source of each module
+//! agrees with Excel's own export, as A1 compares them. A1 itself is measured
+//! on what `analyze` reports.
 
 // The helpers build their own inputs: a panic in one is a failed test.
 #![allow(clippy::unwrap_used)]
@@ -14,9 +15,10 @@ use std::collections::BTreeSet;
 use std::io::{Cursor, Read};
 
 use cfb::CompoundFile;
+use encoding_rs::WINDOWS_1252;
 use macroport_core::container::read_ooxml;
 use macroport_core::ovba::{
-    DirInfo, DirModule, ProjectInfo, decompress, parse_compressed_dir, parse_project,
+    DirInfo, DirModule, ProjectInfo, decompress, module_source, parse_compressed_dir, parse_project,
 };
 use macroport_testkit::corpus;
 use serde::Deserialize;
@@ -50,6 +52,8 @@ struct ExpectedModule {
     name: String,
     #[serde(rename = "type")]
     kind: String,
+    /// The export of the module by Excel, relative to `corpus/fixtures/`.
+    expected_source: Option<String>,
 }
 
 /// The fixtures with a VBA project to check, whatever their container: those
@@ -276,4 +280,75 @@ fn reads_the_module_types_of_every_fixture() {
     for kind in ["document", "standard", "class"] {
         assert!(seen.contains(kind), "{kind}");
     }
+}
+
+/// The lines of a source as A1 compares them (`docs/ACCEPTANCE.md`): without
+/// trailing whitespace, and without the lines of Excel's export that the
+/// stream does not hold: the `VERSION` header of a class, with its `BEGIN` and
+/// `END`, and the `Attribute VB_` lines.
+fn comparable(source: &str) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut in_header = false;
+    for line in source.lines().map(str::trim_end) {
+        if line.starts_with("VERSION ") {
+            in_header = true;
+        } else if in_header {
+            in_header = line != "END";
+        } else if !line.starts_with("Attribute VB_") {
+            lines.push(line);
+        }
+    }
+    // The export and the stream differ in the empty lines that end them.
+    while lines.last() == Some(&"") {
+        lines.pop();
+    }
+    lines
+}
+
+#[test]
+fn reads_the_source_of_every_module_as_excel_exported_it() {
+    let mut compared = 0;
+    for fixture in fixtures() {
+        let mut project = Project::open(&fixture.file);
+        for expected in &fixture.modules {
+            let module = module_named(&project.dir, &expected.name).clone();
+            let stream = project.stream(&module.stream_name);
+            let source = module_source(
+                &stream,
+                module.text_offset,
+                project.dir.code_page,
+                MAX_SOURCE,
+            )
+            .unwrap();
+            assert!(
+                !source.contains('\r'),
+                "{}: {}",
+                fixture.file,
+                expected.name
+            );
+            let Some(export) = &expected.expected_source else {
+                continue;
+            };
+            // Excel exports in the ANSI code page of the machine that built the
+            // fixtures, 1252.
+            let export = corpus::read(&format!("fixtures/{export}"));
+            let (export, _) = WINDOWS_1252.decode_without_bom_handling(&export);
+            let lines = comparable(&export);
+            assert!(!lines.is_empty(), "{}: {}", fixture.file, expected.name);
+            assert_eq!(
+                comparable(&source),
+                lines,
+                "{}: {}",
+                fixture.file,
+                expected.name
+            );
+            compared += 1;
+        }
+    }
+    // Every export is compared: the projects that were locked by hand
+    // included, as their sources are not hidden.
+    assert_eq!(
+        compared,
+        corpus::files("fixtures/generated", &["bas", "cls"]).len()
+    );
 }
