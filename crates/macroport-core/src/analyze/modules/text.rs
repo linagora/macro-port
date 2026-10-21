@@ -35,6 +35,7 @@ pub fn analyze_modules(
     path: &str,
     options: &Options<'_>,
 ) -> FileReport {
+    let options = capped(options, MAX_TEXT_SIZE);
     let mut hasher = Sha256::new();
     let mut size = 0u64;
     for module in &modules {
@@ -42,8 +43,8 @@ pub fn analyze_modules(
         size = size.saturating_add(u64::try_from(module.text.len()).unwrap_or(u64::MAX));
     }
     let sha256 = hex(&hasher.finalize());
-    if size > text_limit(options) {
-        return too_large_text(path, size, sha256, options);
+    if size > options.max_file_size {
+        return too_large_text(path, size, sha256, &options);
     }
     let (reports, sources): (Vec<_>, Vec<_>) = modules
         .into_iter()
@@ -54,30 +55,36 @@ pub fn analyze_modules(
         .unzip();
     finish(
         text_extraction(path, size, sha256, reports, sources, options.rules),
-        options,
+        &options,
     )
 }
 
-/// The limit on the size of a text: that of the options, and [`MAX_TEXT_SIZE`].
-fn text_limit(options: &Options<'_>) -> u64 {
-    options.max_file_size.min(MAX_TEXT_SIZE)
+/// `options`, with the limit on the size of a file lowered to `cap` when it is
+/// higher: the texts have limits of their own, and the options can only make
+/// them stricter.
+pub(super) fn capped<'a>(options: &Options<'a>, cap: u64) -> Options<'a> {
+    Options {
+        max_file_size: options.max_file_size.min(cap),
+        ..*options
+    }
 }
 
-/// The report of a text above the size limit. Like any file above it, it is
-/// not read.
-fn too_large_text(path: &str, size: u64, sha256: String, options: &Options<'_>) -> FileReport {
-    let limited = Options {
-        max_file_size: text_limit(options),
-        ..*options
-    };
-    let mut file = too_large(path, size, sha256, &limited);
+/// The report of a text above the size limit of `options`. Like any file above
+/// it, it is not read.
+pub(super) fn too_large_text(
+    path: &str,
+    size: u64,
+    sha256: String,
+    options: &Options<'_>,
+) -> FileReport {
+    let mut file = too_large(path, size, sha256, options);
     file.container = Container::TextModule;
     file
 }
 
 /// The extraction of text modules: their reports, which the front end has not
 /// filled, and their texts.
-fn text_extraction(
+pub(super) fn text_extraction(
     path: &str,
     size: u64,
     sha256: String,
@@ -100,7 +107,7 @@ fn text_extraction(
 /// The report of a text module, as extraction would give it before the front
 /// end reads it. A text has no compiled part, so its source is never suspected
 /// to be missing.
-fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport {
+pub(super) fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport {
     ModuleReport {
         name: name.to_owned(),
         module_type,
@@ -126,30 +133,32 @@ mod tests {
     }
 
     #[test]
-    fn the_limit_on_texts_is_the_lower_of_the_cap_and_the_option() {
+    fn the_options_can_lower_the_cap_on_texts_and_not_raise_it() {
         let rules = rules();
         let limit = |max_file_size| {
             let options = Options {
                 max_file_size,
                 ..Options::new(&rules)
             };
-            text_limit(&options)
+            capped(&options, MAX_TEXT_SIZE).max_file_size
         };
 
         assert_eq!(limit(10), 10);
         assert_eq!(limit(MAX_TEXT_SIZE), MAX_TEXT_SIZE);
         assert_eq!(limit(u64::MAX), MAX_TEXT_SIZE);
         // The default option allows more than a text may take.
-        assert_eq!(text_limit(&Options::new(&rules)), MAX_TEXT_SIZE);
+        let default = capped(&Options::new(&rules), MAX_TEXT_SIZE);
+        assert_eq!(default.max_file_size, MAX_TEXT_SIZE);
     }
 
     #[test]
-    fn a_text_above_the_cap_is_too_large_whatever_the_option_allows() {
+    fn the_report_of_a_text_above_the_cap_names_the_cap_not_the_option() {
         let rules = rules();
         let options = Options {
             max_file_size: u64::MAX,
             ..Options::new(&rules)
         };
+        let options = capped(&options, MAX_TEXT_SIZE);
         let size = MAX_TEXT_SIZE + 1;
 
         let file = too_large_text("Big.bas", size, "0".repeat(64), &options);
