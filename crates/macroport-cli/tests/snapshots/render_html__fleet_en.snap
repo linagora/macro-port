@@ -81,12 +81,55 @@ expression: body
 <div><dt>Size</dt><dd>14321 bytes</dd></div>
 <div><dt>SHA-256</dt><dd><code>f01be4b0b98c36f5ad66974216461d080278970f204e50c92f41ada6cf24187e</code></dd></div>
 <div><dt>VBA project</dt><dd><code>VBAProject</code></dd></div>
+<div><dt>Code page</dt><dd>1252</dd></div>
 <div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li></ul></dd></div>
+<div><dt>Lines of code</dt><dd>7</dd></div>
+<div><dt>Logical lines of code</dt><dd>5</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>1</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>1</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>0</dd></div>
+<div><dt>Forms</dt><dd>0</dd></div>
+<div><dt>Declare statements</dt><dd>0</dd></div>
+<div><dt>External dependencies</dt><dd>0</dd></div>
 </dl>
 <h3>Families</h3>
 <ul class="families"><li>Event-driven automation <span class="score">score 3</span></li><li>Windows API, shell and ActiveX <span class="score">score 3</span></li></ul>
 <h3>Security signals</h3>
 <ul class="signals"><li><span class="chip severity-high"><span class="value">High</span></span> Auto-execution combined with program launch <code>sec.chain.autoexec-execution</code><ul class="evidence"><li><code>sec.auto-exec</code> Line 4</li><li><code>sec.shell</code> Line 6</li></ul></li></ul>
+<h3>Modules</h3>
+<details class="module">
+<summary><span class="name">M_14_01</span> <span class="chip"><span class="value">Standard module</span></span></summary>
+<dl class="facts">
+<div><dt>Stream</dt><dd><code>M_14_01</code></dd></div>
+<div><dt>Source code SHA-256</dt><dd><code>ce76993f3336b3bdd4370c2fa7200ae4422112c3460812c025d47edb05ea2042</code></dd></div>
+<div><dt>Lines of code</dt><dd>7</dd></div>
+<div><dt>Logical lines of code</dt><dd>5</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>1</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>1</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>0</dd></div>
+</dl>
+<h4>Procedures</h4>
+<details class="procedure">
+<summary><span class="name">Auto_Open</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Default</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Event-driven automation</span></span> <span class="chip"><span class="value">Entry point</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>4-7</dd></div>
+<div><dt>Lines of code</dt><dd>4</dd></div>
+<div><dt>Logical lines of code</dt><dd>4</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>1</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>0</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>Secondary families</dt><dd>Windows API, shell and ActiveX</dd></div>
+<div><dt>APIs</dt><dd>Shell ×1</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Event-driven automation <span class="score">score 3</span><ul class="evidence"><li><code>evt.auto-macros</code> Line 4 <code>Sub Auto_Open()</code></li></ul></li><li>Windows API, shell and ActiveX <span class="score">score 3</span><ul class="evidence"><li><code>win.shell</code> Line 6 <code>r = Shell(&#34;notepad.exe&#34;, vbNormalFocus)</code></li></ul></li></ul>
+<h4>Security signals</h4>
+<ul class="signals"><li><span class="chip severity-medium"><span class="value">Medium</span></span> Runs automatically when the file opens or closes <code>sec.auto-exec</code><ul class="evidence"><li><code>sec.auto-exec</code> Line 4 <code>Sub Auto_Open()</code></li></ul></li><li><span class="chip severity-medium"><span class="value">Medium</span></span> Launches an external program (Shell) <code>sec.shell</code><ul class="evidence"><li><code>sec.shell</code> Line 6 <code>r = Shell(&#34;notepad.exe&#34;, vbNormalFocus)</code></li></ul></li></ul>
+</details>
+</details>
 </details>
 <details class="file">
 <summary><span class="path">legacy/budget.xls</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-medium"><span class="hint">Complexity</span> <span class="value">Medium</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Forms and data entry</span></span></summary>
@@ -96,12 +139,146 @@ expression: body
 <div><dt>SHA-256</dt><dd><code>46dd0b311575cf070768c8c5ee6103187f963067c1358250c2ec1fb2ebc7e27a</code></dd></div>
 <div><dt>VBA project</dt><dd><code>BudgetTools</code></dd></div>
 <div><dt>Protected</dt><dd>Yes</dd></div>
+<div><dt>Code page</dt><dd>1252</dd></div>
 <div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li><li><code>Microsoft Outlook 16.0 Object Library</code></li></ul></dd></div>
 <div><dt>Workbook encrypted</dt><dd>Yes</dd></div>
+<div><dt>Lines of code</dt><dd>72</dd></div>
+<div><dt>Logical lines of code</dt><dd>54</dd></div>
+<div><dt>Procedures</dt><dd>5</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>4</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>12</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>2</dd></div>
+<div><dt>Forms</dt><dd>1</dd></div>
+<div><dt>Declare statements</dt><dd>1</dd></div>
+<div><dt>External dependencies</dt><dd>2</dd></div>
 <div><dt>Traits</dt><dd><ul><li>Recorded macro style</li></ul></dd></div>
 </dl>
 <h3>Families</h3>
 <ul class="families"><li>Forms and data entry <span class="score">score 8</span></li><li>Formatting and layout <span class="score">score 7</span></li><li>Lookup and reference data <span class="score">score 6</span></li><li>Event-driven automation <span class="score">score 5</span></li><li>Report generation and printing <span class="score">score 4</span></li></ul>
+<h3>Modules</h3>
+<details class="module">
+<summary><span class="name">ThisWorkbook</span> <span class="chip"><span class="value">Document module</span></span></summary>
+<dl class="facts">
+<div><dt>Stream</dt><dd><code>ThisWorkbook</code></dd></div>
+<div><dt>Source code SHA-256</dt><dd><code>1f426bb1b1e3420e334c903a9b4407c4a767dfbfcbe3235e1b4fb91a8e95cfc2</code></dd></div>
+<div><dt>Lines of code</dt><dd>14</dd></div>
+<div><dt>Logical lines of code</dt><dd>12</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+</dl>
+<h4>Procedures</h4>
+<details class="procedure">
+<summary><span class="name">Workbook_Open</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Private</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Event-driven automation</span></span> <span class="chip"><span class="value">Entry point</span></span> <span class="chip"><span class="value">Event handler</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>8-14</dd></div>
+<div><dt>Lines of code</dt><dd>7</dd></div>
+<div><dt>Logical lines of code</dt><dd>6</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>Calls</dt><dd>FormatReport</dd></div>
+<div><dt>APIs</dt><dd>Application.ScreenUpdating ×2</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Event-driven automation <span class="score">score 5</span><ul class="evidence"><li><code>evt.handler</code> Line 8 <code>Private Sub Workbook_Open()</code></li></ul></li></ul>
+<h4>Security signals</h4>
+<ul class="signals"><li><span class="chip severity-medium"><span class="value">Medium</span></span> Runs automatically when the file opens or closes <code>sec.auto-exec</code><ul class="evidence"><li><code>sec.auto-exec</code> Line 8 <code>Private Sub Workbook_Open()</code></li></ul></li><li><span class="chip severity-info"><span class="value">Info</span></span> Disables alerts or screen updates <code>sec.alerts-off</code><ul class="evidence"><li><code>sec.alerts-off</code> Line 9 <code>Application.ScreenUpdating = False</code></li><li><code>sec.alerts-off</code> Line 12 <code>Application.ScreenUpdating = True</code></li></ul></li></ul>
+</details>
+</details>
+<details class="module">
+<summary><span class="name">Module1</span> <span class="chip"><span class="value">Standard module</span></span></summary>
+<dl class="facts">
+<div><dt>Stream</dt><dd><code>Module1</code></dd></div>
+<div><dt>Source code SHA-256</dt><dd><code>4188172cd389de3a8d9d5dfab716f18350961702d071c83ca2ff4eb5fb0e23f0</code></dd></div>
+<div><dt>Lines of code</dt><dd>46</dd></div>
+<div><dt>Logical lines of code</dt><dd>33</dd></div>
+<div><dt>Procedures</dt><dd>3</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>4</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>7</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>2</dd></div>
+<div><dt>Declare statements</dt><dd>1</dd></div>
+</dl>
+<h4>Security signals</h4>
+<ul class="signals"><li><span class="chip severity-low"><span class="value">Low</span></span> Calls native Windows APIs (Declare) <code>sec.declare</code><ul class="evidence"><li><code>sec.declare</code> Line 2 <code>Private Declare Function GetTickCount Lib &#34;kernel32&#34; () As Long</code></li></ul></li></ul>
+<h4>Procedures</h4>
+<details class="procedure">
+<summary><span class="name">FormatReport</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Default</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Formatting and layout</span></span> <span class="chip"><span class="value">Entry point</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>5-22</dd></div>
+<div><dt>Lines of code</dt><dd>18</dd></div>
+<div><dt>Logical lines of code</dt><dd>14</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>4</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>2</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>Secondary families</dt><dd>Report generation and printing</dd></div>
+<div><dt>APIs</dt><dd>Range.Interior ×2, Range.Font ×1</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Formatting and layout <span class="score">score 7</span><ul class="evidence"><li><code>fmt.cell-style</code> Line 7 <code>Range(&#34;A1:F1&#34;).Interior.Color = RGB(200, 200, 200)</code></li><li><code>fmt.text-style</code> Line 8 <code>Range(&#34;A1:F1&#34;).Font.Bold = True</code></li></ul></li><li>Report generation and printing <span class="score">score 4</span><ul class="evidence"><li><code>rpt.page-setup</code> Line 19 <code>ActiveSheet.PageSetup.Orientation = xlLandscape</code></li></ul></li></ul>
+</details>
+<details class="procedure">
+<summary><span class="name">LookupRate</span> <span class="chip"><span class="value">Function</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Public</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Lookup and reference data</span></span> <span class="chip"><span class="value">Entry point</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>24-37</dd></div>
+<div><dt>Lines of code</dt><dd>14</dd></div>
+<div><dt>Logical lines of code</dt><dd>11</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+<div><dt>Parameters</dt><dd>1</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>APIs</dt><dd>WorksheetFunction.VLookup ×1</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Lookup and reference data <span class="score">score 6</span><ul class="evidence"><li><code>lookup.worksheet-functions</code> Line 28 <code>LookupRate = Application.WorksheetFunction.VLookup(code, Range(&#34;Rates&#34;), 2, False)</code></li></ul></li></ul>
+</details>
+<details class="procedure">
+<summary><span class="name">Macro1</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Default</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Unclassified</span></span> <span class="chip"><span class="value">Possibly unused</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>39-46</dd></div>
+<div><dt>Lines of code</dt><dd>8</dd></div>
+<div><dt>Logical lines of code</dt><dd>6</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>1</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>0</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>APIs</dt><dd>Select ×3</dd></div>
+<div><dt>Traits</dt><dd>Recorded macro style, Possibly unused</dd></div>
+</dl>
+</details>
+</details>
+<details class="module">
+<summary><span class="name">UserForm1</span> <span class="chip"><span class="value">Form</span></span></summary>
+<dl class="facts">
+<div><dt>Stream</dt><dd><code>UserForm1</code></dd></div>
+<div><dt>Source code SHA-256</dt><dd><code>08aa8a50c33a9ce1a03784e255162556bc2cf09f787ababb7614f6e3ad420155</code></dd></div>
+<div><dt>Lines of code</dt><dd>12</dd></div>
+<div><dt>Logical lines of code</dt><dd>9</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>3</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>3</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+</dl>
+<h4>Procedures</h4>
+<details class="procedure">
+<summary><span class="name">CommandButton1_Click</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Private</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Forms and data entry</span></span> <span class="chip"><span class="value">Entry point</span></span> <span class="chip"><span class="value">Event handler</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>4-12</dd></div>
+<div><dt>Lines of code</dt><dd>9</dd></div>
+<div><dt>Logical lines of code</dt><dd>7</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>3</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>Calls</dt><dd>FormatReport</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Forms and data entry <span class="score">score 8</span><ul class="evidence"><li><code>form.control-events</code> Line 4 <code>Private Sub CommandButton1_Click()</code></li><li><code>form.unload</code> Line 10 <code>Unload Me</code></li></ul></li></ul>
+</details>
+</details>
 </details>
 <details class="file">
 <summary><span class="path">legacy/xlm-only.xlsb</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
@@ -111,6 +288,9 @@ expression: body
 <div><dt>SHA-256</dt><dd><code>cff1722b249616216f1ad1771e1aafb245f1ad9ede5b6a51f04abafad86a6471</code></dd></div>
 <div><dt>Excel 4.0 macros</dt><dd>Yes</dd></div>
 <div><dt>Excel 4.0 macro sheets</dt><dd>2</dd></div>
+<div><dt>Lines of code</dt><dd>0</dd></div>
+<div><dt>Logical lines of code</dt><dd>0</dd></div>
+<div><dt>Procedures</dt><dd>0</dd></div>
 </dl>
 <h3>Security signals</h3>
 <ul class="signals"><li><span class="chip severity-medium"><span class="value">Medium</span></span> Contains Excel 4.0 (XLM) macro sheets <code>sec.xlm-macrosheet</code></li></ul>
@@ -141,6 +321,9 @@ file is 1024 bytes long</li></ul></dd></div>
 <div><dt>Format</dt><dd>XLSX</dd></div>
 <div><dt>Size</dt><dd>8192 bytes</dd></div>
 <div><dt>SHA-256</dt><dd><code>c5bc857aa0aca9416401a7fabc0438049474b1962fe0cef64e836bd6a2576799</code></dd></div>
+<div><dt>Lines of code</dt><dd>0</dd></div>
+<div><dt>Logical lines of code</dt><dd>0</dd></div>
+<div><dt>Procedures</dt><dd>0</dd></div>
 </dl>
 </details>
 <details class="file">
@@ -149,9 +332,46 @@ file is 1024 bytes long</li></ul></dd></div>
 <div><dt>Format</dt><dd>Text module</dd></div>
 <div><dt>Size</dt><dd>412 bytes</dd></div>
 <div><dt>SHA-256</dt><dd><code>368d0297fe4c5474038f15d2fee5ff75fcdf2e0e97a99c19f67854d5d88f7bfe</code></dd></div>
+<div><dt>Lines of code</dt><dd>12</dd></div>
+<div><dt>Logical lines of code</dt><dd>8</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+<div><dt>Forms</dt><dd>0</dd></div>
+<div><dt>Declare statements</dt><dd>0</dd></div>
+<div><dt>External dependencies</dt><dd>0</dd></div>
 </dl>
 <h3>Families</h3>
 <ul class="families"><li>Forms and data entry <span class="score">score 4</span></li></ul>
+<h3>Modules</h3>
+<details class="module">
+<summary><span class="name">Module1</span> <span class="chip"><span class="value">Standard module</span></span></summary>
+<dl class="facts">
+<div><dt>Lines of code</dt><dd>12</dd></div>
+<div><dt>Logical lines of code</dt><dd>8</dd></div>
+<div><dt>Procedures</dt><dd>1</dd></div>
+<div><dt>Highest cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Cyclomatic complexity, total</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+</dl>
+<h4>Procedures</h4>
+<details class="procedure">
+<summary><span class="name">AskName</span> <span class="chip"><span class="value">Sub</span></span> <span class="chip"><span class="hint">Visibility</span> <span class="value">Public</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Forms and data entry</span></span> <span class="chip"><span class="value">Entry point</span></span></summary>
+<dl class="facts">
+<div><dt>Line range</dt><dd>2-10</dd></div>
+<div><dt>Lines of code</dt><dd>9</dd></div>
+<div><dt>Logical lines of code</dt><dd>7</dd></div>
+<div><dt>Cyclomatic complexity</dt><dd>2</dd></div>
+<div><dt>Maximum nesting depth</dt><dd>1</dd></div>
+<div><dt>Parameters</dt><dd>0</dd></div>
+<div><dt>GoTo and GoSub statements</dt><dd>0</dd></div>
+<div><dt>APIs</dt><dd>InputBox ×2</dd></div>
+</dl>
+<h4>Families</h4>
+<ul class="families"><li>Forms and data entry <span class="score">score 4</span><ul class="evidence"><li><code>form.inputbox</code> Line 4 <code>name = InputBox(&#34;Your name?&#34;)</code></li><li><code>form.inputbox</code> Line 7 <code>city = InputBox(&#34;Your city?&#34;)</code></li></ul></li></ul>
+</details>
+</details>
 </details>
 <details class="file">
 <summary><span class="path">bomb/zip-bomb.xlsm</span> <span class="chip status-suspicious_archive"><span class="hint">Status</span> <span class="value">Suspicious archive</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
