@@ -144,36 +144,47 @@ impl<'a> Scorer<'a> {
         let mut tallies = Tallies::default();
         for (position, &(family, signal)) in self.signals.iter().enumerate() {
             let own;
-            let weight = u64::from(signal.weight);
-            // The points of a hit, in half points: a hit of a module or
-            // project signal adds half the weight.
-            let (hits, inside, per_hit) = match signal.scope {
+            let (hits, inside) = match signal.scope {
                 Scope::Procedure => {
                     let (module, index) = (at.module, at.index);
                     own =
                         self.evaluator
                             .procedure_hits(module, index, &signal.matcher, signal.text);
-                    (own.as_slice(), 0..own.len(), weight.saturating_mul(2))
+                    (own.as_slice(), 0..own.len())
                 }
                 Scope::Module => {
                     let hits = hits_at(module_hits, position);
-                    (hits, hits_inside(hits, at), weight)
+                    (hits, hits_inside(hits, at))
                 }
                 Scope::Project => {
                     let hits = hits_at(&self.project_hits, position);
-                    (hits, hits_inside(hits, at), weight)
+                    (hits, hits_inside(hits, at))
                 }
             };
-            let cap = usize::try_from(signal.max_hits_per_procedure).unwrap_or(usize::MAX);
-            let counted = counted_hits(hits, &inside, cap);
+            let counted = counted_hits(hits, &inside, cap(signal));
             if counted.is_empty() {
                 continue;
             }
             let cited = counted.iter().map(|hit| evidence(&signal.id, hit, at));
             let tally = tallies.0.entry(family).or_default();
-            tally.count(&signal.id, per_hit, cited.collect());
+            tally.count(&signal.id, half_points(signal), cited.collect());
         }
         tallies
+    }
+}
+
+/// The most hits that the signal counts.
+fn cap(signal: &FamilySignal) -> usize {
+    usize::try_from(signal.max_hits_per_procedure).unwrap_or(usize::MAX)
+}
+
+/// What a hit of the signal adds to a score, in half points: its weight when
+/// the signal reads the procedure only, half of it when it reaches beyond.
+fn half_points(signal: &FamilySignal) -> u64 {
+    let weight = u64::from(signal.weight);
+    match signal.scope {
+        Scope::Procedure => weight.saturating_mul(2),
+        Scope::Module | Scope::Project => weight,
     }
 }
 
