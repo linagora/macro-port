@@ -8,6 +8,8 @@
 //! program where randomness is allowed, and a system that gives none is known
 //! before minutes of analysis, not after.
 
+use std::fmt;
+
 use clap::Args as ClapArgs;
 use macroport_core::redact::{Redaction, remove_snippets};
 use macroport_core::report::Report;
@@ -15,8 +17,8 @@ use macroport_core::report::Report;
 /// The bytes of the random key of a run.
 const RANDOM_KEY_BYTES: usize = 32;
 
-/// The arguments that say what the reports of a scan hide.
-#[derive(Debug, Clone, ClapArgs)]
+/// The arguments that say what the reports of a scan hide: nothing, by default.
+#[derive(Clone, Default, ClapArgs)]
 pub struct PrivacyArgs {
     /// Leave the code of the files out of the reports: no snippet of evidence.
     /// The paths and the names stay.
@@ -44,6 +46,22 @@ pub struct PrivacyArgs {
     /// `.frm`) is named after the file, so its name stays by default too.
     #[arg(long, requires = "redact")]
     pub redact_identifiers: bool,
+}
+
+// The key is not printed: the arguments end up in the text of a failed
+// assertion or of a log, and a report is shared because its key is not.
+impl fmt::Debug for PrivacyArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PrivacyArgs")
+            .field("no_snippets", &self.no_snippets)
+            .field("redact", &self.redact)
+            .field(
+                "redact_key",
+                &self.redact_key.as_deref().map(|_| "[hidden]"),
+            )
+            .field("redact_identifiers", &self.redact_identifiers)
+            .finish()
+    }
 }
 
 /// A key that is not empty: with none, the hashes would be a public function of
