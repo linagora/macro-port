@@ -465,6 +465,25 @@ fn a_hash_right_after_a_name_is_its_type_character() {
 }
 
 #[test]
+fn a_hash_after_a_name_or_a_closing_bracket_opens_no_date() {
+    check(&[
+        (
+            "x#1/2/2000#",
+            "Identifier[x] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        (
+            "f(1)#1/2/2000#",
+            "Identifier[f] LeftParen[(] Number[1] RightParen[)] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        (
+            "[a]#1/2/2000#",
+            "Identifier[[a]] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        ("x #1/2/2000#", "Identifier[x] Date[#1/2/2000#]"),
+    ]);
+}
+
+#[test]
 fn a_hash_before_a_file_number_and_a_separator_opens_no_date() {
     check(&[
         (

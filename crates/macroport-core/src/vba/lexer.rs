@@ -314,9 +314,10 @@ impl<'a> Lexer<'a> {
         )
     }
 
-    /// The kind and the length in bytes of the token that starts `rest`,
-    /// which starts with `c`.
-    fn read(&mut self, c: char, rest: &str) -> (TokenKind, usize) {
+    /// The kind and the length in bytes of the token that starts at byte
+    /// `start` of the text: `rest` is the text from there, and starts with
+    /// `c`.
+    fn read(&mut self, start: usize, c: char, rest: &str) -> (TokenKind, usize) {
         let char_at = |len: usize| rest.get(len..).and_then(|tail| tail.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
@@ -338,8 +339,9 @@ impl<'a> Lexer<'a> {
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
             '#' => {
-                // `#1, ` is a file number, not the start of a date.
-                let date = (!opens_file_number(rest))
+                // A date never starts after a name, as the line splitter reads
+                // it, and `#1, ` is a file number, not the start of one.
+                let date = (!follows_name(self.text, start) && !opens_file_number(rest))
                     .then(|| date_literal_len(rest))
                     .flatten();
                 date.map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
@@ -418,7 +420,7 @@ impl Iterator for Lexer<'_> {
         let c = rest.chars().next()?;
         // `rest` is the end of the text, so it starts where its length says.
         let start = self.text.len().saturating_sub(rest.len());
-        let (kind, len) = self.read(c, rest);
+        let (kind, len) = self.read(start, c, rest);
         // Every token covers its first character: the lexer always advances.
         let end = start.saturating_add(len.max(c.len_utf8()));
         self.at = end;
@@ -455,6 +457,15 @@ fn type_character_len(tail: &str) -> usize {
         _ => TYPE_CHARACTERS.contains(&c),
     };
     usize::from(is_type_character)
+}
+
+/// Whether the character before byte `at` of `text` ends a name, or is a `)`
+/// or a `]`. The line splitter reads a `#` right after one as a type
+/// character, never as the start of a date, and so does the lexer.
+fn follows_name(text: &str, at: usize) -> bool {
+    text.get(..at)
+        .and_then(|read| read.chars().next_back())
+        .is_some_and(|c| is_ident_char(c) || c == ')' || c == ']')
 }
 
 /// Whether the `#` that starts `rest` opens a file number: a number or a name
