@@ -8,8 +8,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod analyze;
 pub mod container;
 pub mod engine;
 pub mod ovba;
 pub mod report;
 pub mod rules;
+pub mod vba;
+
+// The entry points of the core, as the SPEC names them: `macroport_core::analyze`
+// is the function, and the module of that name holds its options and results.
+pub use analyze::{analyze, analyze_modules};
