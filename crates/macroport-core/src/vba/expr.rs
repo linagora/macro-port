@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The expression reader: it walks the tokens of a statement as expressions,
-//! with the precedence of VBA, and lists the strings, the members and the calls
-//! it finds.
+//! with the precedence of VBA, and lists the strings, the members, the calls
+//! and the chains it finds.
 //!
 //! A string literal is listed as it is. A literal that is part of an
 //! expression the closed set of [`super::fold`] folds is listed once, as the
@@ -16,14 +16,22 @@
 //! takes those that the syntax does not rule out, like the calibration
 //! prototype.
 //!
+//! The names joined by dots make a chain, the arguments of the calls in it
+//! left out. A dot continues the chain when it touches the name before it or
+//! opens a continued line (`a.b`, `a _` then `.b`); after a space it starts an
+//! operand of its own, a member of the `With` object (`list.Add .Name`). A
+//! chain that starts with a dot (or a bang) inside a `With` block continues the
+//! object of the block, which the caller hands to the reader.
+//!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
 //! listed as they are, and the statement is flagged. Every token is read once
 //! and a folded string is built by appending to the left operand, so the time
 //! is linear in the tokens, but for the final sorts of the facts. What a
 //! string function or a constant makes out of a string is paid for out of a
-//! [`Budget`] that the text of the statement sets, so that its memory and
-//! time are too.
+//! [`Budget`] that the text of the statement sets, and what a chain copies of
+//! the object of a block out of an allowance that the text read so far sets,
+//! so that the memory and the time are linear too.
 
 use super::facts::{CallSite, Facts, MemberUse};
 use super::fold::{Budget, ConstTable, Folding, Value, parse_number};
@@ -162,6 +170,29 @@ fn declares(tokens: &[Token]) -> bool {
     }
 }
 
+/// Where the last statement of the logical line `tokens` starts: at the first
+/// token, or after the last `Then` or `Else` of a single-line `If` (`If a Then
+/// With b`).
+pub(super) fn statement_start(tokens: &[Token]) -> usize {
+    let separator = tokens.iter().rposition(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Keyword(Keyword::Then | Keyword::Else)
+        )
+    });
+    separator.map_or(0, |index| index.saturating_add(1))
+}
+
+/// Where the object of the `With` block that the statement `tokens` opens
+/// would start, if it opens one.
+fn block_object_start(tokens: &[Token]) -> Option<usize> {
+    let head = statement_start(tokens);
+    let opens = tokens
+        .get(head)
+        .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::With));
+    opens.then(|| head.saturating_add(1))
+}
+
 /// The facts `found`, each with the index of the token it was found at, in
 /// the order of the source.
 fn in_order<T>(mut found: Vec<(usize, T)>) -> Vec<T> {
@@ -179,6 +210,72 @@ struct Chain {
     /// Whether the elements read so far are only library names (`VBA.`,
     /// `VBA.Strings.`), so that the next may be a function of the closed set.
     library: bool,
+    /// The names read so far, the object of the `With` block in front of them
+    /// if a dot started the chain.
+    elements: Vec<String>,
+    /// How many of the first elements are that object.
+    inherited: usize,
+}
+
+/// What a name weighs in memory beyond its bytes: the header of its `String`
+/// (24 bytes) and the share of the allocator. A copy of a name of one letter
+/// takes thirty to forty bytes, not one.
+const NAME_OVERHEAD: usize = 32;
+
+/// The most that the object of a `With` block may weigh for the reader to keep
+/// it: a few dozen names. Code written by hand has a handful. A block whose
+/// object weighs more has none, so that the blocks that are open (at most
+/// [`MAX_WITH_BLOCKS`](super::MAX_WITH_BLOCKS)) hold a few hundred kilobytes
+/// together, whatever the text.
+const MAX_OBJECT_WEIGHT: usize = 4096;
+
+/// The object of a `With` block: the chain of names that follows the `With`,
+/// which a dot inside the block continues.
+#[derive(Debug, Default)]
+pub(super) struct WithObject {
+    /// The names, `["a", "b"]` for `With a.b`. Empty when the object is no
+    /// chain of names or weighs too much.
+    elements: Vec<String>,
+    /// What it weighs: the bytes of the names, and [`NAME_OVERHEAD`] for each.
+    weight: usize,
+}
+
+impl WithObject {
+    /// The object whose chain is `elements`. None when it weighs more than
+    /// [`MAX_OBJECT_WEIGHT`], without copying it.
+    fn new(elements: &[String]) -> Option<Self> {
+        let mut weight = 0usize;
+        for name in elements {
+            weight = weight
+                .saturating_add(name.len())
+                .saturating_add(NAME_OVERHEAD);
+            if weight > MAX_OBJECT_WEIGHT {
+                return None;
+            }
+        }
+        Some(Self {
+            elements: elements.to_vec(),
+            weight,
+        })
+    }
+
+    /// A copy of the names, paid for out of `allowance`. Empty when the
+    /// allowance falls short.
+    fn copy(&self, allowance: &mut Budget) -> Vec<String> {
+        if allowance.take(self.weight) {
+            self.elements.clone()
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// The `With` block that a statement lies in.
+pub(super) struct Enclosing<'a> {
+    /// The object of the block, which a dot continues.
+    pub(super) object: &'a WithObject,
+    /// What the statements of the reader may still copy of it.
+    pub(super) allowance: &'a mut Budget,
 }
 
 /// Reads the expressions of one statement.
@@ -206,10 +303,26 @@ pub(super) struct Reader<'a> {
     members: Vec<(usize, MemberUse)>,
     /// The calls found, by the index of their token.
     calls: Vec<(usize, CallSite)>,
+    /// The chains found, by the index of their first token.
+    chains: Vec<(usize, Vec<String>)>,
+    /// The innermost `With` block that the statement lies in, if the caller
+    /// follows one. Its object has no names when it is unknown.
+    enclosing: Option<Enclosing<'a>>,
+    /// The indices of the dots and bangs that open a line continued from the
+    /// one before, in order: they continue the chain before them, as a dot
+    /// after a space does not.
+    continued: &'a [usize],
+    /// Where the object of the `With` block that the statement opens would
+    /// start, if it opens one.
+    object_start: Option<usize>,
+    /// The object that the statement opens a block on, if it is a chain of
+    /// names and nothing else.
+    opened: Option<WithObject>,
 }
 
 impl<'a> Reader<'a> {
-    /// A reader of the statement `tokens`, which were cut from `text`.
+    /// A reader of the statement `tokens`, which were cut from `text`, outside
+    /// any `With` block, with no continued line.
     pub(super) fn new(text: &'a str, tokens: &'a [Token], consts: &'a ConstTable) -> Self {
         Self {
             text,
@@ -223,11 +336,32 @@ impl<'a> Reader<'a> {
             strings: Vec::new(),
             members: Vec::new(),
             calls: Vec::new(),
+            chains: Vec::new(),
+            enclosing: None,
+            continued: &[],
+            object_start: block_object_start(tokens),
+            opened: None,
         }
     }
 
-    /// Reads the statement and gives the facts it holds, in source order.
-    pub(super) fn read(mut self) -> Facts {
+    /// The same reader, inside the `With` block `enclosing`, if the caller
+    /// follows one. The object of a block has no names when it is unknown.
+    pub(super) fn within(mut self, enclosing: Option<Enclosing<'a>>) -> Self {
+        self.enclosing = enclosing;
+        self
+    }
+
+    /// The same reader, for a statement whose tokens at the indices
+    /// `continued` are dots or bangs that open a continued line.
+    pub(super) fn continued(mut self, continued: &'a [usize]) -> Self {
+        self.continued = continued;
+        self
+    }
+
+    /// Reads the statement and gives the facts it holds, in source order, and
+    /// the object it opens a `With` block on, if it opens one on a chain of
+    /// names that a block may keep.
+    pub(super) fn read(mut self) -> (Facts, Option<WithObject>) {
         // Whether the statement is a `Const` one, and whether the next name
         // is one it declares: that name is not a use of the constant.
         let mut const_statement = false;
@@ -262,12 +396,14 @@ impl<'a> Reader<'a> {
                 _ => self.advance(),
             }
         }
-        Facts {
+        let facts = Facts {
             strings: in_order(self.strings),
             members: in_order(self.members),
             calls: in_order(self.calls),
+            chains: in_order(self.chains),
             too_deep: self.too_deep,
-        }
+        };
+        (facts, self.opened)
     }
 
     /// Reads a text that is nothing but one expression, and gives its value
@@ -278,11 +414,8 @@ impl<'a> Reader<'a> {
         self.budget = *budget;
         let node = self.expression(0);
         *budget = self.budget;
-        let rest = self.tokens.get(self.pos..)?;
         match node.value {
-            Value::Text(text) if rest.iter().all(|token| token.kind == TokenKind::Comment) => {
-                Some(text)
-            }
+            Value::Text(text) if self.at_end() => Some(text),
             _ => None,
         }
     }
@@ -584,10 +717,16 @@ impl<'a> Reader<'a> {
     /// Reads a name and what follows it: `Foo`, `Foo(1, 2)`, `a.b(c).d`,
     /// `rs!Name`, or `.Font` in a `With`. Only two shapes have a value: a call
     /// of the closed set, alone or qualified by library names, and the name
-    /// of a constant. The arguments are expressions of their own.
+    /// of a constant. The arguments are expressions of their own, and the names
+    /// make a chain.
     fn primary(&mut self) -> Node {
         let start = self.pos;
         let qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
+        let elements = if qualified {
+            self.object_of_block(start)
+        } else {
+            Vec::new()
+        };
         if qualified {
             self.advance();
         }
@@ -595,24 +734,103 @@ impl<'a> Reader<'a> {
             start,
             qualified,
             library: !qualified,
+            inherited: elements.len(),
+            elements,
         };
         while self.kind() == Some(TokenKind::Identifier) {
             let at = self.pos;
             self.advance();
-            let arguments = if self.kind() == Some(TokenKind::LeftParen) {
-                self.advance();
-                Some(self.arguments())
-            } else {
-                None
-            };
-            if !matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
-                return self.last_element(&chain, at, arguments);
+            chain.elements.push(self.name_at(at).to_owned());
+            let arguments = self.argument_lists(&mut chain);
+            if !self.continues_operand() {
+                let node = self.last_element(&chain, at, arguments);
+                self.end_chain(chain);
+                return node;
             }
             self.inner_element(&mut chain, at, arguments);
             self.advance();
             chain.qualified = true;
         }
+        self.end_chain(chain);
         Node::unknown(start)
+    }
+
+    /// Reads the argument list that follows a name, if there is one, and the
+    /// ones after it, which index what the call gives (`Cells(1)(2)`). The call
+    /// is then none of the closed set, and those lists hold expressions of
+    /// their own.
+    fn argument_lists(&mut self, chain: &mut Chain) -> Option<Vec<Option<Node>>> {
+        if self.kind() != Some(TokenKind::LeftParen) {
+            return None;
+        }
+        self.advance();
+        let arguments = self.arguments();
+        while self.kind() == Some(TokenKind::LeftParen) {
+            self.advance();
+            chain.library = false;
+            let indexes = self.arguments();
+            self.finish_all(indexes);
+        }
+        Some(arguments)
+    }
+
+    /// Whether the next token is a dot or a bang that continues the operand
+    /// just read. A dot after a space starts an operand of its own: `list.Add
+    /// .Name` passes the member `Name` of the `With` object to `Add`, as the
+    /// corpus does. A continued line puts a space there all the same
+    /// (`x.Interior _` then `.Color`): the caller says which dots open one.
+    fn continues_operand(&self) -> bool {
+        let at = self.pos;
+        let Some(dot) = self
+            .tokens
+            .get(at)
+            .filter(|token| matches!(token.kind, TokenKind::Dot | TokenKind::Bang))
+        else {
+            return false;
+        };
+        let touches = self
+            .token_before(at)
+            .is_some_and(|before| before.end == dot.start);
+        touches || self.continued.binary_search(&at).is_ok()
+    }
+
+    /// The token before the one at `at`.
+    fn token_before(&self, at: usize) -> Option<&'a Token> {
+        at.checked_sub(1).and_then(|before| self.tokens.get(before))
+    }
+
+    /// The names that a chain starting with a dot (or a bang) at the token
+    /// `at` continues: the object of the `With` block that the statement lies
+    /// in. Empty when a `)` lies before the dot, which continues what the
+    /// parenthesis closed, when the block has no known object, and when the
+    /// allowance for copying it falls short.
+    fn object_of_block(&mut self, at: usize) -> Vec<String> {
+        let after_group = self
+            .token_before(at)
+            .is_some_and(|token| token.kind == TokenKind::RightParen);
+        match &mut self.enclosing {
+            Some(enclosing) if !after_group => enclosing.object.copy(enclosing.allowance),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Ends `chain`. It is listed if it has an element of its own besides the
+    /// first. It is the object of the block that the statement opens if it is
+    /// the whole of the expression after the `With`.
+    fn end_chain(&mut self, chain: Chain) {
+        if self.object_start == Some(chain.start) && self.at_end() {
+            self.opened = WithObject::new(&chain.elements);
+        }
+        if chain.elements.len() > chain.inherited.max(1) {
+            self.chains.push((chain.start, chain.elements));
+        }
+    }
+
+    /// Whether nothing but a comment is left of the statement.
+    fn at_end(&self) -> bool {
+        self.tokens
+            .get(self.pos..)
+            .is_some_and(|rest| rest.iter().all(|token| token.kind == TokenKind::Comment))
     }
 
     /// Whether the token at `index` names a library.
