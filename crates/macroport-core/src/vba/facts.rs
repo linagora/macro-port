@@ -6,16 +6,27 @@
 //! from one to the next. Nothing in a statement is evaluated, constant folding
 //! apart.
 
-use super::expr::Reader;
-use super::fold::ConstTable;
-use super::lexer::{Token, TokenKind, tokenize};
+use super::expr::{Enclosing, Reader, WithObject};
+use super::fold::{Budget, ConstTable};
+use super::lexer::{Keyword, Token, TokenKind, tokenize};
 use super::{LogicalKind, LogicalLine};
 
-/// What a statement holds. The facts weigh a few dozen times the text of the
-/// statement (a name is copied as a member, as a call and in a chain), and the
-/// name of a constant stands for a longer string. A caller that keeps the
-/// facts of many statements bounds the total, as it bounds the lines
-/// themselves.
+/// How many `With` blocks a reader follows at once. Code written by hand
+/// nests a few. A block beyond the limit has no known object, but it closes in
+/// its turn.
+pub const MAX_WITH_BLOCKS: usize = 64;
+
+/// What each statement a reader reads adds to what its statements may copy of
+/// the objects of `With` blocks, besides four times its text: room for the
+/// object of a usual block, three names of a dozen letters.
+const COPY_ALLOWANCE: usize = 128;
+
+/// What a statement holds. The facts weigh up to a hundred times the text of
+/// the statement (a name is copied as a member, as a call and in a chain), and
+/// the name of a constant stands for a longer string. A chain that continues
+/// the object of a `With` block adds to that, within what the reader allows
+/// itself (see [`Facts::chains`]). A caller that keeps the facts of many
+/// statements bounds the total, as it bounds the lines themselves.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facts {
     /// The strings of the statement, in source order, with the doubled quotes
@@ -50,10 +61,18 @@ pub struct Facts {
     /// chain before it, unless it opens a continued line: `list.Add .Name`
     /// gives `["list", "Add"]` and, `.Name` being alone, no other chain.
     ///
-    /// A chain that starts with a dot, inside a `With` block, has the names
-    /// after the dot and no more: `.Font.Bold` gives `["Font", "Bold"]`,
-    /// whatever the object of the block. A name alone is no chain, and neither
-    /// is a type after `As` or `New`.
+    /// A chain that starts with a dot inside a `With` block continues the
+    /// object of the block: `.Font` in `With Range("A1")` is `["Range",
+    /// "Font"]`. It is listed without the object, as the end of the real
+    /// chain, when the object is no chain of names (`With New Collection`) or
+    /// weighs more than a block may keep (about 4 KiB, a name weighing its
+    /// bytes and 32), when more than [`MAX_WITH_BLOCKS`] blocks are open, when
+    /// the dot follows a `)` (`(a).b`), and when the reader has copied as much
+    /// as it allows itself: 128 bytes and four times the text of each
+    /// statement it has read, in weight. A long object is not copied into each
+    /// statement of a long block, and which statements get it depends on the
+    /// ones read before. A name alone is no chain, and neither is a type after
+    /// `As` or `New`.
     pub chains: Vec<Vec<String>>,
     /// The statement nests expressions deeper than [`MAX_NESTING`]. The reader
     /// read the rest of it flat from there: its strings are listed as the
@@ -86,17 +105,84 @@ pub struct CallSite {
     pub after_dot: bool,
 }
 
-/// Reads the statements of a module one after the other.
+/// The `With` blocks that are open.
+#[derive(Debug, Default)]
+struct WithBlocks {
+    /// The object of each block, the outermost first, up to
+    /// [`MAX_WITH_BLOCKS`].
+    objects: Vec<WithObject>,
+    /// How many blocks lie beyond them: they have no object.
+    beyond: usize,
+}
+
+impl WithBlocks {
+    /// The object of the innermost block, if there is one and it is known.
+    fn innermost(&self) -> Option<&WithObject> {
+        match self.beyond {
+            0 => self.objects.last(),
+            _ => None,
+        }
+    }
+
+    /// Follows the statement `tokens`, which was read with the result `object`
+    /// (the object it opens a block on, if it is a chain of names). A `With`
+    /// opens a block, an `End With` closes one (none if it closes none), and
+    /// the end of a procedure closes all.
+    fn follow(&mut self, tokens: &[Token], object: Option<WithObject>) {
+        let kind_of = |index: usize| tokens.get(index).map(|token| token.kind);
+        match (kind_of(0), kind_of(1)) {
+            (Some(TokenKind::Keyword(Keyword::With)), _) => {
+                let object = object.unwrap_or_default();
+                if self.objects.len() < MAX_WITH_BLOCKS {
+                    self.objects.push(object);
+                } else {
+                    self.beyond = self.beyond.saturating_add(1);
+                }
+            }
+            (Some(TokenKind::Keyword(Keyword::End)), Some(TokenKind::Keyword(Keyword::With))) => {
+                if self.beyond > 0 {
+                    self.beyond = self.beyond.saturating_sub(1);
+                } else {
+                    self.objects.pop();
+                }
+            }
+            (
+                Some(TokenKind::Keyword(Keyword::End)),
+                Some(TokenKind::Keyword(Keyword::Sub | Keyword::Function | Keyword::Property)),
+            ) => {
+                self.objects.clear();
+                self.beyond = 0;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Reads the statements of a module one after the other, and follows the
+/// `With` blocks they open and close. The end of a procedure (`End Sub`, `End
+/// Function`, `End Property`) closes the blocks it left open, so one reader
+/// can serve the procedures of a module in order.
 #[derive(Debug)]
 pub struct StatementReader<'c> {
     /// The constants of the module, which a name in an expression can stand for.
     consts: &'c ConstTable,
+    /// The `With` blocks that the statements read so far left open.
+    blocks: WithBlocks,
+    /// What the statements may still copy of the object of a block into their
+    /// chains, in weight: [`COPY_ALLOWANCE`] and four times the text for every
+    /// statement read so far, whatever their number, so that no long object
+    /// is copied into each statement of a long block.
+    copy_allowance: Budget,
 }
 
 impl<'c> StatementReader<'c> {
     /// A reader for the statements of a module whose constants are `consts`.
     pub fn new(consts: &'c ConstTable) -> Self {
-        Self { consts }
+        Self {
+            consts,
+            blocks: WithBlocks::default(),
+            copy_allowance: Budget::default(),
+        }
     }
 
     /// The facts of a logical line, whose continued lines are known: a dot
@@ -108,16 +194,31 @@ impl<'c> StatementReader<'c> {
         }
         let tokens = tokenize(&line.text);
         let continued = continued_dots(line, &tokens);
-        Reader::new(&line.text, &tokens, self.consts)
-            .continued(&continued)
-            .read()
+        self.read_statement(&line.text, &tokens, &continued)
     }
 
-    /// The facts of the statement `tokens`, which were cut from `text`, a text
-    /// of one physical line: every dot after a space starts a chain of its
-    /// own. [`StatementReader::read`] knows the continued lines.
+    /// The facts of the statement `tokens`, which were cut from `text`, a
+    /// text of one physical line: every dot after a space starts a chain of
+    /// its own. [`StatementReader::read`] knows the continued lines.
     pub fn read_tokens(&mut self, text: &str, tokens: &[Token]) -> Facts {
-        Reader::new(text, tokens, self.consts).read()
+        self.read_statement(text, tokens, &[])
+    }
+
+    /// The facts of a statement, in the `With` block that the ones before it
+    /// left open if any. A `With` statement opens a block, an `End With`
+    /// closes one, and the end of a procedure closes all.
+    fn read_statement(&mut self, text: &str, tokens: &[Token], continued: &[usize]) -> Facts {
+        self.copy_allowance.earn(COPY_ALLOWANCE, text);
+        let enclosing = self.blocks.innermost().map(|object| Enclosing {
+            object,
+            allowance: &mut self.copy_allowance,
+        });
+        let reader = Reader::new(text, tokens, self.consts)
+            .continued(continued)
+            .within(enclosing);
+        let (facts, object) = reader.read();
+        self.blocks.follow(tokens, object);
+        facts
     }
 }
 
