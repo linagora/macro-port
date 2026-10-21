@@ -32,6 +32,7 @@
 //! | `biff.workbook.missing` | `corrupted` | a workbook with a VBA storage has no `Workbook` stream |
 //! | `ovba.dir.missing` | `corrupted` | the project has no `dir` stream |
 //! | `ovba.module.missing_stream` | `corrupted` | the stream of a module is not in the project |
+//! | `ovba.module.not_read` | `suspicious_archive` | an earlier module decompressed past its limit, so the later ones are not read |
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //!
 //! The message of an error about a module starts with `module <name>:`.
