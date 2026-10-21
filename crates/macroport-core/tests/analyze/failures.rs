@@ -9,17 +9,19 @@
 // the one of a fixture.
 #![allow(clippy::disallowed_methods)]
 
+use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
 
 use cfb::CompoundFile;
 use macroport_core::container::read_ooxml;
-use macroport_core::ovba::{MAX_PROJECT_STREAM, parse_compressed_dir};
+use macroport_core::ovba::{DirModule, MAX_PROJECT_STREAM, parse_compressed_dir};
 use macroport_core::report::{Status, Xlm};
+use macroport_core::rules::Severity;
 use macroport_testkit::corpus;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-use crate::support::{codes, extraction};
+use crate::support::{codes, extraction, file_signal};
 
 type Compound = CompoundFile<Cursor<Vec<u8>>>;
 
@@ -62,6 +64,21 @@ fn replace_stream(compound: &mut Compound, path: &str, data: &[u8]) {
     stream.write_all(data).expect("a write to memory");
 }
 
+/// What the stream at `path` holds.
+fn stream_of(compound: &mut Compound, path: &str) -> Vec<u8> {
+    let mut data = Vec::new();
+    let mut stream = compound.open_stream(path).expect("the stream is there");
+    stream.read_to_end(&mut data).expect("a read from memory");
+    data
+}
+
+/// The modules that the `dir` stream of the project in the storage `storage`
+/// names: empty for the project of a package, which is the whole compound file.
+fn modules(compound: &mut Compound, storage: &str) -> Vec<DirModule> {
+    let dir = stream_of(compound, &format!("{storage}/VBA/dir"));
+    parse_compressed_dir(&dir).expect("a dir stream").modules
+}
+
 #[test]
 fn a_project_without_its_dir_stream_is_corrupted_and_not_described() {
     let package = package(|c| c.remove_stream("/VBA/dir").expect("the stream is there"));
@@ -89,11 +106,15 @@ fn a_module_without_its_stream_is_listed_without_source() {
     let messages: Vec<_> = errors.map(|error| error.message.as_str()).collect();
     assert!(messages[0].starts_with("module M_01_01: "), "{messages:?}");
     let project = report.vba_project.as_ref().expect("a described project");
+    // Without its source, whether it is missing is not known.
     let lost: Vec<_> = (project.modules.iter())
         .filter(|module| !module.source_available)
-        .map(|module| (module.name.as_str(), &module.source_sha256))
+        .map(|module| {
+            let missing = module.source_missing_suspected;
+            (module.name.as_str(), &module.source_sha256, missing)
+        })
         .collect();
-    assert_eq!(lost, [("M_01_01", &None)]);
+    assert_eq!(lost, [("M_01_01", &None, None)]);
     assert_eq!(extraction.sources.iter().flatten().count(), 2);
 }
 
@@ -123,25 +144,23 @@ fn bomb(compiled: usize) -> Vec<u8> {
 #[test]
 fn the_modules_after_one_that_decompresses_past_its_limit_are_not_read() {
     let package = package(|c| {
-        let mut dir = Vec::new();
-        let mut stream = c.open_stream("/VBA/dir").expect("the stream is there");
-        stream.read_to_end(&mut dir).expect("a read from memory");
-        drop(stream);
-        for module in parse_compressed_dir(&dir).expect("a dir stream").modules {
+        for module in modules(c, "") {
             let compiled = usize::try_from(module.text_offset).expect("an offset");
             replace_stream(c, &format!("/VBA/{}", module.stream_name), &bomb(compiled));
         }
     });
 
-    let report = extraction(&package, "a.xlsm").file;
+    let extraction = extraction(&package, "a.xlsm");
 
+    let report = &extraction.file;
     assert_eq!(report.status, Status::SuspiciousArchive);
     let expected = [
         "ovba.decompress.too_large",
         "ovba.module.not_read",
         "ovba.module.not_read",
     ];
-    assert_eq!(codes(&report), expected);
+    assert_eq!(codes(report), expected);
+    assert_eq!(extraction.indicators, ["sec.suspicious-archive"]);
     let project = report.vba_project.as_ref().expect("a described project");
     assert_eq!(project.modules.len(), 3);
     assert!(
@@ -212,4 +231,52 @@ fn a_workbook_without_a_vba_storage_has_no_macros() {
     };
     assert_eq!(report.xlm, Some(no_sheets));
     assert_eq!(report.workbook_encrypted, Some(false));
+}
+
+/// Takes the source out of the module `name` of the project in the storage
+/// `storage`, as VBA stomping does: the compiled part stays, and the container
+/// of the source holds nothing.
+fn stomp(compound: &mut Compound, storage: &str, name: &str) {
+    let module = (modules(compound, storage).into_iter())
+        .find(|module| module.name == name)
+        .expect("the module is there");
+    let path = format!("{storage}/VBA/{}", module.stream_name);
+    let mut stream = stream_of(compound, &path);
+    stream.truncate(usize::try_from(module.text_offset).expect("an offset"));
+    stream.push(0x01);
+    replace_stream(compound, &path, &stream);
+}
+
+#[test]
+fn a_module_whose_source_was_taken_out_is_suspected_of_having_lost_it() {
+    let files = [
+        ("a.xlsm", package(|c| stomp(c, "", "M_01_01"))),
+        (
+            "a.xls",
+            workbook(|c| stomp(c, "/_VBA_PROJECT_CUR", "M_01_01")),
+        ),
+    ];
+    for (path, bytes) in &files {
+        let extraction = extraction(bytes, path);
+
+        let report = &extraction.file;
+        // No code is left in sight, but the procedures are compiled: the file
+        // has macros.
+        assert_eq!(report.status, Status::Ok, "{path}");
+        assert_eq!(codes(report), Vec::<&str>::new(), "{path}");
+        let project = report.vba_project.as_ref().expect("a described project");
+        let suspected: BTreeMap<_, _> = (project.modules.iter())
+            .map(|module| (module.name.as_str(), module.source_missing_suspected))
+            .collect();
+        let expected = BTreeMap::from([
+            ("M_01_01", Some(true)),
+            ("Sheet1", Some(false)),
+            ("ThisWorkbook", Some(false)),
+        ]);
+        assert_eq!(suspected, expected, "{path}");
+        assert_eq!(extraction.indicators, ["sec.source-missing"], "{path}");
+        let signal = file_signal("sec.source-missing", Severity::High);
+        assert_eq!(report.signals, Some(vec![signal]), "{path}");
+        assert_eq!(report.max_severity, Some(Severity::High), "{path}");
+    }
 }
