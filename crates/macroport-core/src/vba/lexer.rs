@@ -166,6 +166,13 @@ pub enum TokenKind {
     LessEqual,
     /// `>=` or `=>`
     GreaterEqual,
+    /// A comment, from its `'`, or from the `Rem` that starts a statement, to
+    /// the end of the text. The logical lines come without their comments,
+    /// but a `Rem` after `Then` or `Else` is left in them, and the line then
+    /// has no [`comment`](super::LogicalLine::comment) for it:
+    /// [`Token::comment_text`] gives what it says. The parser skips the
+    /// token.
+    Comment,
     /// Any other character.
     Unknown,
 }
@@ -223,6 +230,19 @@ impl Token {
         };
         Some(inside.replace("\"\"", "\""))
     }
+
+    /// What a comment says, as [`Comment::text`](super::Comment::text) does
+    /// for the comment a logical line was cut from: after its `'` or its
+    /// `Rem`, trimmed. `None` for any other token.
+    pub fn comment_text<'a>(&self, source: &'a str) -> Option<&'a str> {
+        if self.kind != TokenKind::Comment {
+            return None;
+        }
+        let text = self.text(source);
+        // `Rem` is three ASCII bytes, so the cut falls on a character boundary.
+        let said = text.strip_prefix('\'').or_else(|| text.get(3..))?;
+        Some(said.trim_matches(is_space))
+    }
 }
 
 /// Reads the tokens of a text, from left to right.
@@ -269,12 +289,22 @@ impl<'a> Lexer<'a> {
         matches!(self.last_kind, Some(TokenKind::Dot | TokenKind::Bang))
     }
 
+    /// Whether a statement starts here: at the start of the text, after a
+    /// `:`, and after the `Then` or `Else` of a single-line `If`.
+    fn at_statement_start(&self) -> bool {
+        matches!(
+            self.last_kind,
+            None | Some(TokenKind::Colon | TokenKind::Keyword(Keyword::Then | Keyword::Else))
+        )
+    }
+
     /// The kind and the length in bytes of the token that starts `rest`,
     /// which starts with `c`.
     fn read(&mut self, c: char, rest: &str) -> (TokenKind, usize) {
         let after = |len: usize| rest.get(len..).and_then(|text| text.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
+            '\'' => (TokenKind::Comment, rest.len()),
             '[' if self.brackets_can_close => match bracket_len(rest) {
                 Some(len) => (TokenKind::Identifier, len),
                 None => {
@@ -324,19 +354,23 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// The word that starts `rest`: a keyword, or an identifier with its type
-    /// character. After `.` or `!`, and before `:=`, a word is always a name:
-    /// `.End`, `Type:=8`.
+    /// The word that starts `rest`: a keyword, a `Rem` comment, or an
+    /// identifier with its type character. After `.` or `!`, and before `:=`,
+    /// a word is always a name: `.End`, `Type:=8`.
     fn word(&self, rest: &str) -> (TokenKind, usize) {
         let end = rest.find(|c: char| !is_ident_char(c)).unwrap_or(rest.len());
         let word = rest.get(..end).unwrap_or_default();
         let after = rest.get(end..).unwrap_or_default();
-        let named_argument = after.trim_start_matches(is_space).starts_with(":=");
-        if !self.after_member()
-            && !named_argument
-            && let Some(keyword) = keyword(word)
-        {
-            return (TokenKind::Keyword(keyword), end);
+        if !self.after_member() {
+            if self.at_statement_start() && word.eq_ignore_ascii_case("rem") {
+                return (TokenKind::Comment, rest.len());
+            }
+            let named_argument = || after.trim_start_matches(is_space).starts_with(":=");
+            if let Some(keyword) = keyword(word)
+                && !named_argument()
+            {
+                return (TokenKind::Keyword(keyword), end);
+            }
         }
         (
             TokenKind::Identifier,
@@ -425,6 +459,62 @@ fn number(rest: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vba::split_lines;
+
+    /// What the comments among the tokens of `text` say.
+    fn said(text: &str) -> Vec<&str> {
+        tokenize(text)
+            .iter()
+            .filter_map(|token| token.comment_text(text))
+            .collect()
+    }
+
+    #[test]
+    fn a_comment_says_what_follows_its_apostrophe_or_its_rem() {
+        for (text, expected) in [
+            ("' a note ", "a note"),
+            ("'", ""),
+            ("Rem a note", "a note"),
+            ("REM", ""),
+            ("rem é", "é"),
+        ] {
+            assert_eq!(said(text), [expected], "{text:?}");
+            assert_eq!(tokenize(text).len(), 1, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn rem_starts_a_comment_only_where_a_statement_starts() {
+        assert_eq!(said("a: Rem here"), ["here"]);
+        assert_eq!(said("If a Then Rem here"), ["here"]);
+        assert_eq!(said("If a Then b Else Rem here"), ["here"]);
+        for text in ["a Rem here", "x.Rem", "[Rem]", "Remove", "Rem_"] {
+            assert!(said(text).is_empty(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn the_logical_line_of_a_single_line_if_keeps_the_rem_after_then() {
+        // The splitter cuts a comment off the line but leaves this one, for
+        // the lexer to find.
+        let lines = split_lines("If a Then Rem hi\nb = 1 ' ho\n").expect("lines");
+        let first = lines.logical.first().expect("a first line");
+        assert!(first.comment.is_none());
+        assert_eq!(said(&first.text), ["hi"]);
+        let second = lines.logical.get(1).expect("a second line");
+        assert_eq!(second.comment.as_ref().map(|c| c.text.as_str()), Some("ho"));
+        assert!(said(&second.text).is_empty());
+    }
+
+    #[test]
+    fn only_a_comment_says_something() {
+        let text = "x = \"a\" 'b";
+        let said: Vec<_> = tokenize(text)
+            .iter()
+            .map(|token| token.comment_text(text))
+            .collect();
+        assert_eq!(said, [None, None, None, Some("b")]);
+    }
 
     #[test]
     fn every_token_covers_at_least_the_character_it_starts_with() {
