@@ -57,6 +57,103 @@ fn literals_joined_with_and_or_plus_are_folded_into_one_string() {
 }
 
 #[test]
+fn chr_and_chrw_of_a_number_fold_to_a_character() {
+    check(&[
+        ("x = Chr(65)", &["A"]),
+        (
+            "x = Chr$(110) & Chr(111) & ChrW(116) & ChrW$(101)",
+            &["note"],
+        ),
+        ("x = ChrW(8364)", &["\u{20ac}"]),
+        ("x = Chr(&H41) & Chr(&O102) & Chr(67%)", &["ABC"]),
+        (
+            r#"x = Chr(110) & Chr(111) & "te" & "pad" & Chr(46) & StrReverse("exe")"#,
+            &["notepad.exe"],
+        ),
+        ("x = VBA.Chr(65) & VBA.Strings.Chr$(66)", &["AB"]),
+        ("x = Strings.Chr(65) & vba.chr$(66)", &["AB"]),
+        ("x = chr(0)", &["\u{0}"]),
+        ("x = Chr((65))", &["A"]),
+    ]);
+}
+
+#[test]
+fn strreverse_lcase_and_ucase_fold_the_value_they_are_given() {
+    check(&[
+        (r#"x = StrReverse("exe")"#, &["exe"]),
+        (r#"x = StrReverse("lleHS.tpircSW")"#, &["WScript.SHell"]),
+        (r#"x = UCase("abc") & LCase$("DEF")"#, &["ABCdef"]),
+        (r#"x = StrReverse(UCase("ab" & "c"))"#, &["CBA"]),
+        (r#"x = LCase(StrReverse("AB") & Chr(67))"#, &["bac"]),
+        // The case changes one character at a time: `ß` stays.
+        (r#"x = UCase("straße")"#, &["STRAßE"]),
+        // A call that is not closed folds as far as it reads.
+        (r#"x = UCase("a" & "b""#, &["AB"]),
+    ]);
+}
+
+#[test]
+fn a_call_of_the_set_with_an_argument_outside_it_stays_unresolved() {
+    check(&[
+        ("x = Chr(n)", &[]),
+        ("x = Chr(65 + 1)", &[]),
+        ("x = Chr(65.5)", &[]),
+        ("x = Chr(-5)", &[]),
+        ("x = ChrW(65536)", &[]),
+        ("x = ChrW(&HD800)", &[]),
+        ("x = Chr(99999999999)", &[]),
+        ("x = Chr(65, 66)", &[]),
+        ("x = Chr()", &[]),
+        ("x = Chr(\"A\")", &["A"]),
+        ("x = Chr(Asc(\"A\") + 1)", &["A"]),
+        ("x = StrReverse(y)", &[]),
+        ("x = StrReverse(65)", &[]),
+        (r#"x = UCase(y) & "b""#, &["b"]),
+        (r#"x = UCase("a", "b")"#, &["a", "b"]),
+        (r#"x = Chr(65) & Chr(y) & Chr(67)"#, &["A", "C"]),
+    ]);
+}
+
+#[test]
+fn the_bytes_of_a_code_page_and_chrb_stay_unresolved() {
+    // Above 127, `Chr` is a character of the code page of the machine, and
+    // `ChrB` a half character that the next byte completes.
+    check(&[
+        ("x = Chr(128)", &[]),
+        ("x = Chr(255) & Chr(256)", &[]),
+        ("x = ChrB(65)", &[]),
+        ("x = ChrB(87) & ChrB(0) & ChrB$(83)", &[]),
+    ]);
+}
+
+#[test]
+fn only_a_library_name_may_qualify_a_function_of_the_set() {
+    check(&[
+        ("x = obj.Chr(65)", &[]),
+        ("x = .Chr(65)", &[]),
+        ("x = Foo.Chr(65)", &[]),
+        ("x = Foo.VBA.Chr(65)", &[]),
+        ("x = VBA.Foo.Chr(65)", &[]),
+        ("x = VBA(1).Chr(65)", &[]),
+        ("x = VBA!Chr(65)", &[]),
+        ("x = Chr(65).Foo", &[]),
+        (r#"x = Interaction.UCase("a")"#, &["a"]),
+    ]);
+}
+
+#[test]
+fn what_a_string_function_builds_is_paid_for_out_of_the_text_of_its_statement() {
+    // `UCase` nested sixty times around a literal of 100 KB: a few levels
+    // copy it, the others are refused, and what was built is listed.
+    let long = "a".repeat(100_000);
+    let nested = format!("x = {}\"{long}\"{}", "UCase(".repeat(60), ")".repeat(60));
+    assert_eq!(strings_in_time(&nested), ["A".repeat(100_000)]);
+    // The literals themselves are never held back.
+    let joined = format!("y = \"{long}\" & \"{long}\"");
+    assert_eq!(strings_in_time(&joined), [format!("{long}{long}")]);
+}
+
+#[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
     // Each of these folds only what the closed set covers, and leaves the
     // other literals apart.
@@ -165,6 +262,7 @@ fn deep_nesting_of_every_shape_keeps_every_string_without_overflowing_the_stack(
         deep("Not ", ""),
         deep("f(", ")"),
         deep("a.b(", ")"),
+        deep("UCase(", ")"),
     ];
     for (shape, text) in shapes.iter().enumerate() {
         let read = facts(text);

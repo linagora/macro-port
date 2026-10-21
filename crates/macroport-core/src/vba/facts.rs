@@ -16,10 +16,10 @@ use super::{LogicalKind, LogicalLine};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facts {
     /// The strings of the statement, in source order, with the doubled quotes
-    /// of a literal read as one. A literal that belongs to an expression of
-    /// the closed set of constant folding (`"WScr" & "ipt.Sh" & "ell"`) is
-    /// replaced by the value of the whole expression, which is listed once.
-    /// A string literal that is not closed is not listed.
+    /// of a literal read as one. An expression of the closed set of constant
+    /// folding (`"WScr" & "ipt.Sh" & "ell"`, `Chr(110) & "ote"`) is listed
+    /// once, as its value, and not by the literals it is made of. A string
+    /// literal that is not closed is not listed.
     pub strings: Vec<String>,
     /// The statement nests expressions deeper than [`MAX_NESTING`]. The reader
     /// read the rest of it flat from there: all its strings are listed, as the
