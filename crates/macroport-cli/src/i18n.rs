@@ -60,6 +60,11 @@ pub const RESOURCES: &[Resource] = &[
         en: include_str!("../../../i18n/en/html.ftl"),
         fr: include_str!("../../../i18n/fr/html.ftl"),
     },
+    Resource {
+        name: "cli.ftl",
+        en: include_str!("../../../i18n/en/cli.ftl"),
+        fr: include_str!("../../../i18n/fr/cli.ftl"),
+    },
 ];
 
 /// The words of one language: the Fluent messages and the labels of the rules.
