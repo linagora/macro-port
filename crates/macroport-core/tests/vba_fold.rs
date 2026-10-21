@@ -43,6 +43,68 @@ fn literals_joined_with_and_or_plus_are_folded_into_one_string() {
 }
 
 #[test]
+fn chr_chrw_and_chrb_of_a_number_fold_to_a_character() {
+    check(&[
+        ("x = Chr(65)", &["A"]),
+        (
+            "x = Chr$(110) & Chr(111) & ChrW(116) & ChrB(101)",
+            &["note"],
+        ),
+        ("x = ChrW(8364)", &["\u{20ac}"]),
+        ("x = Chr(&H41) & Chr(&O102) & Chr(67%)", &["ABC"]),
+        (
+            r#"x = Chr(110) & Chr(111) & "te" & "pad" & Chr(46) & StrReverse("exe")"#,
+            &["notepad.exe"],
+        ),
+        ("x = VBA.Chr(65) & VBA.Strings.Chr$(66)", &["AB"]),
+        ("x = Strings.Chr(65) & vba.chr$(66)", &["AB"]),
+        ("x = chr(0)", &["\u{0}"]),
+        ("x = Chr((65))", &["A"]),
+    ]);
+}
+
+#[test]
+fn strreverse_lcase_and_ucase_fold_the_value_they_are_given() {
+    check(&[
+        (r#"x = StrReverse("exe")"#, &["exe"]),
+        (r#"x = StrReverse("lleHS.tpircSW")"#, &["WScript.SHell"]),
+        (r#"x = UCase("abc") & LCase$("DEF")"#, &["ABCdef"]),
+        (r#"x = StrReverse(UCase("ab" & "c"))"#, &["CBA"]),
+        (r#"x = LCase(StrReverse("AB") & Chr(67))"#, &["bac"]),
+    ]);
+}
+
+#[test]
+fn a_call_of_the_set_with_an_argument_outside_it_stays_unresolved() {
+    check(&[
+        ("x = Chr(n)", &[]),
+        ("x = Chr(65 + 1)", &[]),
+        ("x = Chr(65.5)", &[]),
+        ("x = Chr(256)", &[]),
+        ("x = Chr(-5)", &[]),
+        ("x = ChrW(65536)", &[]),
+        ("x = ChrW(&HD800)", &[]),
+        ("x = Chr(99999999999)", &[]),
+        ("x = Chr(65, 66)", &[]),
+        ("x = Chr()", &[]),
+        ("x = Chr(\"A\")", &["A"]),
+        ("x = Chr(Asc(\"A\") + 1)", &["A"]),
+        ("x = StrReverse(y)", &[]),
+        ("x = StrReverse(65)", &[]),
+        (r#"x = UCase(y) & "b""#, &["b"]),
+        (r#"x = UCase("a", "b")"#, &["a", "b"]),
+        (r#"x = Chr(65) & Chr(y) & Chr(67)"#, &["A", "C"]),
+        (r#"x = obj.Chr(65)"#, &[]),
+        (r#"x = .Chr(65)"#, &[]),
+        (r#"x = Foo.Chr(65)"#, &[]),
+        (r#"x = Foo.VBA.Chr(65)"#, &[]),
+        (r#"x = VBA.Foo.Chr(65)"#, &[]),
+        (r#"x = VBA(1).Chr(65)"#, &[]),
+        (r#"x = Chr(65).Foo"#, &[]),
+    ]);
+}
+
+#[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
     // Each of these leaves every literal apart, and folds nothing around them.
     check(&[
@@ -109,6 +171,7 @@ fn nesting_beyond_the_depth_limit_gives_up_without_overflowing_the_stack() {
         deep("Not ", "", "a"),
         deep("f(", ")", r#""a""#),
         deep("a.b(", ")", r#""a""#),
+        deep("UCase(", ")", r#""a""#),
     ] {
         // Only that it returns: the strings that were read before giving up
         // are not specified.
@@ -117,6 +180,8 @@ fn nesting_beyond_the_depth_limit_gives_up_without_overflowing_the_stack() {
     // A reasonable nesting still folds.
     let ok = format!("x = {}\"a\"{}", "(".repeat(20), ")".repeat(20));
     assert_eq!(strings(&ok), ["a"]);
+    let ok = format!("x = {}\"a\"{}", "UCase(".repeat(20), ")".repeat(20));
+    assert_eq!(strings(&ok), ["A"]);
 }
 
 #[test]

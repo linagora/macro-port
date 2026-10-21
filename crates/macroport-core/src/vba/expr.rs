@@ -13,7 +13,7 @@
 //! read once, and a folded string is built by appending to the left operand,
 //! so the time is linear in the tokens whatever their shape.
 
-use super::fold::Value;
+use super::fold::{Folding, Value, parse_number};
 use super::lexer::{Keyword, Token, TokenKind};
 
 /// How deeply expressions may nest before the reader gives up on the rest of
@@ -28,6 +28,10 @@ const NOT_POWER: u8 = 11;
 /// Binding power at which the operand of a unary `-` or `+` is read: what
 /// binds tighter than `*`, that is `^`.
 const SIGN_POWER: u8 = 23;
+
+/// The names that a function of the closed set may be qualified with:
+/// `VBA.Chr(65)`, `VBA.Strings.Chr$(65)`.
+const LIBRARIES: [&str; 3] = ["VBA", "Strings", "Interaction"];
 
 /// What an operand is worth.
 struct Node {
@@ -149,6 +153,13 @@ impl<'a> Reader<'a> {
         self.tokens.get(self.pos).map(|token| token.kind)
     }
 
+    /// The name that the token at `index` stands for.
+    fn name_at(&self, index: usize) -> &'a str {
+        self.tokens
+            .get(index)
+            .map_or("", |token| token.name(self.text))
+    }
+
     /// Moves past the next token.
     fn advance(&mut self) {
         self.pos = self.pos.saturating_add(1);
@@ -169,6 +180,13 @@ impl<'a> Reader<'a> {
     fn finish_value(&mut self, start: usize, value: Value) {
         if let Value::Text(text) = value {
             self.strings.push((start, text));
+        }
+    }
+
+    /// Lists the strings of all the nodes.
+    fn finish_all(&mut self, nodes: Vec<Option<Node>>) {
+        for node in nodes.into_iter().flatten() {
+            self.finish(node);
         }
     }
 
@@ -234,7 +252,13 @@ impl<'a> Reader<'a> {
                     start,
                 }
             }
-            TokenKind::Number | TokenKind::Date => {
+            TokenKind::Number => {
+                self.advance();
+                let value =
+                    parse_number(token.text(self.text)).map_or(Value::Unknown, Value::Number);
+                Node { value, start }
+            }
+            TokenKind::Date => {
                 self.advance();
                 Node::unknown(start)
             }
@@ -272,34 +296,83 @@ impl<'a> Reader<'a> {
         {
             return Node { start, ..inner };
         }
-        for node in slots.into_iter().flatten() {
-            self.finish(node);
-        }
+        self.finish_all(slots);
         Node::unknown(start)
     }
 
     /// Reads a name and what follows it: `Foo`, `Foo(1, 2)`, `a.b(c).d`,
-    /// `rs!Name`, or `.Font` in a `With`. Its value is not known; the
-    /// arguments are expressions of their own.
+    /// `rs!Name`, or `.Font` in a `With`. Only one shape has a value: a call
+    /// of the closed set, alone or qualified by library names. The arguments
+    /// are expressions of their own.
     fn primary(&mut self) -> Node {
         let start = self.pos;
-        if matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
+        let qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
+        if qualified {
             self.advance();
         }
+        // Whether the elements so far are library names.
+        let mut library = !qualified;
         while self.kind() == Some(TokenKind::Identifier) {
+            let at = self.pos;
             self.advance();
-            if self.kind() == Some(TokenKind::LeftParen) {
+            let arguments = if self.kind() == Some(TokenKind::LeftParen) {
                 self.advance();
-                for node in self.arguments().into_iter().flatten() {
-                    self.finish(node);
-                }
-            }
-            if matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
-                self.advance();
+                Some(self.arguments())
             } else {
-                break;
+                None
+            };
+            if !matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
+                return self.last_element(start, at, arguments, library);
+            }
+            library = library && arguments.is_none() && self.is_library(at);
+            self.finish_all(arguments.unwrap_or_default());
+            self.advance();
+        }
+        Node::unknown(start)
+    }
+
+    /// Whether the token at `index` names a library.
+    fn is_library(&self, index: usize) -> bool {
+        let name = self.name_at(index);
+        LIBRARIES
+            .iter()
+            .any(|library| library.eq_ignore_ascii_case(name))
+    }
+
+    /// What the last element of a name is worth: it is the token at `at`, has
+    /// `arguments` if a `(` followed it, and `library` tells whether the
+    /// elements before it, if there are any, are only library names.
+    fn last_element(
+        &mut self,
+        start: usize,
+        at: usize,
+        arguments: Option<Vec<Option<Node>>>,
+        library: bool,
+    ) -> Node {
+        let Some(arguments) = arguments else {
+            return Node::unknown(start);
+        };
+        match Folding::named(self.name_at(at)).filter(|_| library) {
+            Some(function) => self.fold(start, function, arguments),
+            None => {
+                self.finish_all(arguments);
+                Node::unknown(start)
             }
         }
+    }
+
+    /// What `function` makes of its `arguments`: one expression whose value
+    /// it folds, or nothing.
+    fn fold(&mut self, start: usize, function: Folding, arguments: Vec<Option<Node>>) -> Node {
+        if let [Some(argument)] = arguments.as_slice()
+            && let Some(text) = function.apply(&argument.value)
+        {
+            return Node {
+                value: Value::Text(text),
+                start,
+            };
+        }
+        self.finish_all(arguments);
         Node::unknown(start)
     }
 
