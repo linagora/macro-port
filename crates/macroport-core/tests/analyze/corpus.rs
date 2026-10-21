@@ -3,14 +3,10 @@
 //! samples, and the workbooks and the exports of their modules that Excel made
 //! of them.
 
-use macroport_core::analyze::analyze;
-use macroport_testkit::corpus;
-
-use crate::support::{checked, modules, options, recovery_traits};
+use crate::support::{corpus_report, marks_recovery, procedures};
 
 #[test]
 fn a_procedure_whose_blocks_do_not_match_gets_the_trait_in_its_sample_and_in_its_fixtures() {
-    let marked = Some(recovery_traits());
     // See `vba_metrics_corpus.rs`: what makes their blocks not match.
     for (family, sample, extension, name) in [
         (
@@ -35,15 +31,14 @@ fn a_procedure_whose_blocks_do_not_match_gets_the_trait_in_its_sample_and_in_its
         }
 
         for path in paths {
-            let file = checked(analyze(&corpus::read(&path), &path, &options()));
+            let file = corpus_report(&path);
 
-            let procedures = modules(&file).iter().flat_map(|module| &module.procedures);
-            let found: Vec<_> = procedures
-                .filter(|procedure| procedure.traits.is_some())
-                .map(|procedure| (procedure.name.as_str(), procedure.traits.clone()))
+            let found: Vec<_> = procedures(&file)
+                .filter(|procedure| marks_recovery(procedure.traits.as_deref()))
+                .map(|procedure| procedure.name.as_str())
                 .collect();
-            assert_eq!(found, [(name, marked.clone())], "{path}");
-            assert_eq!(file.traits, marked, "{path}");
+            assert_eq!(found, [name], "{path}");
+            assert!(marks_recovery(file.traits.as_deref()), "{path}");
         }
     }
 }

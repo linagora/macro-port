@@ -3,8 +3,8 @@
 
 use std::sync::LazyLock;
 
-use macroport_core::analyze::{Extraction, Options, extract};
-use macroport_core::report::{FileReport, Lang, ModuleReport, Report, Signal};
+use macroport_core::analyze::{Extraction, Options, analyze, extract};
+use macroport_core::report::{FileReport, Lang, ModuleReport, ProcedureReport, Report, Signal};
 use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::{corpus, report_problems};
 use sha2::{Digest, Sha256};
@@ -50,6 +50,13 @@ pub fn recovery_traits() -> Vec<String> {
     vec!["compile_error_suspected".to_owned()]
 }
 
+/// Whether `traits` include the ones that a parse that recovered gives. A
+/// report may carry other traits, from the rules that look at the metrics.
+pub fn marks_recovery(traits: Option<&[String]>) -> bool {
+    let marked = recovery_traits();
+    traits.is_some_and(|traits| marked.iter().all(|name| traits.contains(name)))
+}
+
 /// The signal `id` of `severity` that a container indicator makes: it is the
 /// file's, with no module and no evidence.
 pub fn file_signal(id: &str, severity: Severity) -> Signal {
@@ -92,9 +99,20 @@ pub fn checked(file: FileReport) -> FileReport {
     file
 }
 
+/// The report of the file `path` of `corpus/`, relative to it, from `analyze()`
+/// with the default options and checked against the report schema.
+pub fn corpus_report(path: &str) -> FileReport {
+    checked(analyze(&corpus::read(path), path, &options()))
+}
+
 /// The modules of the VBA project of `file`.
 pub fn modules(file: &FileReport) -> &[ModuleReport] {
     &file.vba_project.as_ref().expect("a VBA project").modules
+}
+
+/// The procedures of every module of `file`.
+pub fn procedures(file: &FileReport) -> impl Iterator<Item = &ProcedureReport> {
+    modules(file).iter().flat_map(|module| &module.procedures)
 }
 
 /// The only module of `file`.
