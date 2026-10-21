@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //! What the tests of the structural parser share.
+
+// clippy.toml excuses `expect` in the `#[test]` functions only, not in helpers.
 #![allow(clippy::expect_used)]
 
 use macroport_core::report::ProcedureKind;
-use macroport_core::vba::{ParsedModule, SourceLines, parse, split_lines};
+use macroport_core::vba::{ParsedModule, parse, split_lines};
 
-/// The logical lines and the parse of `text`.
-pub fn parsed(text: &str) -> (SourceLines, ParsedModule) {
-    let lines = split_lines(text).expect("a text within the line limit");
-    let module = parse(&lines);
-    (lines, module)
+/// What the parser makes of `text`.
+pub fn module_of(text: &str) -> ParsedModule {
+    parse(&split_lines(text).expect("a text within the line limit"))
 }
 
 /// The name, the kind and the physical span of each procedure.
