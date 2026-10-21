@@ -408,6 +408,31 @@ fn the_code_of_a_module_with_no_procedure_counts_for_the_file_only() {
     assert_eq!(found.file.primary_family, "01-a");
 }
 
+/// A project of one module with no procedure, whose code uses these members
+/// from line 2.
+fn code_of(names: &[&str]) -> ProjectInput {
+    let code = module("Module1", ModuleType::Standard, Vec::new());
+    project(vec![code.with_declarations(uses_each(names))])
+}
+
+#[test]
+fn the_code_of_a_module_with_no_procedure_counts_up_to_the_cap() {
+    // The hits that the code has for a signal of weight 2 and a cap of 3, and
+    // what it scores at procedure scope (2 a hit) and at module scope (1 a hit).
+    for (hits, own, wide) in [(1, 2.0, 1.0), (3, 6.0, 3.0), (5, 6.0, 3.0)] {
+        let code = code_of(&vec!["Foo"; hits]);
+        for (scope, score) in [(Scope::Procedure, own), (Scope::Module, wide)] {
+            let rules = rules_of(vec![signal("a.foo", &["Foo"], 2).at(scope)]);
+            let found = classify(&code, &rules);
+            assert_eq!(file_scores(&found), [("01-a", score)], "{hits} hits");
+        }
+    }
+    // The cap of the signal is the one that counts.
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 2).capped(1)]);
+    let found = classify(&code_of(&["Foo"; 5]), &rules);
+    assert_eq!(file_scores(&found), [("01-a", 2.0)]);
+}
+
 #[test]
 fn a_file_that_no_signal_scores_is_unclassified() {
     let rules = rules_of(vec![signal("a.foo", &["Foo"], 2)]);
