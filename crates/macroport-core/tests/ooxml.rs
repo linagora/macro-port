@@ -640,6 +640,30 @@ fn percent_escapes_in_a_target_name_the_part_that_they_decode_to() {
         let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
         assert_eq!(vba_of(&package), b"by relationship", "{entry} and {target}");
     }
+    // A relationship names a macro sheet the same way.
+    let related = [(MACRO_SHEET_RELATIONSHIP, "macrosheets/my%20sheet.xml")];
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/my sheet.xml", b"<macro/>")];
+    assert_eq!(macro_sheets_of(&workbook_package(&related, &parts)), 1);
+}
+
+#[test]
+fn an_escaped_dot_is_no_dot_segment() {
+    // A target is resolved as a path before the archive decodes its name, so
+    // `%2E%2E` does not climb out of a folder as `..` does.
+    let parts: [(&str, &[u8]); 2] = [("xl/p.bin", b"by dot segment"), (VBA, b"by name")];
+    let climbing = [(VBA_RELATIONSHIP, "custom/../p.bin")];
+    assert_eq!(
+        vba_of(&workbook_package(&climbing, &parts)),
+        b"by dot segment"
+    );
+    for target in [
+        "custom/%2E%2E/p.bin",
+        "custom/%2e%2e/p.bin",
+        "custom/%2E./p.bin",
+    ] {
+        let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
+        assert_eq!(vba_of(&package), b"by name", "{target}");
+    }
 }
 
 #[test]
@@ -671,10 +695,6 @@ fn percent_escapes_in_the_content_types_name_the_part_that_they_decode_to() {
         let package = typed_package(&types, &[], &parts);
         assert_eq!(macro_sheets_of(&package), 1, "{entry} and {part_name}");
     }
-    // A relationship names a macro sheet the same way.
-    let related = [(MACRO_SHEET_RELATIONSHIP, "macrosheets/my%20sheet.xml")];
-    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/my sheet.xml", b"<macro/>")];
-    assert_eq!(macro_sheets_of(&workbook_package(&related, &parts)), 1);
 }
 
 #[test]
