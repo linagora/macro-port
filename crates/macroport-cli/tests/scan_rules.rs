@@ -9,12 +9,9 @@ use std::path::Path;
 use std::process::Output;
 
 use support::{
-    MODULE, RULES_FILES, as_arg, put, read_report, run_in, scratch, shipped_rules_with_version,
-    text, use_fixture, valid_rules,
+    MODULE, OTHER_VERSION, RULES_FILES, as_arg, put, read_report, run_in, scratch,
+    shipped_rules_with_version, text, use_fixture, valid_rules,
 };
-
-/// The version of rules that no release ships.
-const OTHER_VERSION: &str = "9.9.9";
 
 /// Scans `m.bas` of `dir` into `dir/out` with the rules of `rules`, and gives
 /// the output of `scan` followed by that of `rules check` on the same rules.

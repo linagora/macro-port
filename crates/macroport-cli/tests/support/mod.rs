@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Helpers for the tests of the commands that read and write files: a scratch
 //! directory for each test, the files to put in it, the files that a test
-//! makes unreadable, the reports that a command writes, the rules to check, and
-//! the binary to run.
+//! makes unreadable, the reports that a command writes or prints, the rules to
+//! check, and the binary to run, with a console that nobody reads.
 
 // Each test binary includes this module and uses some of its helpers.
 #![allow(dead_code)]
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, ExitStatus, Output};
 
 use macroport_core::report::Report;
 use macroport_testkit::report_problems;
@@ -25,6 +26,39 @@ pub fn run_in(dir: &Path, args: &[&str]) -> Output {
         .current_dir(dir)
         .args(args)
         .output()
+        .expect("the macro-port binary runs")
+}
+
+/// A pipe whose reader is closed: every write on it fails with a broken pipe,
+/// as when the reader of `macro-port schema | head -n 0` has exited.
+fn pipe_without_reader() -> io::PipeWriter {
+    let (reader, writer) = io::pipe().expect("a pipe");
+    drop(reader);
+    writer
+}
+
+/// Runs `macro-port` in `dir` with `args` while stdout goes to a pipe without a
+/// reader. Stderr is captured.
+pub fn run_with_stdout_closed(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_macro-port"))
+        .current_dir(dir)
+        .args(args)
+        .stdout(pipe_without_reader())
+        .output()
+        .expect("the macro-port binary runs")
+}
+
+/// Runs `macro-port` in `dir` with `args` while stdout and stderr go to a pipe
+/// without a reader: nobody reads the progress, the errors or the summary.
+pub fn run_with_console_closed(dir: &Path, args: &[&str]) -> ExitStatus {
+    let stdout = pipe_without_reader();
+    let stderr = stdout.try_clone().expect("the pipe is cloned");
+    Command::new(env!("CARGO_BIN_EXE_macro-port"))
+        .current_dir(dir)
+        .args(args)
+        .stdout(stdout)
+        .stderr(stderr)
+        .status()
         .expect("the macro-port binary runs")
 }
 
@@ -70,20 +104,35 @@ pub fn put(dir: &Path, relative: &str, content: &[u8]) -> PathBuf {
 /// A module with one small procedure: the smallest file worth scanning.
 pub const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
 
-/// The text of the `report.json` in `out`, once it has passed the schema: every
-/// JSON that the tests read is validated (ACCEPTANCE A3).
-pub fn report_json(out: &Path) -> String {
-    let path = out.join("report.json");
-    let json = fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+/// `json`, once it has passed the schema: every JSON that the tests read is
+/// validated (ACCEPTANCE A3).
+pub fn validated(json: String) -> String {
     assert_eq!(report_problems(&json), Vec::<String>::new());
     json
+}
+
+/// The text of the `report.json` in `out`, once it has passed the schema.
+pub fn report_json(out: &Path) -> String {
+    let path = out.join("report.json");
+    validated(
+        fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display())),
+    )
 }
 
 /// The `report.json` in `out`, read into the model.
 pub fn read_report(out: &Path) -> Report {
     serde_json::from_str(&report_json(out)).expect("report.json is a report")
 }
+
+/// The report that a command printed on stdout, read into the model once it has
+/// passed the schema.
+pub fn printed_report(stdout: &[u8]) -> Report {
+    serde_json::from_str(&validated(text(stdout))).expect("stdout is a report")
+}
+
+/// The version of rules that no release ships.
+pub const OTHER_VERSION: &str = "9.9.9";
 
 /// A file or directory that a test made unreadable. It gets its permissions
 /// back when the guard goes out of scope, a failed check included, so that the
