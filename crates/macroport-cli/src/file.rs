@@ -9,9 +9,8 @@ use std::process::ExitCode;
 use clap::Args as ClapArgs;
 use macroport_core::rules::RuleSet;
 
-use crate::args::{AnalysisArgs, FileFormat, existing_file};
+use crate::args::{AnalysisArgs, PrintFormat, existing_file};
 use crate::command;
-use crate::console::write_on_stdout;
 use crate::i18n::Messages;
 use crate::reports;
 use crate::scan::{self, Settings};
@@ -26,7 +25,7 @@ pub struct Args {
     /// The report to print on stdout: `json` (the report that the schema
     /// describes) or `html` (one page that holds its data and its style).
     #[arg(long, value_enum, default_value_t, value_name = "FORMAT")]
-    pub format: FileFormat,
+    pub format: PrintFormat,
 
     #[command(flatten)]
     pub analysis: AnalysisArgs,
@@ -46,14 +45,9 @@ pub fn run(args: &Args) -> ExitCode {
 fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode, String> {
     // One file: one thread, and no progress to show.
     let settings = Settings::new(rules, Some(1), &args.analysis);
-    let report =
-        scan::scan(std::slice::from_ref(&args.path), &settings, &|_| {}).map_err(|error| {
-            messages.text_with("cli-error-threads", &[("reason", &error.to_string())])
-        })?;
-    for document in reports::documents(args.format.into(), &report, messages)? {
-        write_on_stdout(&document.contents).map_err(|error| {
-            messages.text_with("cli-error-print", &[("reason", &error.to_string())])
-        })?;
-    }
+    let report = scan::scan(std::slice::from_ref(&args.path), &settings, &|_| {})
+        .map_err(|error| scan::threads_error(messages, &error))?;
+    let document = reports::printed(args.format, &report, messages)?;
+    command::print_document(messages, &document)?;
     Ok(command::exit_code_of(&report))
 }

@@ -5,26 +5,12 @@
 mod support;
 
 use std::fs::{self, File};
-use std::io;
-use std::process::Command;
 
-use macroport_core::report::{Build, Report, Status};
-use macroport_testkit::report_problems;
-use serde_json::Value;
+use macroport_core::report::{Build, Status};
 use support::{
-    MODULE, as_arg, put, run_in, scratch, shipped_rules_with_version, text, use_fixture,
-    valid_rules,
+    MODULE, OTHER_VERSION, as_arg, printed_report, put, run_in, run_with_stdout_closed, scratch,
+    shipped_rules_with_version, text, use_fixture, valid_rules,
 };
-
-/// The version of rules that no release ships.
-const OTHER_VERSION: &str = "9.9.9";
-
-/// The report that a command printed, once it has passed the schema.
-fn printed_report(stdout: &[u8]) -> Report {
-    let json = text(stdout);
-    assert_eq!(report_problems(&json), Vec::<String>::new());
-    serde_json::from_str(&json).expect("stdout is a report")
-}
 
 #[test]
 fn file_prints_the_report_of_the_file_on_stdout_and_nothing_else() {
@@ -87,8 +73,13 @@ fn file_takes_a_file_whatever_its_extension() {
     let report = printed_report(&output.stdout);
     assert_eq!(report.files.len(), 1);
     assert_eq!(report.files[0].path, "notes.txt");
-    let expected_code = i32::from(report.scan.files_failed > 0);
-    assert_eq!(output.status.code(), Some(expected_code), "{output:?}");
+    // SPEC M4: 1 when a file is `corrupted`, `error`, `suspicious_archive` or
+    // `too_large`, whatever the status of this one is.
+    let failed = matches!(
+        report.files[0].status,
+        Status::Corrupted | Status::Error | Status::SuspiciousArchive | Status::TooLarge
+    );
+    assert_eq!(output.status.code(), Some(i32::from(failed)), "{output:?}");
 }
 
 #[test]
@@ -172,31 +163,59 @@ fn a_reader_that_went_away_is_not_an_error() {
     let dir = scratch("file_reader_gone");
     put(&dir, "m.bas", MODULE);
 
-    // The reader of the pipe is closed before the command starts: every write
-    // on stdout fails with a broken pipe.
-    let (reader, writer) = io::pipe().expect("a pipe");
-    drop(reader);
-    let output = Command::new(env!("CARGO_BIN_EXE_macro-port"))
-        .current_dir(&dir)
-        .args(["file", "m.bas"])
-        .stdout(writer)
-        .output()
-        .expect("the macro-port binary runs");
+    let output = run_with_stdout_closed(&dir, &["file", "m.bas"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
 }
 
+/// Stdout is `/dev/full`, where every write fails with "no space left on
+/// device": the reader is still there and the document is lost. Linux only,
+/// since it needs that device.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_document_that_cannot_be_written_is_a_fatal_error_in_the_language_asked_for() {
+    use std::fs::OpenOptions;
+    use std::process::Command;
+
+    let dir = scratch("file_stdout_full");
+    put(&dir, "m.bas", MODULE);
+
+    for (lang, start) in [
+        ("en", "error: cannot print on the standard output: "),
+        (
+            "fr",
+            "erreur : impossible d'écrire sur la sortie standard : ",
+        ),
+    ] {
+        let full = OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .expect("/dev/full opens");
+        let output = Command::new(env!("CARGO_BIN_EXE_macro-port"))
+            .current_dir(&dir)
+            .args(["file", "m.bas", "--lang", lang])
+            .stdout(full)
+            .output()
+            .expect("the macro-port binary runs");
+
+        assert_eq!(output.status.code(), Some(3), "{lang}: {output:?}");
+        let stderr = text(&output.stderr);
+        assert!(stderr.starts_with(start), "{lang}: {stderr}");
+        assert_eq!(stderr.lines().count(), 1, "{lang}: {stderr}");
+    }
+}
+
 #[test]
 fn the_report_of_a_file_names_no_other_file() {
-    // A directory next to the file does not matter: only the file is read.
+    // Another file next to it does not matter: only the file is read.
     let dir = scratch("file_alone");
     put(&dir, "m.bas", MODULE);
     put(&dir, "other.bas", MODULE);
 
     let output = run_in(&dir, &["file", "m.bas"]);
 
-    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(report["files"].as_array().map(Vec::len), Some(1));
-    assert_eq!(report["scan"]["files_total"], 1);
+    let report = printed_report(&output.stdout);
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.scan.files_total, 1);
 }

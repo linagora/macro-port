@@ -7,7 +7,6 @@ use std::process::ExitCode;
 use macroport_core::report::Lang;
 
 use crate::command;
-use crate::console::write_on_stdout;
 
 /// The schema, as `schema/report.schema.json` holds it.
 pub const REPORT_SCHEMA: &str = include_str!("../../../schema/report.schema.json");
@@ -15,9 +14,7 @@ pub const REPORT_SCHEMA: &str = include_str!("../../../schema/report.schema.json
 /// Runs `macro-port schema`: prints the schema on stdout.
 pub fn run() -> ExitCode {
     command::with_rules(Lang::En, None, |_rules, messages| {
-        write_on_stdout(REPORT_SCHEMA.as_bytes()).map_err(|error| {
-            messages.text_with("cli-error-print", &[("reason", &error.to_string())])
-        })?;
+        command::print_document(messages, REPORT_SCHEMA.as_bytes())?;
         Ok(ExitCode::SUCCESS)
     })
 }

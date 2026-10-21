@@ -6,7 +6,7 @@ use std::fmt::Display;
 
 use macroport_core::report::Report;
 
-use crate::args::Format;
+use crate::args::{Format, PrintFormat};
 use crate::i18n::Messages;
 use crate::render::{csv, html};
 
@@ -29,17 +29,41 @@ pub fn documents(
     messages: &Messages,
 ) -> Result<Vec<Document>, String> {
     match format {
-        Format::Json => Ok(vec![document("report.json", report.to_json())?]),
-        Format::Html => Ok(vec![document(
-            "report.html",
-            html::render(report, messages),
-        )?]),
+        Format::Json => Ok(vec![json_document(report)?]),
+        Format::Html => Ok(vec![html_document(report, messages)?]),
         Format::Csv => Ok(vec![
             document("files.csv", csv::files(report))?,
             document("procedures.csv", csv::procedures(report))?,
             document("signals.csv", csv::signals(report))?,
         ]),
     }
+}
+
+/// The one document that `macro-port file` prints for `report` in `format`:
+/// the same as the file that a scan writes in that format.
+///
+/// # Errors
+///
+/// The text of the error of a renderer, which the model of the report never
+/// raises.
+pub fn printed(
+    format: PrintFormat,
+    report: &Report,
+    messages: &Messages,
+) -> Result<Vec<u8>, String> {
+    let document = match format {
+        PrintFormat::Json => json_document(report)?,
+        PrintFormat::Html => html_document(report, messages)?,
+    };
+    Ok(document.contents)
+}
+
+fn json_document(report: &Report) -> Result<Document, String> {
+    document("report.json", report.to_json())
+}
+
+fn html_document(report: &Report, messages: &Messages) -> Result<Document, String> {
+    document("report.html", html::render(report, messages))
 }
 
 /// The file `name` that a renderer made, or the text of its error.

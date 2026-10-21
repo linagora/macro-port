@@ -5,16 +5,15 @@
 mod support;
 
 use std::fs::{self, File};
-use std::io;
 use std::path::Path;
-use std::process::Command;
 
 use macroport_cli::scan::EXTENSIONS;
 use macroport_core::report::{Build, Status};
 use macroport_testkit::corpus;
 use serde_json::Value;
 use support::{
-    MODULE, as_arg, put, read_report, repo_root, report_json, run, run_in, scratch, text,
+    MODULE, as_arg, put, read_report, repo_root, report_json, run, run_in, run_with_console_closed,
+    scratch, text,
 };
 
 /// The `generated_at` of a deterministic report (SPEC M4).
@@ -408,17 +407,9 @@ fn a_console_that_is_gone_does_not_stop_the_scan() {
         put(&dir, &format!("tree/m{n:02}.bas"), MODULE);
     }
 
-    // The reader of the pipe is closed before the command starts: nobody reads
-    // the progress or the summary, and every line that it prints fails.
-    let (reader, writer) = io::pipe().expect("a pipe");
-    drop(reader);
-    let status = Command::new(env!("CARGO_BIN_EXE_macro-port"))
-        .current_dir(&dir)
-        .args(["scan", "tree", "-o", "out"])
-        .stdout(writer.try_clone().expect("the pipe is cloned"))
-        .stderr(writer)
-        .status()
-        .expect("the macro-port binary runs");
+    // Nobody reads the progress or the summary, and every line that it prints
+    // fails.
+    let status = run_with_console_closed(&dir, &["scan", "tree", "-o", "out"]);
 
     assert_eq!(status.code(), Some(0));
     assert_eq!(read_report(&dir.join("out")).files.len(), 30);

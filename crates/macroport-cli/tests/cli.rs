@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //! End-to-end tests: run the `macro-port` binary as a user would.
 
+mod support;
+
 use std::fs;
-use std::io;
-use std::path::Path;
 use std::process::{Command, Output};
+
+use support::{repo_root, run_with_stdout_closed};
 
 fn macro_port(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_macro-port"))
@@ -38,13 +40,11 @@ fn schema_prints_the_schema_of_the_report() {
     let output = macro_port(&["schema"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/report.schema.json");
+    let path = repo_root().join("schema/report.schema.json");
     let schema = fs::read(&path).expect("the schema of the report is read");
     // The schema as the repository holds it, byte for byte: stdout is the file.
     assert_eq!(output.stdout, schema);
     assert!(output.stderr.is_empty(), "{output:?}");
-    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).expect("JSON");
-    assert_eq!(parsed["title"], "Macro-Port report");
 }
 
 #[test]
@@ -57,15 +57,8 @@ fn schema_takes_no_argument() {
 
 #[test]
 fn a_reader_of_the_schema_that_went_away_is_not_an_error() {
-    // The reader of the pipe is closed before the command starts, as with
-    // `macro-port schema | head -n 0`: every write on stdout fails.
-    let (reader, writer) = io::pipe().expect("a pipe");
-    drop(reader);
-    let output = Command::new(env!("CARGO_BIN_EXE_macro-port"))
-        .arg("schema")
-        .stdout(writer)
-        .output()
-        .expect("the macro-port binary runs");
+    // As with `macro-port schema | head -n 0`: every write on stdout fails.
+    let output = run_with_stdout_closed(&repo_root(), &["schema"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     assert!(output.stderr.is_empty(), "{output:?}");
