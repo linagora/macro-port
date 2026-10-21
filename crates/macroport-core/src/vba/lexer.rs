@@ -11,6 +11,13 @@
 //! [`TokenKind::Unknown`] one. [`tokenize`] is the way in; the lazy reader
 //! behind it stays private.
 //!
+//! Three characters mean something else in another place, and the lexer
+//! settles them from the text around them. `!` is a type character (`n!`) or
+//! reaches a member (`rs!Name`). `#` is a type character (`x#`), the mark of a
+//! file number (`Print #1, x`) or the edge of a date (`#1/2/2000#`). `&` joins
+//! strings (`a & b`), is a type character (`n&`) or starts a hexadecimal or
+//! octal number (`&HFF`).
+//!
 //! [`LogicalLine::line_at`]: super::LogicalLine::line_at
 
 use super::scan::{
