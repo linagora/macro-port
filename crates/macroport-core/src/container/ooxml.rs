@@ -55,11 +55,14 @@ pub struct OoxmlPackage {
 
 impl OoxmlPackage {
     /// The container indicators that this package raises, as ids of
-    /// `container_indicators` in `rules/security.yaml`, in the order of that
-    /// file. `declared` is the container that the extension of the file
-    /// declares: a VBA project in a package declared as `.xlsx` or `.xltx`
-    /// raises `sec.vbaproject-in-xlsx`, and macro sheets in any package raise
-    /// `sec.xlm-macrosheet`.
+    /// `container_indicators` in `rules/security.yaml`, in the order of the
+    /// shipped file (a file given with `--rules` may order them otherwise).
+    /// `declared` is the container that the extension of the file declares: a
+    /// VBA project in a package declared as `.xlsx` or `.xltx` raises
+    /// `sec.vbaproject-in-xlsx`, and macro sheets in any package raise
+    /// `sec.xlm-macrosheet`. A compound file has no counterpart of this method:
+    /// for an `.xls`, the caller raises `sec.xlm-macrosheet` when
+    /// `BiffInfo::macro_sheets` is `Some` above zero.
     #[must_use]
     pub fn indicators(&self, declared: Container) -> Vec<&'static str> {
         let mut raised = Vec::new();
@@ -109,21 +112,28 @@ pub fn read_ooxml(bytes: &[u8]) -> Result<OoxmlPackage, ContainerError> {
     })
 }
 
-/// The VBA project: the part that a relationship of the workbook names, else
-/// the first part that the content types make a VBA project, else the usual
-/// one. The workbooks that Excel wrote for the fixtures relate their project to
-/// the workbook and to nothing else. Only one part of each kind is read, so
-/// that a package full of parts typed as VBA projects costs one read.
+/// The VBA project: the part that a relationship of the workbook names, else a
+/// part that the content types make a VBA project, else the usual one. The
+/// workbooks that Excel wrote for the fixtures relate their project to the
+/// workbook and to nothing else. Of several parts typed so, the usual one
+/// comes first, because the fixtures give every `.bin` part one default type,
+/// and then the first by name. Only one part of each kind is read, so that a
+/// package full of parts typed as VBA projects costs one read.
 fn vba_project(
     archive: &Archive<'_>,
     workbook: &Relations,
     types: &ContentTypes<'_>,
 ) -> Result<Option<Vec<u8>>, ContainerError> {
     let named = workbook.targets(Role::VbaProject);
-    let typed = types.parts().find(|(_, kinds)| kinds.vba_project);
-    let typed = typed.map(|(name, _)| name.to_owned());
-    for part in named.chain(typed).chain([VBA_PART.to_owned()]) {
-        if let Some(project) = archive.read(&part, MAX_VBA_PART)? {
+    let named = named.filter_map(|target| archive.canonical(&target));
+    let usual = archive.canonical(VBA_PART);
+    let typed = types.parts().filter(|(_, kinds)| kinds.vba_project);
+    // Of the parts that rank alike, `min_by_key` keeps the first.
+    let typed = typed
+        .map(|(name, _)| name)
+        .min_by_key(|name| Some(*name) != usual);
+    for part in named.chain(typed).chain(usual) {
+        if let Some(project) = archive.read_canonical(part, MAX_VBA_PART)? {
             return Ok(Some(project));
         }
     }
@@ -200,8 +210,8 @@ impl Relations {
 /// `directory`, or `None` when the text is longer than [`MAX_PART_NAME`] or
 /// names the root of the package, which is no part. A `..` that climbs above
 /// the root is dropped, as RFC 3986 section 5.2.4 has it. The name is not
-/// normalised: the archive does that when it looks the part up.
-/// Percent-encoding is not decoded.
+/// normalised: the archive does that when it looks the part up, and decodes
+/// its percent-escapes then, so that a `%2E` is no dot segment here.
 fn resolve(directory: &str, target: &str) -> Option<String> {
     if directory.len().saturating_add(target.len()) > MAX_PART_NAME {
         return None;

@@ -45,7 +45,8 @@ const OFFICE_DOCUMENT: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
 
 /// The type of the relationship from a workbook to its VBA project.
-const VBA_PROJECT: &str = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
+const VBA_PROJECT_RELATIONSHIP: &str =
+    "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
 
 /// What the type of the relationship to an Excel 4.0 macro sheet ends with
 /// (SPEC M1).
@@ -66,13 +67,13 @@ impl Role {
     /// The role a relationship type stands for. For the workbook and the VBA
     /// project the whole URI counts, exactly as written, not its last segment,
     /// so that a relationship of another type cannot take the place of the real
-    /// one. A macro sheet is any type that ends with `/xlMacrosheet`, whatever
-    /// its case, as SPEC M1 has it: every one is counted, so a wrong guess
-    /// counts one sheet too many and hides none.
+    /// one. A macro sheet is any type that ends with `/xlMacrosheet` (SPEC M1),
+    /// whatever its case, which is a choice of the reader: every one is
+    /// counted, so a wrong guess counts one sheet too many and hides none.
     fn of(relationship_type: &str) -> Option<Self> {
         match relationship_type {
             OFFICE_DOCUMENT => Some(Self::Workbook),
-            VBA_PROJECT => Some(Self::VbaProject),
+            VBA_PROJECT_RELATIONSHIP => Some(Self::VbaProject),
             _ if ends_with_ignore_case(relationship_type, MACRO_SHEET_SUFFIX) => {
                 Some(Self::MacroSheet)
             }
@@ -123,11 +124,11 @@ pub(super) fn relationships(xml: &[u8]) -> Result<Vec<Relationship>, ContainerEr
 }
 
 /// What an entry of a content types part gives its content type to.
-pub(super) enum Applies<'a> {
+pub(super) enum AppliesTo {
     /// The parts with this extension that no override covers: a `Default`.
-    Extension(&'a str),
+    Extension(String),
     /// The part of this name, as written: an `Override`.
-    Part(&'a str),
+    Part(String),
 }
 
 /// Calls `visit` on each `Default` and `Override` of a content types part, with
@@ -136,23 +137,17 @@ pub(super) enum Applies<'a> {
 /// keeps is its own choice.
 pub(super) fn content_types(
     xml: &[u8],
-    mut visit: impl FnMut(Applies<'_>, &str),
+    mut visit: impl FnMut(&AppliesTo, &str),
 ) -> Result<(), ContainerError> {
     children(xml, CONTENT_TYPES_NAMESPACE, "Types", |element| {
-        let (key, is_default) = match element.local_name().as_ref() {
-            "Default" => ("Extension", true),
-            "Override" => ("PartName", false),
+        let applies_to = match element.local_name().as_ref() {
+            "Default" => attribute(element, "Extension")?.map(AppliesTo::Extension),
+            "Override" => attribute(element, "PartName")?.map(AppliesTo::Part),
             _ => return Ok(()),
         };
-        let applies_to = attribute(element, key)?;
         let content_type = attribute(element, "ContentType")?;
         if let (Some(applies_to), Some(content_type)) = (applies_to, content_type) {
-            let applies = if is_default {
-                Applies::Extension(&applies_to)
-            } else {
-                Applies::Part(&applies_to)
-            };
-            visit(applies, &content_type);
+            visit(&applies_to, &content_type);
         }
         Ok(())
     })
