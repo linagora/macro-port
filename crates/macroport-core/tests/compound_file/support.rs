@@ -8,13 +8,17 @@ use macroport_core::container::{CfbFile, ContainerError};
 use macroport_core::report::Status;
 
 pub const END_OF_CHAIN: u32 = 0xFFFF_FFFE;
+pub const FREE_SECTOR: u32 = 0xFFFF_FFFF;
 
 // Where the fields sit in the header of a container (MS-CFB 2.2) and in a
 // directory entry (2.6.1), which is 128 bytes long.
 pub const MAJOR_VERSION: usize = 0x1A;
+pub const FAT_SECTOR_COUNT: usize = 0x2C;
 pub const FIRST_DIRECTORY_SECTOR: usize = 0x30;
 pub const FIRST_MINIFAT_SECTOR: usize = 0x3C;
-const HEADER_DIFAT: usize = 0x4C;
+pub const FIRST_DIFAT_SECTOR: usize = 0x44;
+pub const DIFAT_SECTOR_COUNT: usize = 0x48;
+pub const HEADER_DIFAT: usize = 0x4C;
 const ENTRY_LEN: usize = 128;
 const NAME_LENGTH: usize = 64;
 pub const CHILD: usize = 76;
@@ -99,7 +103,7 @@ pub fn put_u64(bytes: &mut [u8], at: usize, value: u64) {
 // The tables of a container written by the `cfb` crate, which is small
 // enough for its FAT to be reached through the header's DIFAT alone.
 
-fn sector_len(bytes: &[u8]) -> usize {
+pub fn sector_len(bytes: &[u8]) -> usize {
     if u16_at(bytes, MAJOR_VERSION) == 4 {
         4096
     } else {
@@ -157,7 +161,14 @@ pub fn offset_of_entry(bytes: &[u8], name: &str) -> usize {
 /// The sectors of the chain that starts at the stream `name`, which must be
 /// 4,096 bytes or more: a shorter one lives in the mini stream.
 pub fn chain_of(bytes: &[u8], name: &str) -> Vec<u32> {
-    let mut sector = u32_at(bytes, offset_of_entry(bytes, name) + START_SECTOR);
+    chain_from(
+        bytes,
+        u32_at(bytes, offset_of_entry(bytes, name) + START_SECTOR),
+    )
+}
+
+/// The sectors of the chain that starts at `sector`.
+pub fn chain_from(bytes: &[u8], mut sector: u32) -> Vec<u32> {
     let mut chain = Vec::new();
     while sector != END_OF_CHAIN {
         chain.push(sector);

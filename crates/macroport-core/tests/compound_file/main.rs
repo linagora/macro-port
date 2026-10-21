@@ -19,6 +19,7 @@
     clippy::unwrap_used
 )]
 
+mod bounds;
 mod fixtures;
 mod hostile;
 mod limits;
