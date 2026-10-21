@@ -5,8 +5,9 @@
 //! Pure functions over byte slices: the caller reads the streams out of the
 //! container and hands over their bytes. Every input is hostile, so each
 //! function bounds what it reads and never panics. Most return an
-//! [`OvbaError`] for a stream they cannot read; [`parse_project`] never fails,
-//! as the analysis goes on without what the `PROJECT` stream adds.
+//! [`OvbaError`] for a stream they cannot read. [`parse_project`] never fails,
+//! as the analysis goes on without what the `PROJECT` stream adds, and neither
+//! does [`decode_text`], which gives every byte a character.
 
 mod decompress;
 mod dir;
@@ -14,6 +15,7 @@ mod encryption;
 mod project;
 mod reader;
 mod reference;
+mod source;
 mod text;
 
 use crate::report::Status;
@@ -21,6 +23,8 @@ use crate::report::Status;
 pub use decompress::decompress;
 pub use dir::{DirInfo, DirModule, parse_compressed_dir, parse_dir};
 pub use project::{ProjectInfo, parse_project};
+pub use source::module_source;
+pub use text::decode_text;
 
 /// The largest decompressed `dir` stream (SPEC M1).
 pub const MAX_DIR_STREAM: usize = 16 * 1024 * 1024;
