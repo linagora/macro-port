@@ -112,7 +112,7 @@ fn keyword(word: &str) -> Option<Keyword> {
         .binary_search_by(|(spelling, _)| spelling.bytes().cmp(lowered.clone()))
         .ok()
         .and_then(|index| KEYWORDS.get(index))
-        .map(|&(_, keyword)| keyword)
+        .map(|&(_, found)| found)
 }
 
 /// What a token is.
@@ -314,7 +314,7 @@ impl<'a> Lexer<'a> {
     /// The kind and the length in bytes of the token that starts `rest`,
     /// which starts with `c`.
     fn read(&mut self, c: char, rest: &str) -> (TokenKind, usize) {
-        let after = |len: usize| rest.get(len..).and_then(|text| text.chars().next());
+        let char_at = |len: usize| rest.get(len..).and_then(|tail| tail.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
             '\'' => (TokenKind::Comment, rest.len()),
@@ -326,9 +326,11 @@ impl<'a> Lexer<'a> {
                 }
             },
             _ if is_ident_start(c) => self.word(rest),
-            '0'..='9' => (TokenKind::Number, number(rest)),
-            '.' if !self.after_operand() && after(1).is_some_and(|next| next.is_ascii_digit()) => {
-                (TokenKind::Number, number(rest))
+            '0'..='9' => (TokenKind::Number, number_len(rest)),
+            '.' if !self.after_operand()
+                && char_at(1).is_some_and(|next| next.is_ascii_digit()) =>
+            {
+                (TokenKind::Number, number_len(rest))
             }
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
@@ -346,19 +348,19 @@ impl<'a> Lexer<'a> {
             '\\' => (TokenKind::Backslash, 1),
             '^' => (TokenKind::Caret, 1),
             '&' => (TokenKind::Ampersand, 1),
-            ':' if after(1) == Some('=') => (TokenKind::ColonEquals, 2),
+            ':' if char_at(1) == Some('=') => (TokenKind::ColonEquals, 2),
             ':' => (TokenKind::Colon, 1),
-            '=' => match after(1) {
+            '=' => match char_at(1) {
                 Some('<') => (TokenKind::LessEqual, 2),
                 Some('>') => (TokenKind::GreaterEqual, 2),
                 _ => (TokenKind::Equals, 1),
             },
-            '<' => match after(1) {
+            '<' => match char_at(1) {
                 Some('>') => (TokenKind::NotEqual, 2),
                 Some('=') => (TokenKind::LessEqual, 2),
                 _ => (TokenKind::Less, 1),
             },
-            '>' => match after(1) {
+            '>' => match char_at(1) {
                 Some('<') => (TokenKind::NotEqual, 2),
                 Some('=') => (TokenKind::GreaterEqual, 2),
                 _ => (TokenKind::Greater, 1),
@@ -373,21 +375,21 @@ impl<'a> Lexer<'a> {
     fn word(&self, rest: &str) -> (TokenKind, usize) {
         let end = rest.find(|c: char| !is_ident_char(c)).unwrap_or(rest.len());
         let word = rest.get(..end).unwrap_or_default();
-        let after = rest.get(end..).unwrap_or_default();
+        let tail = rest.get(end..).unwrap_or_default();
         if !self.after_member() {
             if self.at_statement_start() && word.eq_ignore_ascii_case("rem") {
                 return (TokenKind::Comment, rest.len());
             }
-            let named_argument = || after.trim_start_matches(is_space).starts_with(":=");
-            if let Some(keyword) = keyword(word)
+            let named_argument = || tail.trim_start_matches(is_space).starts_with(":=");
+            if let Some(found) = keyword(word)
                 && !named_argument()
             {
-                return (TokenKind::Keyword(keyword), end);
+                return (TokenKind::Keyword(found), end);
             }
         }
         (
             TokenKind::Identifier,
-            end.saturating_add(type_character(after)),
+            end.saturating_add(type_character_len(tail)),
         )
     }
 }
@@ -420,13 +422,13 @@ fn starts_operand(c: char) -> bool {
     is_ident_start(c) || c.is_ascii_digit() || matches!(c, '"' | '(' | '[' | '.' | '_')
 }
 
-/// Bytes of the type character that opens `after`, the text that follows a
+/// Bytes of the type character that opens `tail`, the text that follows a
 /// name or a number: 0 or 1. `$`, `%` and `@` always are one. `!`, `&` and
 /// `#` are when what follows could not be an operand or a file number:
 /// `rs!Name` reaches a member, `a&b` joins strings and `Print#1` opens a file
 /// number.
-fn type_character(after: &str) -> usize {
-    let mut chars = after.chars();
+fn type_character_len(tail: &str) -> usize {
+    let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
         return 0;
     };
@@ -442,7 +444,7 @@ fn type_character(after: &str) -> usize {
 
 /// Bytes of the number that starts `rest`: digits, a fraction, an exponent
 /// and a type character.
-fn number(rest: &str) -> usize {
+fn number_len(rest: &str) -> usize {
     let bytes = rest.as_bytes();
     let digits = |from: usize| {
         bytes.get(from..).map_or(0, |tail| {
@@ -466,7 +468,7 @@ fn number(rest: &str) -> usize {
             end = first.saturating_add(exponent);
         }
     }
-    end.saturating_add(type_character(rest.get(end..).unwrap_or_default()))
+    end.saturating_add(type_character_len(rest.get(end..).unwrap_or_default()))
 }
 
 #[cfg(test)]
