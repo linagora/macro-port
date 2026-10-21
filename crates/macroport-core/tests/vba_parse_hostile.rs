@@ -34,7 +34,8 @@ fn parse_in_time(text: &str) -> ParsedModule {
 
 #[test]
 fn a_module_of_one_repeated_line_is_read_in_linear_time() {
-    // The line, the procedures read from it and the recoveries of the module.
+    // The text to repeat, the procedures read from it and the recoveries of the
+    // module.
     let cases = [
         // No procedure ends: each header closes the one before it.
         ("Sub a()", LINES, 0),
@@ -51,6 +52,14 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         ("Public Static", 0, 0),
         ("Property", 0, 0),
         ("End", 0, 0),
+        // Directives with nothing to match: every `#If` stays open.
+        ("#If X Then", 0, 0),
+        ("#Else", 0, 0),
+        ("#End If", 0, 0),
+        // Four lines, `LINES` times, no `#End If`: the second header of each
+        // unit is the other form of the first, and the next unit opens a
+        // procedure of its own.
+        ("#If X Then\nSub a()\n#Else\nSub a()", LINES, 0),
     ];
     for (line, procedures, recoveries) in cases {
         let module = parse_in_time(&format!("{line}\n").repeat(LINES));
