@@ -18,7 +18,9 @@
 //! Only what the parser shows is filled so far: the spans and the sizes of the
 //! procedures, and the trait that the recoveries of the parser give. The other
 //! fields are left out until the stages that measure them run, since a missing
-//! value is not a zero.
+//! value is not a zero. The exceptions are three fields of a procedure that the
+//! schema requires and that only the rule engine can decide: until it runs,
+//! `primary_family` is `unclassified`, and `families` and `signals` are empty.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
