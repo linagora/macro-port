@@ -3,15 +3,27 @@
 //!
 //! The set is closed. An expression has a known value when it is a string
 //! literal; the `Chr` or `ChrW` of a number literal; the `StrReverse`, `LCase`
-//! or `UCase` of a known value; or known values joined with `&` or `+`.
-//! Everything else is unknown, and nothing is guessed about it: arithmetic,
-//! `Mid`, `Replace`, `vbCrLf`, a variable, a number joined to a string, and
-//! `ChrB`, which makes a one-byte string that only another byte completes into
-//! a character. Folding never runs anything and reads no state but the text of
-//! the statement.
+//! or `UCase` of a known value; a reference to a module-level `Const` that has
+//! one; or known values joined with `&` or `+`. Everything else is unknown,
+//! and nothing is guessed about it: arithmetic, `Mid`, `Replace`, `vbCrLf`, a
+//! variable, a number joined to a string, and `ChrB`, which makes a one-byte
+//! string that only another byte completes into a character. Folding never
+//! runs anything and reads no state but the text of the statement and the
+//! constants of the module.
 //!
 //! The expression reader ([`super::expr`]) walks the expressions; this module
 //! holds what it folds with.
+
+use std::collections::BTreeMap;
+
+use super::expr::declare_consts;
+use super::lexer::tokenize;
+use super::{LogicalKind, LogicalLine};
+
+/// How many bytes the names and the strings of the constants of a module may
+/// take together. The budget of a statement bounds what it builds, but a
+/// module has many statements; real constants take a few kilobytes.
+const MAX_CONST_BYTES: usize = 8 * 1024 * 1024;
 
 /// The highest code of `Chr` that stands for the same character on every
 /// machine: ASCII. The other codes of a byte are those of the code page.
@@ -90,9 +102,12 @@ pub(super) enum Value {
 /// How many bytes of string one statement may build out of other strings, so
 /// that the text of a statement bounds what folding makes of it: four times
 /// its length and [`BUDGET_FLOOR`]. A literal is never held back (it is in the
-/// text already), but what a string function makes of a long string is: a
-/// statement that nests `UCase` around a literal of megabytes stays unresolved
-/// after a few levels instead of copying it at each one.
+/// text already), but what a string function makes of a long string, or what
+/// a name copies of a constant, is: a statement that nests `UCase` around a
+/// literal of megabytes stays unresolved after a few levels instead of
+/// copying it at each one, and so does a constant that a statement of a few
+/// bytes repeats into megabytes, or that other constants double along a chain
+/// of declarations.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Budget(usize);
 
@@ -159,6 +174,67 @@ fn map_case<I: Iterator<Item = char>>(text: &str, case: impl Fn(char) -> I) -> S
             }
         })
         .collect()
+}
+
+/// The `Const` strings of a module, by name: what a reference to a name folds
+/// to. Only the module-level declarations are read, one by one. A constant
+/// whose value is not a known string is kept as a name with no value, and so
+/// is one that the module declares twice with different values (the branches
+/// of an `#If`): a reference to either folds to nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConstTable {
+    /// The value by name, in lowercase.
+    values: BTreeMap<String, Option<String>>,
+    /// How many bytes the names and the values take.
+    bytes: usize,
+}
+
+impl ConstTable {
+    /// Reads `line`, a logical line of the module outside any procedure (the
+    /// caller gives these, in order, before it reads the statements that use
+    /// the constants), and records the constants it declares. A constant can
+    /// refer to those declared before it, in this statement or an earlier
+    /// one. Any other line is left alone, and so is a compile directive
+    /// (`#Const`), which no reference to a name reads.
+    pub fn declare(&mut self, line: &LogicalLine) {
+        if line.kind == LogicalKind::Code {
+            declare_consts(&line.text, &tokenize(&line.text), self);
+        }
+    }
+
+    /// The string of the constant called `name`, as `Token::name` spells it
+    /// (without brackets or type character) in any letter case, if it has
+    /// one.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        if self.values.is_empty() {
+            // The usual case: nothing to compare the name with.
+            return None;
+        }
+        self.values.get(&name.to_lowercase())?.as_deref()
+    }
+
+    /// Records the declaration of `name`, spelled as `Token::name` does, with
+    /// `value`, which is `None` when it is not a known string. A name that is
+    /// declared again keeps its value only if it is the same. Past the cap on
+    /// the bytes of the table, a new name is not recorded.
+    pub(super) fn insert(&mut self, name: &str, value: Option<String>) {
+        let name = name.to_lowercase();
+        if let Some(known) = self.values.get_mut(&name) {
+            if *known != value {
+                let freed = known.as_ref().map_or(0, String::len);
+                self.bytes = self.bytes.saturating_sub(freed);
+                *known = None;
+            }
+            return;
+        }
+        let cost = name
+            .len()
+            .saturating_add(value.as_ref().map_or(0, String::len));
+        if self.bytes.saturating_add(cost) <= MAX_CONST_BYTES {
+            self.bytes = self.bytes.saturating_add(cost);
+            self.values.insert(name, value);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -249,5 +325,34 @@ mod tests {
         assert!(!budget.take(1));
         assert!(Budget::for_text("ab").take(BUDGET_FLOOR + 8));
         assert!(!Budget::for_text("ab").take(BUDGET_FLOOR + 9));
+    }
+
+    #[test]
+    fn a_name_declared_again_keeps_its_value_only_if_it_is_the_same() {
+        let mut table = ConstTable::default();
+        for (name, value) in [("A", Some("x")), ("a", Some("x")), ("B", Some("x"))] {
+            table.insert(name, value.map(String::from));
+        }
+        for (name, value) in [("b", Some("y")), ("C", Some("x")), ("C", None), ("D", None)] {
+            table.insert(name, value.map(String::from));
+        }
+        table.insert("d", Some("x".to_string()));
+        let found = ["A", "B", "C", "D", "E"].map(|name| table.get(name));
+        assert_eq!(found, [Some("x"), None, None, None, None]);
+    }
+
+    #[test]
+    fn a_table_records_no_new_name_past_its_cap() {
+        let mut table = ConstTable::default();
+        // The name takes three bytes, so the table is full.
+        let size = MAX_CONST_BYTES.saturating_sub(3);
+        table.insert("big", Some("x".repeat(size)));
+        table.insert("more", Some("y".to_string()));
+        assert_eq!(table.get("more"), None);
+        assert_eq!(table.get("BIG").map(str::len), Some(size));
+        // A name that is recorded can still become ambiguous, and frees its bytes.
+        table.insert("big", None);
+        table.insert("more", Some("y".to_string()));
+        assert_eq!(table.get("more"), Some("y"));
     }
 }

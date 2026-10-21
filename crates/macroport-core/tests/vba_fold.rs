@@ -9,20 +9,40 @@
 
 use std::time::{Duration, Instant};
 
-use macroport_core::vba::{Facts, MAX_NESTING, StatementReader, split_lines, tokenize};
+use macroport_core::vba::{ConstTable, Facts, MAX_NESTING, StatementReader, split_lines, tokenize};
 
 /// What reading a long statement may take: far above one pass, far below a
 /// quadratic one.
 const LIMIT: Duration = Duration::from_secs(5);
 
-/// The facts of the statement `text`.
-fn facts(text: &str) -> Facts {
-    StatementReader::new().read_tokens(text, &tokenize(text))
+/// The facts of the statement `text`, with the module-level constants
+/// `consts`.
+fn facts_with(consts: &ConstTable, text: &str) -> Facts {
+    StatementReader::new(consts).read_tokens(text, &tokenize(text))
 }
 
-/// The strings of the statement `text`.
+/// The facts of the statement `text`, with no constant.
+fn facts(text: &str) -> Facts {
+    facts_with(&ConstTable::default(), text)
+}
+
+/// The strings of the statement `text`, with the constants `consts`.
+fn strings_with(consts: &ConstTable, text: &str) -> Vec<String> {
+    facts_with(consts, text).strings
+}
+
+/// The strings of the statement `text`, with no constant.
 fn strings(text: &str) -> Vec<String> {
     facts(text).strings
+}
+
+/// The constants that the statements of `source` declare, in order.
+fn consts_of(source: &str) -> ConstTable {
+    let mut consts = ConstTable::default();
+    for line in &split_lines(source).expect("lines").logical {
+        consts.declare(line);
+    }
+    consts
 }
 
 /// Checks that each statement gives the strings next to it.
@@ -154,6 +174,150 @@ fn what_a_string_function_builds_is_paid_for_out_of_the_text_of_its_statement() 
 }
 
 #[test]
+fn a_module_level_const_folds_into_an_expression() {
+    let consts =
+        consts_of("Private Const P1 = \"WScr\"\nConst P2$ = \"ipt.\", [P 3] = \"Shell\"\n");
+    for (name, expected) in [("p1", "WScr"), ("P2", "ipt."), ("P 3", "Shell")] {
+        assert_eq!(consts.get(name), Some(expected), "{name}");
+    }
+    let progid = "Set o = CreateObject(p1 & P2 & [P 3])";
+    assert_eq!(strings_with(&consts, progid), ["WScript.Shell"]);
+    let mixed = r#"x = UCase(P1) & "-" & Chr(66)"#;
+    assert_eq!(strings_with(&consts, mixed), ["WSCR-B"]);
+}
+
+#[test]
+fn the_name_of_a_constant_stands_for_its_string_wherever_it_is_used() {
+    let consts = consts_of("Const A = \"x\"\n");
+    for (text, expected) in [
+        ("y = A", &["x"][..]),
+        ("Foo A, A", &["x", "x"]),
+        ("y = A + 1", &["x"]),
+        ("y = A & A", &["xx"]),
+        (r#"y = A & "z""#, &["xz"]),
+        ("y = UCase(A)", &["X"]),
+        // A name is a constant only on its own: it is not one after a dot
+        // (the member of another object), with arguments, or as a function.
+        ("y = A.Name", &[]),
+        ("y = A(1)", &[]),
+        (r#"y = ws.A & "z""#, &["z"]),
+        (r#"y = .A & "z""#, &["z"]),
+        (r#"y = rs!A & "z""#, &["z"]),
+        // `Chr` wants a number, and only strings are read from constants.
+        ("y = Chr(A)", &["x"]),
+    ] {
+        assert_eq!(strings_with(&consts, text), expected, "{text}");
+    }
+    let number = consts_of("Const N = 65\n");
+    assert_eq!(strings_with(&number, "y = Chr(N)"), Vec::<String>::new());
+}
+
+#[test]
+fn a_const_statement_lists_its_strings_and_not_the_names_it_declares() {
+    let consts = consts_of("Const A = \"x\"\nConst B = A & \"b\"\n");
+    for (text, expected) in [
+        ("Const A = \"x\"", &["x"][..]),
+        (
+            "Public Const B As String = A & \"b\", C = \"c\"",
+            &["xb", "c"],
+        ),
+        ("#Const A = \"y\"", &["y"]),
+        ("Const A", &[]),
+    ] {
+        assert_eq!(strings_with(&consts, text), expected, "{text}");
+    }
+}
+
+#[test]
+fn the_const_declarations_that_do_not_fold_to_a_string_have_no_value() {
+    let consts = consts_of(
+        "Const N = 10\nConst S As String = \"s\"\nConst X = Foo(1)\nConst Y = \"a\" & N\n\
+         Public Const Z = \"z\" ' comment\nConst B = A\nConst A = \"a\"\nConst C = A & \"c\"\n\
+         Dim D As String\nConst\nConst E\nConst F =\n#Const G = \"g\"\n\
+         Const H = IIf(a, I = \"i\", \"h\"), J = \"j\"\n",
+    );
+    let found = [
+        "N", "S", "X", "Y", "Z", "B", "A", "C", "D", "E", "F", "G", "H", "I", "J",
+    ]
+    .map(|name| consts.get(name));
+    let expected = [
+        None,
+        Some("s"),
+        None,
+        None,
+        Some("z"),
+        // `A` is declared after `B`: a constant sees those before it.
+        None,
+        Some("a"),
+        Some("ac"),
+        None,
+        None,
+        None,
+        None,
+        // The comma inside the parentheses does not end the declarator.
+        None,
+        None,
+        Some("j"),
+    ];
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn a_name_declared_twice_with_different_values_has_none() {
+    let same = consts_of("Const A = \"v\"\nConst a = \"v\"\n");
+    assert_eq!(same.get("A"), Some("v"));
+    let differ = consts_of("Const A = \"first\"\nConst a = \"second\"\n");
+    assert_eq!(differ.get("A"), None);
+    let branches = consts_of(
+        "#If Mac Then\nPrivate Const SEP = \"/\"\n#Else\nPrivate Const SEP = \"\\\"\n#End If\n",
+    );
+    assert_eq!(branches.get("SEP"), None);
+}
+
+#[test]
+fn a_constant_too_long_for_the_statement_that_uses_it_stays_unresolved() {
+    // A constant of a few kilobytes, repeated by a statement of a few bytes:
+    // the budget of the statement is a small multiple of its own text.
+    let big = "x".repeat(4_000);
+    let consts = consts_of(&format!("Const A = \"{big}\"\n"));
+    assert_eq!(consts.get("a").map(str::len), Some(4_000));
+    for text in ["y = A", "y = A & A", "y = UCase(A)"] {
+        assert_eq!(strings_with(&consts, text), Vec::<String>::new(), "{text}");
+    }
+    // What is left of the statement is listed as it would be anywhere else.
+    assert_eq!(strings_with(&consts, "y = A & \"z\""), ["z"]);
+}
+
+#[test]
+fn a_declaration_pays_for_all_its_declarators_out_of_one_budget() {
+    let big = "x".repeat(3_000);
+    let mut source = format!("Const A = \"{big}\"\nConst B0 = UCase(A)");
+    for i in 1..100 {
+        source.push_str(&format!(", B{i} = UCase(A)"));
+    }
+    let consts = consts_of(&source);
+    // The first copies the constant twice, which the text of the statement
+    // allows; the others have nothing left.
+    assert_eq!(consts.get("B0").map(str::len), Some(3_000));
+    assert_eq!(consts.get("B1"), None);
+    assert_eq!(consts.get("B99"), None);
+}
+
+#[test]
+fn constants_cannot_double_their_way_to_a_huge_value() {
+    let mut source = String::from("Const C0 = \"0123456789abcdef\"\n");
+    for i in 1..=60 {
+        source.push_str(&format!("Const C{i} = C{} & C{}\n", i - 1, i - 1));
+    }
+    let consts = consts_of(&source);
+    let longest = (0..=60)
+        .filter_map(|i| consts.get(&format!("C{i}")))
+        .map(str::len)
+        .max();
+    assert!(longest.is_some_and(|len| len <= 2_048), "{longest:?}");
+}
+
+#[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
     // Each of these folds only what the closed set covers, and leaves the
     // other literals apart.
@@ -221,7 +385,8 @@ fn what_is_not_a_string_expression_is_left_alone() {
 
 #[test]
 fn a_line_that_is_not_code_holds_no_string() {
-    let mut reader = StatementReader::new();
+    let consts = ConstTable::default();
+    let mut reader = StatementReader::new(&consts);
     let lines = split_lines("' x = \"a\"\nDone:\nx = \"b\"\n")
         .expect("lines")
         .logical;
