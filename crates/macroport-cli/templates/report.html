@@ -1,5 +1,19 @@
 {#- SPDX-License-Identifier: Apache-2.0 -#}
 {#- The HTML report (see src/render/html.rs). The template applies no filter. Every expression is escaped except `style`, `script` and `data`, which the renderer marks as safe in Rust: the page's own style and script, and the report as JSON. A block tag that ends in `-%}` swallows its line break. -#}
+{% macro badge(chip) -%}
+<span class="{{ chip.class }}">{% if let Some(hint) = chip.hint %}<span class="hint">{{ hint }}</span> {% endif %}<span class="value">{{ chip.label }}</span></span>
+{%- endmacro -%}
+{% macro evidence_list(items) -%}
+{% if !items.is_empty() -%}
+<ul class="evidence">{% for item in items %}<li><code>{{ item.rule_id }}</code> {{ messages.text("html-line") }} {{ item.line }}{% if let Some(snippet) = item.snippet %} <code>{{ snippet }}</code>{% endif %}</li>{% endfor %}</ul>
+{%- endif %}
+{%- endmacro -%}
+{% macro family_list(items) -%}
+<ul class="families">{% for item in items %}<li>{{ item.label }} <span class="score">{{ messages.text("html-score") }} {{ item.score }}</span>{% call evidence_list(item.evidence) %}{% endcall %}</li>{% endfor %}</ul>
+{%- endmacro -%}
+{% macro signal_list(items) -%}
+<ul class="signals">{% for item in items %}<li>{% call badge(item.severity) %}{% endcall %} {{ item.label }} <code>{{ item.id }}</code>{% if let Some(place) = item.place %} <code>{{ place }}</code>{% endif %}{% call evidence_list(item.evidence) %}{% endcall %}</li>{% endfor %}</ul>
+{%- endmacro -%}
 <!doctype html>
 <html lang="{{ lang }}">
 <head>
@@ -68,7 +82,7 @@
 {% endif -%}
 {% for view in files -%}
 <details class="file">
-<summary><span class="path">{{ view.file.path }}</span>{% for chip in view.chips %} <span class="chip {{ chip.class }}"><span class="hint">{{ chip.hint }}</span> <span class="value">{{ chip.label }}</span></span>{% endfor %}</summary>
+<summary><span class="path">{{ view.file.path }}</span>{% for chip in view.chips %} {% call badge(chip) %}{% endcall %}{% endfor %}</summary>
 <dl class="facts">
 <div><dt>{{ messages.text("html-container") }}</dt><dd>{{ view.container }}</dd></div>
 <div><dt>{{ messages.text("html-size") }}</dt><dd>{{ view.file.size }} {{ messages.text("html-bytes") }}</dd></div>
@@ -95,6 +109,9 @@
 {% if let Some(true) = view.file.workbook_encrypted -%}
 <div><dt>{{ messages.text("html-encrypted") }}</dt><dd>{{ messages.text("html-yes") }}</dd></div>
 {% endif -%}
+{% if !view.traits.is_empty() -%}
+<div><dt>{{ messages.text("html-traits") }}</dt><dd><ul>{% for item in view.traits %}<li>{{ item }}</li>{% endfor %}</ul></dd></div>
+{% endif -%}
 {% if !view.errors.is_empty() -%}
 <div><dt>{{ messages.text("html-errors") }}</dt><dd><ul>{% for error in view.errors %}<li><code>{{ error.code }}</code> {{ error.message }}</li>{% endfor %}</ul></dd></div>
 {% endif -%}
@@ -102,6 +119,14 @@
 <div><dt>{{ messages.text("html-notes") }}</dt><dd><ul>{% for note in view.notes %}<li><code>{{ note }}</code></li>{% endfor %}</ul></dd></div>
 {% endif -%}
 </dl>
+{% if !view.families.is_empty() -%}
+<h3>{{ messages.text("html-families") }}</h3>
+{% call family_list(&view.families) %}{% endcall %}
+{% endif -%}
+{% if !view.signals.is_empty() -%}
+<h3>{{ messages.text("html-signals") }}</h3>
+{% call signal_list(&view.signals) %}{% endcall %}
+{% endif -%}
 </details>
 {% endfor -%}
 </section>

@@ -30,6 +30,7 @@ html-possibly-unused = Possibly unused procedures
 html-by-status = Files by status
 html-by-complexity = Files by complexity
 html-by-severity = Files by highest severity
+html-by-family = Procedures by family
 
 ## The files
 
@@ -51,3 +52,12 @@ html-xlm-sheets = Excel 4.0 macro sheets
 html-encrypted = Workbook encrypted
 html-errors = Errors
 html-notes = Notes
+
+## Families, signals and evidence
+
+html-family = Family
+html-families = Families
+html-signals = Security signals
+html-traits = Traits
+html-score = score
+html-line = Line

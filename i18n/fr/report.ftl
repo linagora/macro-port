@@ -6,7 +6,7 @@
 # message, in either language.
 #
 # The labels of families, signals and traits are not here: they are the `label`
-# fields of the rules.
+# fields of the rules, but for `unclassified`, which no rule defines.
 
 ## The outcome of the analysis of a file
 
@@ -63,3 +63,7 @@ module-type-standard = Module standard
 module-type-class = Module de classe
 module-type-document = Module de document
 module-type-form = Formulaire
+
+## The family of what no family claims
+
+family-unclassified = Non classée

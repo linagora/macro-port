@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The words of the reports (A7): the same messages in English and French, and
-//! a word for every value of the enumerations of the schema.
+//! The words of the reports (A7): the same messages in English and French, a
+//! word for every value of the enumerations of the schema, and the labels of
+//! the rules.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -9,12 +10,16 @@ use std::path::{Path, PathBuf};
 use fluent_bundle::{FluentBundle, FluentResource};
 use macroport_cli::i18n::{Messages, RESOURCES};
 use macroport_core::report::{Container, Lang, Level, ProcedureKind, Status, Visibility};
-use macroport_core::rules::{ModuleType, Severity};
+use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity, parse_value};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use unic_langid::LanguageIdentifier;
 
 const LANGS: [Lang; 2] = [Lang::En, Lang::Fr];
+
+fn rules() -> RuleSet {
+    RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
+}
 
 /// The name of the directory of `lang` in `i18n/`, which is also the name of
 /// the language in the schema.
@@ -240,7 +245,7 @@ fn every_value_of_the_enumerations_of_the_schema_has_a_word_in_both_languages() 
     assert_eq!(languages, LANGS.map(directory_name), "the languages");
 
     for lang in LANGS {
-        let messages = Messages::new(lang);
+        let messages = Messages::new(lang, &rules());
         let enumerations = assert_every_word!(
             &schema,
             &messages,
@@ -263,8 +268,9 @@ fn every_value_of_the_enumerations_of_the_schema_has_a_word_in_both_languages() 
 
 #[test]
 fn the_words_are_those_of_the_language() {
-    let en = Messages::new(Lang::En);
-    let fr = Messages::new(Lang::Fr);
+    let rules = rules();
+    let en = Messages::new(Lang::En, &rules);
+    let fr = Messages::new(Lang::Fr, &rules);
 
     assert_eq!(en.status(Status::NoMacros), "No macros");
     assert_eq!(fr.status(Status::NoMacros), "Sans macros");
@@ -286,20 +292,65 @@ fn the_words_are_those_of_the_language() {
     assert_eq!(fr.visibility(Visibility::Default), "Par défaut");
     assert_eq!(en.module_type(ModuleType::Form), "Form");
     assert_eq!(fr.module_type(ModuleType::Form), "Formulaire");
+    assert_eq!(en.family("unclassified"), "Unclassified");
+    assert_eq!(fr.family("unclassified"), "Non classée");
+    assert_eq!(en.number(2.5), "2.5");
+    assert_eq!(fr.number(2.5), "2,5");
+    assert_eq!(fr.number(3.0), "3");
 
     assert_eq!(en.problems(), Vec::<String>::new());
     assert_eq!(fr.problems(), Vec::<String>::new());
 }
 
+/// How [`Messages`] gives the label of an id.
+type LabelOf = fn(&Messages, &str) -> String;
+
 #[test]
-fn a_message_that_does_not_exist_is_given_as_its_id_and_recorded() {
+fn labels_are_those_of_the_rules() {
+    let sources = RulesSources::EMBEDDED;
+    // The lists of the rules whose items have an `id` and a `label`.
+    let lists: [(&str, &str, LabelOf); 5] = [
+        (sources.families, "families", Messages::family),
+        (sources.security, "signals", Messages::signal),
+        (sources.security, "chains", Messages::signal),
+        (sources.security, "container_indicators", Messages::signal),
+        (sources.complexity, "traits", Messages::trait_label),
+    ];
+    let rules = rules();
     for lang in LANGS {
-        let messages = Messages::new(lang);
+        let messages = Messages::new(lang, &rules);
+        for (file, key, label_of) in lists {
+            let document = parse_value(file).expect("the shipped rules parse");
+            let items = document[key].as_array().expect("a list of items");
+            assert!(!items.is_empty(), "{key} has items");
+            for item in items {
+                let id = item["id"].as_str().expect("an id");
+                let label = item["label"][directory_name(lang)].as_str();
+                assert_eq!(label, Some(&*label_of(&messages, id)), "{lang:?}: {id}");
+            }
+        }
+        assert_eq!(messages.problems(), Vec::<String>::new(), "{lang:?}");
+    }
+}
+
+#[test]
+fn a_word_that_does_not_exist_is_given_as_its_id_and_recorded() {
+    let rules = rules();
+    for lang in LANGS {
+        let messages = Messages::new(lang, &rules);
         assert_eq!(messages.problems(), Vec::<String>::new());
         assert_eq!(messages.text("no-such-message"), "no-such-message");
+        assert_eq!(messages.family("99-no-such-family"), "99-no-such-family");
+        assert_eq!(messages.signal("no.such-signal"), "no.such-signal");
+        assert_eq!(messages.trait_label("no-such-trait"), "no-such-trait");
         assert_eq!(
             messages.problems(),
-            ["no message 'no-such-message'"],
+            [
+                "no family label '99-no-such-family'",
+                "no message 'no-such-message'",
+                "no signal label 'no.such-signal'",
+                "no trait label 'no-such-trait'",
+            ],
             "{lang:?}"
         );
     }

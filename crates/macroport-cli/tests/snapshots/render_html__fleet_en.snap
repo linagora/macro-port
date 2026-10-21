@@ -54,6 +54,16 @@ expression: body
 <tr><th scope="row">High</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
 </table>
 </section>
+<section>
+<h2>Procedures by family</h2>
+<table>
+<tr><th scope="row">Formatting and layout</th><td class="count">1</td><td><meter min="0" max="7" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Lookup and reference data</th><td class="count">1</td><td><meter min="0" max="7" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Forms and data entry</th><td class="count">2</td><td><meter min="0" max="7" value="2" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Event-driven automation</th><td class="count">2</td><td><meter min="0" max="7" value="2" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Unclassified</th><td class="count">1</td><td><meter min="0" max="7" value="1" aria-hidden="true"></meter></td></tr>
+</table>
+</section>
 </div>
 <section>
 <h2>Files</h2>
@@ -65,7 +75,7 @@ expression: body
 <output id="shown">11 / 11</output>
 </div>
 <details class="file">
-<summary><span class="path">examples/14-01-auto-open-shell.xlsm</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-high"><span class="hint">Highest severity</span> <span class="value">High</span></span></summary>
+<summary><span class="path">examples/14-01-auto-open-shell.xlsm</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-high"><span class="hint">Highest severity</span> <span class="value">High</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Event-driven automation</span></span></summary>
 <dl class="facts">
 <div><dt>Format</dt><dd>XLSM</dd></div>
 <div><dt>Size</dt><dd>14321 bytes</dd></div>
@@ -73,9 +83,13 @@ expression: body
 <div><dt>VBA project</dt><dd><code>VBAProject</code></dd></div>
 <div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li></ul></dd></div>
 </dl>
+<h3>Families</h3>
+<ul class="families"><li>Event-driven automation <span class="score">score 3</span></li><li>Windows API, shell and ActiveX <span class="score">score 3</span></li></ul>
+<h3>Security signals</h3>
+<ul class="signals"><li><span class="chip severity-high"><span class="value">High</span></span> Auto-execution combined with program launch <code>sec.chain.autoexec-execution</code><ul class="evidence"><li><code>sec.auto-exec</code> Line 4</li><li><code>sec.shell</code> Line 6</li></ul></li></ul>
 </details>
 <details class="file">
-<summary><span class="path">legacy/budget.xls</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-medium"><span class="hint">Complexity</span> <span class="value">Medium</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
+<summary><span class="path">legacy/budget.xls</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-medium"><span class="hint">Complexity</span> <span class="value">Medium</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Forms and data entry</span></span></summary>
 <dl class="facts">
 <div><dt>Format</dt><dd>XLS</dd></div>
 <div><dt>Size</dt><dd>48640 bytes</dd></div>
@@ -84,7 +98,10 @@ expression: body
 <div><dt>Protected</dt><dd>Yes</dd></div>
 <div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li><li><code>Microsoft Outlook 16.0 Object Library</code></li></ul></dd></div>
 <div><dt>Workbook encrypted</dt><dd>Yes</dd></div>
+<div><dt>Traits</dt><dd><ul><li>Recorded macro style</li></ul></dd></div>
 </dl>
+<h3>Families</h3>
+<ul class="families"><li>Forms and data entry <span class="score">score 8</span></li><li>Formatting and layout <span class="score">score 7</span></li><li>Lookup and reference data <span class="score">score 6</span></li><li>Event-driven automation <span class="score">score 5</span></li><li>Report generation and printing <span class="score">score 4</span></li></ul>
 </details>
 <details class="file">
 <summary><span class="path">legacy/xlm-only.xlsb</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
@@ -95,6 +112,8 @@ expression: body
 <div><dt>Excel 4.0 macros</dt><dd>Yes</dd></div>
 <div><dt>Excel 4.0 macro sheets</dt><dd>2</dd></div>
 </dl>
+<h3>Security signals</h3>
+<ul class="signals"><li><span class="chip severity-medium"><span class="value">Medium</span></span> Contains Excel 4.0 (XLM) macro sheets <code>sec.xlm-macrosheet</code></li></ul>
 </details>
 <details class="file">
 <summary><span class="path">locked/payroll.xlsm</span> <span class="chip status-encrypted"><span class="hint">Status</span> <span class="value">Encrypted</span></span></summary>
@@ -125,12 +144,14 @@ file is 1024 bytes long</li></ul></dd></div>
 </dl>
 </details>
 <details class="file">
-<summary><span class="path">text/Module1.bas</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span></summary>
+<summary><span class="path">text/Module1.bas</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip"><span class="hint">Family</span> <span class="value">Forms and data entry</span></span></summary>
 <dl class="facts">
 <div><dt>Format</dt><dd>Text module</dd></div>
 <div><dt>Size</dt><dd>412 bytes</dd></div>
 <div><dt>SHA-256</dt><dd><code>368d0297fe4c5474038f15d2fee5ff75fcdf2e0e97a99c19f67854d5d88f7bfe</code></dd></div>
 </dl>
+<h3>Families</h3>
+<ul class="families"><li>Forms and data entry <span class="score">score 4</span></li></ul>
 </details>
 <details class="file">
 <summary><span class="path">bomb/zip-bomb.xlsm</span> <span class="chip status-suspicious_archive"><span class="hint">Status</span> <span class="value">Suspicious archive</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
@@ -140,6 +161,8 @@ file is 1024 bytes long</li></ul></dd></div>
 <div><dt>SHA-256</dt><dd><code>273315a547c9efad2cfb277e3d31500ef14bad2a40a47d2f327736c9812e9366</code></dd></div>
 <div><dt>Errors</dt><dd><ul><li><code>zip.ratio</code> Compression ratio above 1000:1 in xl/vbaProject.bin</li></ul></dd></div>
 </dl>
+<h3>Security signals</h3>
+<ul class="signals"><li><span class="chip severity-medium"><span class="value">Medium</span></span> Abnormal compression ratio (possible archive bomb) <code>sec.suspicious-archive</code></li></ul>
 </details>
 <details class="file">
 <summary><span class="path">huge/archive.xlsb</span> <span class="chip status-too_large"><span class="hint">Status</span> <span class="value">Too large</span></span></summary>

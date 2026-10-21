@@ -36,7 +36,7 @@ use askama::Template;
 use askama::filters::Safe;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use macroport_core::report::{FileError, FileReport, Report};
+use macroport_core::report::{Evidence, FamilyScore, FileError, FileReport, Report, Signal};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -108,8 +108,9 @@ struct Distribution {
     max: u32,
 }
 
-/// A file with the words of its format and chips, and the lists of its report
-/// that are empty when it has none.
+/// A file with the words of its format and chips, its families, signals and
+/// traits with their labels, and the lists of its report that are empty when it
+/// has none.
 struct FileView<'a> {
     file: &'a FileReport,
     container: String,
@@ -117,26 +118,56 @@ struct FileView<'a> {
     references: &'a [String],
     errors: &'a [FileError],
     notes: &'a [String],
+    traits: Vec<String>,
+    families: Vec<FamilyView<'a>>,
+    signals: Vec<SignalView<'a>>,
 }
 
-/// A word shown as a badge, coloured after the value it names.
+/// A word shown as a badge, coloured after the value it names when it names one.
 struct Chip {
     /// What the word is about, shown before it.
-    hint: String,
+    hint: Option<String>,
     label: String,
-    /// `status-ok`, `level-low`, `severity-high`: the kind of value and its
+    /// The whole `class` attribute: `chip`, or `chip status-ok`,
+    /// `chip level-low`, `chip severity-high`, with the kind of value and its
     /// name in the schema, never a string of an analysed file.
     class: String,
 }
 
 impl Chip {
-    fn new<T: Serialize>(hint: String, kind: &'static str, value: &T, label: String) -> Self {
+    /// A chip coloured after `value`, a value of the enumeration `kind` of the
+    /// schema.
+    fn new<T: Serialize>(
+        hint: Option<String>,
+        kind: &'static str,
+        value: &T,
+        label: String,
+    ) -> Self {
         Self {
             hint,
             label,
-            class: format!("{kind}-{}", wire_name(value)),
+            class: format!("chip {kind}-{}", wire_name(value)),
         }
     }
+}
+
+/// A usage family with its score and the lines that raised it.
+struct FamilyView<'a> {
+    label: String,
+    /// The score as the language writes a number.
+    score: String,
+    evidence: &'a [Evidence],
+}
+
+/// A security signal with its label and severity, where it was raised and the
+/// lines that raised it.
+struct SignalView<'a> {
+    id: &'a str,
+    label: String,
+    severity: Chip,
+    /// `Module.Procedure`, or the one of the two that the report names.
+    place: Option<String>,
+    evidence: &'a [Evidence],
 }
 
 /// The counts of the scan, then those of the summary that the report has.
@@ -168,11 +199,13 @@ fn counts(report: &Report, messages: &Messages) -> Vec<Count> {
     .collect()
 }
 
-/// The files by status, by complexity level and by highest severity. A bar
-/// shows the share of the files of the scan.
+/// The files by status, by complexity level and by highest severity, then the
+/// procedures by family. A bar shows the share of the files of the scan, or of
+/// the procedures that have a family in the summary.
 fn distributions(report: &Report, messages: &Messages) -> Vec<Distribution> {
     let summary = &report.summary;
     let files = report.scan.files_total;
+    let procedures = (summary.by_family.values()).fold(0, |sum: u32, n| sum.saturating_add(*n));
     vec![
         distribution(
             messages.text("html-by-status"),
@@ -191,6 +224,12 @@ fn distributions(report: &Report, messages: &Messages) -> Vec<Distribution> {
             &summary.by_severity,
             files,
             |severity| messages.severity(*severity),
+        ),
+        distribution(
+            messages.text("html-by-family"),
+            &summary.by_family,
+            procedures,
+            |family| messages.family(family),
         ),
     ]
 }
@@ -223,22 +262,28 @@ fn file_views<'a>(report: &'a Report, messages: &Messages) -> Vec<FileView<'a>> 
                 .unwrap_or_default(),
             errors: file.errors.as_deref().unwrap_or_default(),
             notes: file.notes.as_deref().unwrap_or_default(),
+            traits: (file.traits.iter().flatten())
+                .map(|id| messages.trait_label(id))
+                .collect(),
+            families: family_views(file.families.as_deref().unwrap_or_default(), messages),
+            signals: signal_views(file.signals.as_deref().unwrap_or_default(), messages),
         })
         .collect()
 }
 
-/// The status of a file, then its complexity level and highest severity when
-/// it has them.
+/// The status of a file, then its complexity level, highest severity and
+/// primary family when it has them.
 fn chips(file: &FileReport, messages: &Messages) -> Vec<Chip> {
+    let hint = |id| Some(messages.text(id));
     let mut chips = vec![Chip::new(
-        messages.text("html-status"),
+        hint("html-status"),
         "status",
         &file.status,
         messages.status(file.status),
     )];
     if let Some(level) = file.complexity_level {
         chips.push(Chip::new(
-            messages.text("html-complexity"),
+            hint("html-complexity"),
             "level",
             &level,
             messages.level(level),
@@ -246,13 +291,53 @@ fn chips(file: &FileReport, messages: &Messages) -> Vec<Chip> {
     }
     if let Some(severity) = file.max_severity {
         chips.push(Chip::new(
-            messages.text("html-severity"),
+            hint("html-severity"),
             "severity",
             &severity,
             messages.severity(severity),
         ));
     }
+    if let Some(family) = &file.primary_family {
+        chips.push(Chip {
+            hint: hint("html-family"),
+            label: messages.family(family),
+            class: "chip".to_owned(),
+        });
+    }
     chips
+}
+
+/// A view of each of `scores`, in the order of the report.
+fn family_views<'a>(scores: &'a [FamilyScore], messages: &Messages) -> Vec<FamilyView<'a>> {
+    (scores.iter())
+        .map(|score| FamilyView {
+            label: messages.family(&score.family),
+            score: messages.number(score.score),
+            evidence: score.evidence.as_deref().unwrap_or_default(),
+        })
+        .collect()
+}
+
+/// A view of each of `signals`, in the order of the report.
+fn signal_views<'a>(signals: &'a [Signal], messages: &Messages) -> Vec<SignalView<'a>> {
+    (signals.iter())
+        .map(|signal| SignalView {
+            id: &signal.signal_id,
+            label: messages.signal(&signal.signal_id),
+            severity: Chip::new(
+                None,
+                "severity",
+                &signal.severity,
+                messages.severity(signal.severity),
+            ),
+            place: match (&signal.module, &signal.procedure) {
+                (Some(module), Some(procedure)) => Some(format!("{module}.{procedure}")),
+                (Some(name), None) | (None, Some(name)) => Some(name.clone()),
+                (None, None) => None,
+            },
+            evidence: signal.evidence.as_deref().unwrap_or_default(),
+        })
+        .collect()
 }
 
 /// The Content-Security-Policy of the page: the one inline script and the one
