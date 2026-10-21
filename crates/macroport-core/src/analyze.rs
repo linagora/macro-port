@@ -52,6 +52,7 @@ use crate::container::{CfbFile, ContainerError, read_biff_workbook, read_ooxml};
 use crate::ovba::OvbaError;
 use crate::report::{Container, FileError, FileReport, Orientation, Status, Xlm};
 use crate::rules::RuleSet;
+use crate::vba::VbaError;
 
 /// The largest file that [`analyze`] reads by default: 200 MiB. SPEC M1 says
 /// 200 MB, and like the other limits of the container layer, it takes a
@@ -190,6 +191,12 @@ impl Failure {
     fn in_module(mut self, name: &str) -> Self {
         self.error.message = format!("module {name}: {}", self.error.message);
         self
+    }
+}
+
+impl From<VbaError> for Failure {
+    fn from(error: VbaError) -> Self {
+        Self::new(error.status, error.code, error.message)
     }
 }
 

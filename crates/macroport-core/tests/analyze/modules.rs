@@ -238,9 +238,9 @@ fn modules_above_the_size_limit_are_too_large_and_not_read() {
         max_file_size: 10,
         ..options()
     };
-    let modules = vec![source("Module1", ModuleType::Standard, HELLO)];
+    let sources = vec![source("Module1", ModuleType::Standard, HELLO)];
 
-    let file = checked(analyze_modules(modules, "Module1.bas", &limited));
+    let file = checked(analyze_modules(sources, "Module1.bas", &limited));
 
     assert_eq!(
         (file.container, file.status),
@@ -270,13 +270,12 @@ fn a_module_with_too_many_lines_is_too_large_and_the_others_are_still_read() {
         message: format!("module Big: more than {MAX_LINES} lines"),
     };
     assert_eq!(errors, &[expected]);
-    let modules = modules(&file);
-    assert!(modules[0].source_available);
-    assert_eq!(
-        (modules[0].procedures.len(), modules[0].metrics.loc),
-        (0, 0)
-    );
-    assert_eq!(modules[1].procedures.len(), 1);
+    let [big, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert!(big.source_available);
+    assert_eq!((big.procedures.len(), big.metrics.loc), (0, 0));
+    assert_eq!(small.procedures.len(), 1);
 }
 
 #[test]
@@ -326,9 +325,13 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
         ..RulesSources::EMBEDDED
     };
     let rules = RuleSet::load(&sources).expect("the changed rules load");
-    let modules = vec![source("Module1", ModuleType::Standard, "Sub Broken()\n")];
+    let broken = vec![source("Module1", ModuleType::Standard, "Sub Broken()\n")];
 
-    let file = analyze_modules(modules, "Module1.bas", &Options::new(&rules));
+    let file = checked(analyze_modules(
+        broken,
+        "Module1.bas",
+        &Options::new(&rules),
+    ));
 
     let expected = Some(vec!["does_not_parse".to_owned()]);
     assert_eq!(module(&file).procedures[0].traits, expected);
@@ -352,7 +355,7 @@ fn the_fields_that_later_stages_fill_are_left_out_not_made_up() {
 }
 
 #[test]
-fn the_modules_of_a_workbook_are_read_like_those_of_a_text() {
+fn analyze_reads_the_procedures_of_the_modules_of_a_workbook() {
     let bytes = corpus::read("fixtures/generated/01-01-hide-unhide-columns-find.xlsm");
 
     let file = checked(analyze(&bytes, "01-01.xlsm", &options()));

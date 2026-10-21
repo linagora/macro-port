@@ -4,14 +4,10 @@
 //! The front end reads each module on its own, from its text alone. [`Analysis`]
 //! holds what it makes of one: the lines, and the procedures that the parser
 //! finds in them. [`Front`] puts that into the report of the module, and
-//! completes the report of the file once every module is read. Two doors lead
-//! here:
-//!
-//! - [`finish`] reads the modules that extraction found in a workbook;
-//! - [`analyze_modules`] reads modules that the caller hands over as text.
-//!
-//! The second gives a file whose container is `text_module`, with the modules
-//! as its VBA project (SPEC, "Text entry point"), and skips the container layer.
+//! completes the report of the file once every module is read. [`finish`] runs
+//! it on the modules of an extraction: those that were found in a workbook, or
+//! the text modules that [`analyze_modules`] (in the `text` submodule) wraps in
+//! one.
 //!
 //! The file is `ok` when a module has a procedure, when it has Excel 4.0 macro
 //! sheets or when the encryption of the workbook hides its sheets, and
@@ -26,17 +22,18 @@
 //!
 //! Nothing here executes or evaluates anything from the file.
 
-use sha2::{Digest, Sha256};
+mod text;
 
-use super::{Extraction, Failure, Options, Project, Reading, hex, readable_status, sha256_hex};
+use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
-    Container, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status, VbaProject,
+    FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status, VbaProject,
 };
 use crate::rules::{ModuleType, RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    LogicalKind, LogicalLine, ModuleSource, ParsedModule, Procedure, SourceLines, VbaError, parse,
-    split_lines,
+    LogicalKind, LogicalLine, ParsedModule, Procedure, SourceLines, VbaError, parse, split_lines,
 };
+
+pub use self::text::analyze_modules;
 
 /// The family of a procedure that no rule has scored: the rule engine (M3)
 /// classifies the procedures, so until it runs none is.
@@ -48,12 +45,6 @@ const UNCLASSIFIED: &str = "unclassified";
 /// the time and the report of a file should take. The modules past this budget
 /// are not read.
 const MAX_FILE_LINES: u32 = 1_000_000;
-
-/// The most bytes that the modules handed to [`analyze_modules`] may total: the
-/// limit of the sources of a VBA project, which keeps the peak memory of a file
-/// under 256 MB (SPEC M1). The limit of [`Options::max_file_size`] applies as
-/// well when it is lower.
-const MAX_TEXT_SIZE: u64 = 32 * 1024 * 1024;
 
 /// What the front end makes of the text of one module.
 pub(super) struct Analysis {
@@ -75,12 +66,6 @@ impl Analysis {
     /// its logical lines, since a line can hold many statements.
     fn weight(&self) -> u32 {
         count(self.lines.logical.len()).max(self.lines.physical_lines)
-    }
-}
-
-impl From<VbaError> for Failure {
-    fn from(error: VbaError) -> Self {
-        Self::new(error.status, error.code, error.message)
     }
 }
 
@@ -181,8 +166,8 @@ impl Front {
     }
 }
 
-/// Reads the modules that extraction found in a workbook, and completes its
-/// report.
+/// Reads the modules that extraction found, and completes the report of the
+/// file.
 pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileReport {
     let Extraction { mut file, sources } = extraction;
     let mut front = Front::new(options.rules);
@@ -195,101 +180,6 @@ pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileRepor
     }
     front.seal(&mut file);
     file
-}
-
-/// Analyses VBA modules that the caller hands over as text: a file of
-/// `container: "text_module"` whose VBA project holds them (SPEC, "Text entry
-/// point"). It skips the container layer, and so reads no file.
-///
-/// `path` is the path as the report gives it. The `size` of the file is the
-/// bytes of the texts and its `sha256` the hash of the texts one after the
-/// other, which for one module is its text. Texts above 32 MiB in all, or above
-/// [`Options::max_file_size`] when that is lower, are `too_large` and not
-/// read. A module that cannot be read gets the failure that
-/// [`analyze`](super::analyze) gives, and the other modules are read all the
-/// same. The result never fails.
-pub fn analyze_modules(
-    modules: Vec<ModuleSource>,
-    path: &str,
-    options: &Options<'_>,
-) -> FileReport {
-    let mut hasher = Sha256::new();
-    let mut size = 0u64;
-    for module in &modules {
-        hasher.update(module.text.as_bytes());
-        size = size.saturating_add(u64::try_from(module.text.len()).unwrap_or(u64::MAX));
-    }
-    let sha256 = hex(&hasher.finalize());
-    if size > text_limit(options) {
-        return too_large_text(path, size, sha256, options);
-    }
-    let (reports, sources): (Vec<_>, Vec<_>) = modules
-        .into_iter()
-        .map(|module| {
-            let report = text_module(&module.name, module.module_type, &module.text);
-            (report, Some(module.text))
-        })
-        .unzip();
-    finish(
-        text_extraction(path, size, sha256, reports, sources),
-        options,
-    )
-}
-
-/// The limit on the size of the modules of a text file: that of the options,
-/// and [`MAX_TEXT_SIZE`].
-fn text_limit(options: &Options<'_>) -> u64 {
-    options.max_file_size.min(MAX_TEXT_SIZE)
-}
-
-/// The report of modules above the size limit. Like any file above it, they are
-/// not read.
-fn too_large_text(path: &str, size: u64, sha256: String, options: &Options<'_>) -> FileReport {
-    let limited = Options {
-        max_file_size: text_limit(options),
-        ..*options
-    };
-    let mut file = super::too_large(path, size, sha256, &limited);
-    file.container = Container::TextModule;
-    file
-}
-
-/// The extraction of text modules: their reports, which the front end has not
-/// filled, and their texts.
-fn text_extraction(
-    path: &str,
-    size: u64,
-    sha256: String,
-    modules: Vec<ModuleReport>,
-    sources: Vec<Option<String>>,
-) -> Extraction {
-    let report = VbaProject {
-        name: None,
-        protected: false,
-        code_page: None,
-        references: None,
-        modules,
-    };
-    let mut reading = Reading::new(Container::TextModule);
-    reading.project = Some(Project { report, sources });
-    reading.into_extraction(path, size, sha256)
-}
-
-/// The report of a text module, as extraction would give it before the front
-/// end reads it.
-fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport {
-    ModuleReport {
-        name: name.to_owned(),
-        module_type,
-        stream_name: None,
-        source_available: true,
-        source_missing_suspected: None,
-        source_sha256: Some(sha256_hex(text.as_bytes())),
-        metrics: Metrics::default(),
-        declarations: None,
-        procedures: Vec::new(),
-        signals: None,
-    }
 }
 
 /// The ids of the traits that the rules give to the predicate `parse_recovered`.
@@ -351,6 +241,7 @@ fn logical_lines(lines: &[LogicalLine]) -> u32 {
     count(code.count())
 }
 
+/// A length as the `u32` that the report holds: `u32::MAX` if it is larger.
 fn count(len: usize) -> u32 {
     u32::try_from(len).unwrap_or(u32::MAX)
 }
