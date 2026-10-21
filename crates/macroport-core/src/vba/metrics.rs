@@ -12,8 +12,8 @@
 
 use std::collections::BTreeMap;
 
-use super::lexer::TYPE_CHARACTERS;
-use super::{Keyword, LogicalKind, LogicalLine, Token, TokenKind, tokenize};
+use super::lexer::{TYPE_CHARACTERS, code_tokens};
+use super::{Keyword, LogicalKind, LogicalLine, Token, TokenKind};
 use crate::report::Metrics;
 
 /// What reading a procedure gives.
@@ -122,11 +122,9 @@ struct Line<'a> {
 
 impl<'a> Line<'a> {
     fn new(line: &'a LogicalLine, position: usize, continues: bool) -> Self {
-        let mut tokens = tokenize(&line.text);
-        tokens.retain(|token| token.kind != TokenKind::Comment);
         Self {
             text: &line.text,
-            tokens,
+            tokens: code_tokens(&line.text),
             position,
             continues,
             follows: line.after_separator,

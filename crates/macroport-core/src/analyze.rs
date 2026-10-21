@@ -49,7 +49,8 @@
 //! | `biff.workbook.missing` | `corrupted` | a workbook with a VBA storage has no `Workbook` stream |
 //! | `ovba.dir.missing` | `corrupted` | the project has no `dir` stream |
 //! | `ovba.module.missing_stream` | `corrupted` | the stream of a module is not in the project |
-//! | `ovba.module.not_read` | `suspicious_archive` | an earlier module decompressed past its limit, so the later ones are not read |
+//! | `ovba.module.not_read` | `suspicious_archive` | an earlier module went past a limit (it decompressed too much, or the streams of the project add up to too much), so the later ones are not read |
+//! | `ovba.project.streams_too_large` | `suspicious_archive` | the streams that the project reads add up to more than [`DEFAULT_MAX_FILE_SIZE`] bytes, as when its modules all name one large stream |
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
