@@ -4,7 +4,14 @@
 //! The lexer only cuts the text. A [`Token`] names a kind and the bytes it
 //! covers in the text it was cut from; only whitespace lies between two
 //! tokens, so nothing is dropped, and no token holds a copy of the text. What
-//! the text means is for the parser, and nothing in it is ever evaluated.
+//! the text means is for the parser, and nothing in it is ever evaluated. The
+//! physical line of a token is [`LogicalLine::line_at`] of its `start`.
+//!
+//! Lexing never fails: a character that starts no token is a
+//! [`TokenKind::Unknown`] one. [`tokenize`] is the way in; the lazy reader
+//! behind it stays private.
+//!
+//! [`LogicalLine::line_at`]: super::LogicalLine::line_at
 
 use super::scan::{
     bracket_len, date_literal_len, is_ident_char, is_ident_start, is_space, string_len,
@@ -252,7 +259,7 @@ impl Token {
 }
 
 /// Reads the tokens of a text, from left to right.
-pub struct Lexer<'a> {
+struct Lexer<'a> {
     text: &'a str,
     at: usize,
     /// The kind of the last token: the context of the next one, since the
@@ -265,7 +272,7 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     /// A lexer for `text`, the text of a logical line.
-    pub fn new(text: &'a str) -> Self {
+    fn new(text: &'a str) -> Self {
         Self {
             text,
             at: 0,
