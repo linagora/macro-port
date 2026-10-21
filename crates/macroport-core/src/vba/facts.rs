@@ -21,6 +21,13 @@ pub struct Facts {
     /// replaced by the value of the whole expression, which is listed once.
     /// A string literal that is not closed is not listed.
     pub strings: Vec<String>,
+    /// The statement nests expressions deeper than [`MAX_NESTING`]. The reader
+    /// read the rest of it flat from there: all its strings are listed, as the
+    /// source spells them, with none folded. A caller can count the statement
+    /// among those that did not parse.
+    ///
+    /// [`MAX_NESTING`]: super::MAX_NESTING
+    pub too_deep: bool,
 }
 
 /// Reads the statements of a module one after the other.
@@ -44,8 +51,6 @@ impl StatementReader {
 
     /// The facts of the statement `tokens`, which were cut from `text`.
     pub fn read_tokens(&mut self, text: &str, tokens: &[Token]) -> Facts {
-        Facts {
-            strings: Reader::new(text, tokens).read(),
-        }
+        Reader::new(text, tokens).read()
     }
 }

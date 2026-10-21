@@ -15,6 +15,7 @@ mod scan;
 use crate::report::Status;
 use crate::rules::ModuleType;
 
+pub use expr::MAX_NESTING;
 pub use facts::{Facts, StatementReader};
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
