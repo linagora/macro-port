@@ -570,9 +570,9 @@ fn macro_sheets_are_counted_through_content_types_and_relationships() {
 }
 
 #[test]
-fn a_macro_sheet_related_to_the_package_or_not_internal_is_counted_or_not() {
-    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", b"<macro/>")];
+fn a_macro_sheet_related_to_the_package_is_counted() {
     // The workbook is not the only part whose relationships count.
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", b"<macro/>")];
     let root = rels_of(&[
         (OFFICE_DOCUMENT, "xl/workbook.xml"),
         (MACRO_SHEET_RELATIONSHIP, "xl/macrosheets/sheet1.xml"),
@@ -580,7 +580,12 @@ fn a_macro_sheet_related_to_the_package_or_not_internal_is_counted_or_not() {
     let workbook = rels_of(&[]);
     let package = package_of(root.as_bytes(), workbook.as_bytes(), &parts);
     assert_eq!(macro_sheets_of(&package), 1);
+}
+
+#[test]
+fn a_macro_sheet_at_an_external_address_is_not_counted() {
     // An address is not a part, even when a part has that name.
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", b"<macro/>")];
     let external = format!(
         r#"<Relationship Id="x" Type="{MACRO_SHEET_RELATIONSHIP}" Target="macrosheets/sheet1.xml" TargetMode="External"/>"#
     );

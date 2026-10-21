@@ -55,11 +55,14 @@ pub struct OoxmlPackage {
 
 impl OoxmlPackage {
     /// The container indicators that this package raises, as ids of
-    /// `container_indicators` in `rules/security.yaml`, in the order of that
-    /// file. `declared` is the container that the extension of the file
-    /// declares: a VBA project in a package declared as `.xlsx` or `.xltx`
-    /// raises `sec.vbaproject-in-xlsx`, and macro sheets in any package raise
-    /// `sec.xlm-macrosheet`.
+    /// `container_indicators` in `rules/security.yaml`, in the order of the
+    /// shipped file (a file given with `--rules` may order them otherwise).
+    /// `declared` is the container that the extension of the file declares: a
+    /// VBA project in a package declared as `.xlsx` or `.xltx` raises
+    /// `sec.vbaproject-in-xlsx`, and macro sheets in any package raise
+    /// `sec.xlm-macrosheet`. A compound file has no counterpart of this method:
+    /// for an `.xls`, the caller raises `sec.xlm-macrosheet` when
+    /// `BiffInfo::macro_sheets` is `Some` above zero.
     #[must_use]
     pub fn indicators(&self, declared: Container) -> Vec<&'static str> {
         let mut raised = Vec::new();
