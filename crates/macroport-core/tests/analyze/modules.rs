@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! What the front end makes of the modules of a file (SPEC M2): their
-//! procedures with spans and sizes, the status that follows from them, and the
-//! trait of what did not parse cleanly. The modules come as text, through
-//! `analyze_modules`, or from a workbook, through `analyze`.
+//! procedures with their spans and metrics, the status that follows from them,
+//! and the trait of what did not parse cleanly. The modules come as text,
+//! through `analyze_modules`, or from a workbook, through `analyze`.
 
 use macroport_core::analyze::{Options, analyze, analyze_modules};
 use macroport_core::report::{
@@ -12,7 +12,7 @@ use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
 
-use crate::support::{HELLO, checked, module, modules, options, sha256};
+use crate::support::{HELLO, checked, module, modules, options, recovery_traits, sha256};
 
 fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
     ModuleSource {
@@ -319,7 +319,7 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
 
         assert_eq!(file.status, Status::Ok, "{text:?}");
         let first = &module(&file).procedures[0];
-        let traits = expected.then(|| vec!["compile_error_suspected".to_owned()]);
+        let traits = expected.then(recovery_traits);
         assert_eq!(first.traits, traits, "{text:?}");
         assert_eq!(file.traits, traits, "{text:?}");
     }
@@ -343,7 +343,7 @@ fn a_procedure_whose_blocks_do_not_match_gets_the_trait_and_marks_the_file() {
     ] {
         let file = report_of(&format!("{text}Sub Other()\nEnd Sub\n"));
 
-        let traits = expected.then(|| vec!["compile_error_suspected".to_owned()]);
+        let traits = expected.then(recovery_traits);
         let [first, other] = &module(&file).procedures[..] else {
             panic!("two procedures expected");
         };
@@ -358,10 +358,7 @@ fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
     assert_eq!(names(module(&file)), [("Fine", false), ("Later", false)]);
-    assert_eq!(
-        file.traits,
-        Some(vec!["compile_error_suspected".to_owned()])
-    );
+    assert_eq!(file.traits, Some(recovery_traits()));
 }
 
 #[test]
