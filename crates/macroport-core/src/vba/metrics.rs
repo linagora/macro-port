@@ -12,8 +12,8 @@
 
 use std::collections::BTreeMap;
 
-use super::lexer::TYPE_CHARACTERS;
-use super::{Keyword, LogicalKind, LogicalLine, Token, TokenKind, tokenize};
+use super::lexer::{TYPE_CHARACTERS, code_tokens};
+use super::{Keyword, LogicalKind, LogicalLine, Token, TokenKind};
 use crate::report::Metrics;
 
 /// What reading a procedure gives.
@@ -87,7 +87,7 @@ pub fn measure_procedure(
 /// M2 item 7). A statement label counts as a line, unless a statement follows
 /// it on its own line (`Done: x = 1`, `10 x = 1`): the label and its statement
 /// are one line of the file.
-fn logical_lines(lines: &[LogicalLine]) -> u32 {
+pub(super) fn logical_lines(lines: &[LogicalLine]) -> u32 {
     let mut count = 0_u32;
     for (position, line) in lines.iter().enumerate() {
         let counts = match line.kind {
@@ -122,11 +122,9 @@ struct Line<'a> {
 
 impl<'a> Line<'a> {
     fn new(line: &'a LogicalLine, position: usize, continues: bool) -> Self {
-        let mut tokens = tokenize(&line.text);
-        tokens.retain(|token| token.kind != TokenKind::Comment);
         Self {
             text: &line.text,
-            tokens,
+            tokens: code_tokens(&line.text),
             position,
             continues,
             follows: line.after_separator,
