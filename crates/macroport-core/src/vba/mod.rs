@@ -4,6 +4,9 @@
 //! only reads text. Nothing from an analysed file is ever executed or
 //! evaluated, constant folding apart.
 
+mod expr;
+mod facts;
+mod fold;
 mod lexer;
 mod lines;
 mod parse;
@@ -12,6 +15,7 @@ mod scan;
 use crate::report::Status;
 use crate::rules::ModuleType;
 
+pub use facts::{Facts, StatementReader};
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
