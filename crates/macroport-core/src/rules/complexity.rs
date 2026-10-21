@@ -131,7 +131,10 @@ pub enum Condition {
     /// `match: procedure_name` (regexes on the procedure name).
     Matches(Matcher),
     /// The occurrences of these members or chains, divided by the
-    /// procedure's `logical_loc`, reach `per_logical_loc_gte`.
+    /// procedure's `logical_loc`, reach `per_logical_loc_gte`. A name of `of`
+    /// that holds a dot is a chain and any other is a member. The schema
+    /// requires `of` not to be empty and the threshold to be positive, and the
+    /// loader leaves that to it.
     Ratio {
         of: Vec<String>,
         per_logical_loc_gte: f64,

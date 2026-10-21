@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Tests of the complexity levels.
+//! Tests of the complexity levels and of the traits.
 
 use super::*;
-use crate::rules::{RuleSet, RulesSources};
+use crate::engine::testing::{line, module, procedure, project, project_of};
+use crate::engine::{CodeLine, ParserPredicates, ProcedureInput};
+use crate::rules::{ModuleType, RuleSet, RulesSources, StructuralPredicate};
 
 /// The rules shipped in `rules/`.
 fn shipped() -> RuleSet {
@@ -13,6 +15,10 @@ fn shipped() -> RuleSet {
 const DEFINITIONS: &str = "{ loc: X, logical_loc: X, procedures: X, cyclomatic: X, \
                            cyclomatic_total: X, max_nesting: X, parameters: X, goto_count: X, \
                            forms: X, declare_count: X, external_dependencies: X }";
+
+/// The levels of the tests that do not look at them.
+const MEDIUM: &str = "{ metric: logical_loc, gte: 100 }";
+const HIGH: &str = "{ metric: logical_loc, gte: 1000 }";
 
 /// A `complexity.yaml` whose medium and high levels have these conditions and
 /// whose traits are these (an id and the rule of the trait), loaded beside the
@@ -54,6 +60,27 @@ fn metrics(logical_loc: u32) -> Metrics {
         declare_count: None,
         external_dependencies: None,
     }
+}
+
+/// The traits of the only procedure of a one-module project, whose body is
+/// `body`.
+fn traits_of(rules: &Complexity, body: &[CodeLine], metrics: &Metrics) -> Vec<String> {
+    let project = project_of(body);
+    procedure_traits(rules, &Evaluator::new(&project), 0, 0, metrics)
+}
+
+/// Rules with one trait, `t`, that holds from `threshold` uses of the names
+/// and chains `of` per logical line.
+fn ratio(of: &str, threshold: &str) -> Complexity {
+    let rule = format!("any: [{{ match: ratio, of: [{of}], per_logical_loc_gte: {threshold} }}]");
+    complexity(MEDIUM, HIGH, &[("t", rule.as_str())])
+}
+
+/// A statement on the line `number` that uses the member `name`.
+fn uses(number: u32, name: &str) -> CodeLine {
+    line(number, &format!("Cells.{name}"))
+        .member("Cells")
+        .member(name)
 }
 
 #[test]
@@ -164,4 +191,329 @@ fn the_shipped_levels_read_the_cyclomatic_metric_of_the_report() {
         ..metrics(20)
     };
     assert_eq!(level(complicated), Level::High);
+}
+
+#[test]
+fn a_trait_on_metrics_bounds_the_metrics_of_the_procedure() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[(
+            "trivial",
+            "all: [{ metric: logical_loc, lte: 3 }, { metric: external_dependencies, lte: 0 }]",
+        )],
+    );
+    let traits = |procedure: &Metrics| traits_of(&rules, &[], procedure);
+
+    assert_eq!(traits(&metrics(3)), ["trivial"]);
+    assert!(traits(&metrics(4)).is_empty());
+    // A dependency is one too many, and none reported is none.
+    let depends = Metrics {
+        external_dependencies: Some(1),
+        ..metrics(3)
+    };
+    assert!(traits(&depends).is_empty());
+    let alone = Metrics {
+        external_dependencies: Some(0),
+        ..metrics(3)
+    };
+    assert_eq!(traits(&alone), ["trivial"]);
+}
+
+#[test]
+fn any_needs_one_condition_and_all_needs_every_one_in_the_order_of_the_rules() {
+    let both = "[{ metric: logical_loc, lte: 3 }, { metric: parameters, gte: 4 }]";
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[
+            ("either", &format!("any: {both}")),
+            ("both", &format!("all: {both}")),
+        ],
+    );
+    let traits = |logical_loc, parameters| {
+        let procedure = Metrics {
+            parameters: Some(parameters),
+            ..metrics(logical_loc)
+        };
+        traits_of(&rules, &[], &procedure)
+    };
+
+    assert_eq!(traits(3, 4), ["either", "both"]);
+    assert_eq!(traits(3, 1), ["either"]);
+    assert_eq!(traits(9, 4), ["either"]);
+    assert!(traits(9, 1).is_empty());
+}
+
+#[test]
+fn a_comment_condition_reads_the_comments_of_the_procedure() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[("t", "any: [{ match: comment, pattern: 'macro recorded' }]")],
+    );
+    // The comment of the declarations belongs to no procedure.
+    let project = project(vec![
+        module(
+            "Module1",
+            ModuleType::Standard,
+            vec![
+                procedure(
+                    "Recorded",
+                    3,
+                    vec![line(4, "' Macro recorded 01/02/2003 by Anne")],
+                ),
+                procedure("Plain", 8, vec![line(9, "x = 1 ' a note")]),
+            ],
+        )
+        .with_declarations(vec![line(1, "' macro recorded, but not in a procedure")]),
+    ]);
+    let evaluator = Evaluator::new(&project);
+    let traits = |index| procedure_traits(&rules, &evaluator, 0, index, &metrics(1));
+
+    assert_eq!(traits(0), ["t"]);
+    assert!(traits(1).is_empty());
+}
+
+#[test]
+fn a_procedure_name_condition_reads_the_name_of_the_procedure() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[(
+            "t",
+            "any: [{ match: procedure_name, pattern: '^Macro\\d+$' }]",
+        )],
+    );
+    let named = ["Macro1", "macro12", "MyMacro1", "Macro", "Macro1b"];
+    let procedures = named
+        .iter()
+        .map(|name| procedure(name, 1, Vec::new()))
+        .collect();
+    let project = project(vec![module("Module1", ModuleType::Standard, procedures)]);
+    let evaluator = Evaluator::new(&project);
+
+    let holds: Vec<bool> = (0..named.len())
+        .map(|index| !procedure_traits(&rules, &evaluator, 0, index, &metrics(1)).is_empty())
+        .collect();
+    assert_eq!(holds, [true, true, false, false, false]);
+}
+
+#[test]
+fn a_ratio_holds_from_its_threshold() {
+    let rules = ratio("Select", "0.3");
+    let selects = |count| vec![uses(2, "Select"); count];
+
+    // 3 uses in 10 logical lines are 0.3: the threshold, and an exact one.
+    assert_eq!(traits_of(&rules, &selects(3), &metrics(10)), ["t"]);
+    assert_eq!(traits_of(&rules, &selects(4), &metrics(10)), ["t"]);
+    assert!(traits_of(&rules, &selects(2), &metrics(10)).is_empty());
+    assert!(traits_of(&rules, &selects(3), &metrics(11)).is_empty());
+    // Nothing is divided by no line, and nothing then reaches the threshold.
+    assert!(traits_of(&rules, &selects(3), &metrics(0)).is_empty());
+
+    // 7 uses in 100 lines are 0.07, which a product of the threshold and the
+    // lines would miss.
+    let rules = ratio("Select", "0.07");
+    assert_eq!(traits_of(&rules, &selects(7), &metrics(100)), ["t"]);
+    assert!(traits_of(&rules, &selects(7), &metrics(101)).is_empty());
+}
+
+#[test]
+fn a_ratio_counts_members_by_use_and_chains_by_chain() {
+    let rules = ratio("Select, ActiveWindow.ScrollRow", "0.4");
+    let body = [
+        // One member twice in a statement is two uses.
+        line(2, "Cells.Select.Select")
+            .member("Cells")
+            .member("Select")
+            .member("Select"),
+        // A name of `of` that has a dot is a chain: its parts do not count alone.
+        line(3, "ActiveWindow.ScrollRow = 3")
+            .member("ActiveWindow")
+            .member("ScrollRow")
+            .chain("ActiveWindow.ScrollRow"),
+        line(4, "x = ActiveWindow.ScrollColumn")
+            .member("ActiveWindow")
+            .member("ScrollColumn")
+            .chain("ActiveWindow.ScrollColumn"),
+    ];
+
+    // Three uses: 3 / 7 reaches 0.4, 3 / 8 does not.
+    assert_eq!(traits_of(&rules, &body, &metrics(7)), ["t"]);
+    assert!(traits_of(&rules, &body, &metrics(8)).is_empty());
+
+    // The parts of the chain, found apart from the chain, are not the chain.
+    let parts = [line(2, "ActiveWindow.ScrollRow")
+        .member("ActiveWindow")
+        .member("ScrollRow")];
+    let chain = ratio("ActiveWindow.ScrollRow", "0.1");
+    assert!(traits_of(&chain, &parts, &metrics(5)).is_empty());
+}
+
+#[test]
+fn a_name_given_to_an_argument_is_no_use() {
+    let rules = ratio("Select", "0.1");
+    let named = [line(2, "Cells.Sort Select:=1")
+        .member("Cells")
+        .named_argument("Select")];
+
+    assert!(traits_of(&rules, &named, &metrics(5)).is_empty());
+}
+
+/// A procedure that `predicate` holds for and no other predicate does. The
+/// match has no wildcard arm: a predicate added to the closed list needs its
+/// procedure here.
+fn holding(predicate: StructuralPredicate) -> ProcedureInput {
+    // The statement at position 1 among the lines of the procedure, which the
+    // parser cites for the predicates about statements.
+    let body = || vec![line(2, "x = 1")];
+    let parsed = |name: &str, predicates: ParserPredicates| ProcedureInput {
+        predicates,
+        ..procedure(name, 1, body())
+    };
+    match predicate {
+        // The engine decides these three itself, from names and literals.
+        StructuralPredicate::EventHandler => procedure("Worksheet_Change", 1, body()),
+        StructuralPredicate::AutoExec => procedure("Auto_Open", 1, body()),
+        StructuralPredicate::LongHexOrBase64Literal => {
+            let literal = "4D5A9000".repeat(25);
+            procedure(
+                "Payload",
+                1,
+                vec![line(2, "s = 1").with_strings(&[&literal])],
+            )
+        }
+        StructuralPredicate::UdfCandidate => parsed(
+            "Candidate",
+            ParserPredicates {
+                udf_candidate: true,
+                ..ParserPredicates::default()
+            },
+        ),
+        StructuralPredicate::ChrObfuscation => parsed(
+            "Obfuscated",
+            ParserPredicates {
+                chr_obfuscation: vec![1],
+                ..ParserPredicates::default()
+            },
+        ),
+        StructuralPredicate::NestedLoopCompare => parsed(
+            "Nested",
+            ParserPredicates {
+                nested_loop_compare: vec![1],
+                ..ParserPredicates::default()
+            },
+        ),
+        StructuralPredicate::PossiblyUnused => parsed(
+            "Unused",
+            ParserPredicates {
+                possibly_unused: true,
+                ..ParserPredicates::default()
+            },
+        ),
+        StructuralPredicate::ParseRecovered => parsed(
+            "Recovered",
+            ParserPredicates {
+                parse_recovered: true,
+                ..ParserPredicates::default()
+            },
+        ),
+    }
+}
+
+#[test]
+fn every_structural_predicate_is_a_trait_of_the_procedure() {
+    // One rule per predicate, named like it, and one procedure per predicate in
+    // a document module, which handles the events of the worksheets.
+    let names = StructuralPredicate::ALL.map(StructuralPredicate::name);
+    let texts = names.map(|name| format!("structural: {name}"));
+    let pairs: Vec<(&str, &str)> = names
+        .into_iter()
+        .zip(texts.iter().map(String::as_str))
+        .collect();
+    let rules = complexity(MEDIUM, HIGH, &pairs);
+    let procedures = StructuralPredicate::ALL.map(holding).into_iter().collect();
+    let project = project(vec![module("Sheet1", ModuleType::Document, procedures)]);
+    let evaluator = Evaluator::new(&project);
+
+    for (index, name) in names.into_iter().enumerate() {
+        let traits = procedure_traits(&rules, &evaluator, 0, index, &metrics(1));
+        assert_eq!(traits, [name]);
+    }
+}
+
+#[test]
+fn an_index_out_of_range_has_nothing_to_read_but_the_metrics() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[
+            ("small", "all: [{ metric: logical_loc, lte: 3 }]"),
+            ("recorded", "any: [{ match: comment, pattern: 'macro' }]"),
+            ("unused", "structural: possibly_unused"),
+            (
+                "ratio",
+                "any: [{ match: ratio, of: [Cells], per_logical_loc_gte: 0.1 }]",
+            ),
+        ],
+    );
+    let project = project_of(&[line(2, "' macro").member("Cells")]);
+    let evaluator = Evaluator::new(&project);
+
+    assert_eq!(
+        procedure_traits(&rules, &evaluator, 0, 0, &metrics(1)),
+        ["small", "recorded", "ratio"]
+    );
+    for (owner, index) in [(0, 1), (1, 0), (7, 7)] {
+        let traits = procedure_traits(&rules, &evaluator, owner, index, &metrics(1));
+        assert_eq!(traits, ["small"], "{owner}, {index}");
+    }
+}
+
+#[test]
+fn the_shipped_traits_apply() {
+    let rules = shipped().complexity;
+    let mut unused = procedure("Report", 20, vec![uses(21, "Value")]);
+    unused.predicates.possibly_unused = true;
+    let mut broken = procedure("Broken", 30, Vec::new());
+    broken.predicates.parse_recovered = true;
+    let project = project(vec![module(
+        "Module1",
+        ModuleType::Standard,
+        vec![
+            // The name the macro recorder gives, and three lines.
+            procedure("Macro1", 1, vec![line(2, "x = 1")]),
+            // The comment the macro recorder writes.
+            procedure(
+                "Shortcut",
+                4,
+                vec![line(5, "' Keyboard Shortcut: Ctrl+Shift+A")],
+            ),
+            // A name of its own, but most of its lines select.
+            procedure(
+                "Tidy",
+                10,
+                vec![
+                    line(11, "ActiveWindow.ScrollRow = 3")
+                        .member("ActiveWindow")
+                        .member("ScrollRow")
+                        .chain("ActiveWindow.ScrollRow"),
+                    uses(12, "Select"),
+                    uses(13, "Select"),
+                ],
+            ),
+            unused,
+            broken,
+        ],
+    )]);
+    let evaluator = Evaluator::new(&project);
+    let traits =
+        |index, logical_loc| procedure_traits(&rules, &evaluator, 0, index, &metrics(logical_loc));
+
+    assert_eq!(traits(0, 3), ["recorded_macro", "trivial"]);
+    assert_eq!(traits(1, 8), ["recorded_macro"]);
+    assert_eq!(traits(2, 5), ["recorded_macro"]);
+    assert_eq!(traits(3, 50), ["possibly_unused"]);
+    assert_eq!(traits(4, 50), ["compile_error_suspected"]);
 }
