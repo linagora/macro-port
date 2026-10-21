@@ -49,11 +49,6 @@ pub enum Format {
     Csv,
 }
 
-impl Format {
-    /// Every format, the default of `--format`.
-    pub const ALL: [Self; 3] = [Self::Json, Self::Html, Self::Csv];
-}
-
 /// How a command analyses the files it is given.
 #[derive(Debug, Clone, Args)]
 pub struct AnalysisArgs {
