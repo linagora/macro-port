@@ -461,6 +461,14 @@ pub fn tokenize(text: &str) -> Vec<Token> {
     tokens
 }
 
+/// The tokens of [`tokenize`] that are code: the comments are left out, since
+/// nothing in them is read.
+pub(super) fn code_tokens(text: &str) -> Vec<Token> {
+    let mut tokens = tokenize(text);
+    tokens.retain(|token| token.kind != TokenKind::Comment);
+    tokens
+}
+
 /// Whether `c` can start an operand, after a character that might be a type
 /// character or an operator.
 fn starts_operand(c: char) -> bool {
