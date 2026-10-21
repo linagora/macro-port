@@ -463,3 +463,101 @@ fn a_hash_right_after_a_name_is_its_type_character() {
         ),
     ]);
 }
+
+#[test]
+fn hexadecimal_and_octal_literals_are_numbers() {
+    check(&[
+        ("&HFF", "Number[&HFF]"),
+        ("&hff", "Number[&hff]"),
+        ("&H80070005", "Number[&H80070005]"),
+        ("&H8000&", "Number[&H8000&]"),
+        ("&HFF%", "Number[&HFF%]"),
+        ("&O17", "Number[&O17]"),
+        ("&o17&", "Number[&o17&]"),
+        ("&17", "Number[&17]"),
+        ("x = &H10", "Identifier[x] Equals[=] Number[&H10]"),
+        ("-&H1", "Minus[-] Number[&H1]"),
+        ("a And &HFF", "Identifier[a] Keyword(And)[And] Number[&HFF]"),
+        (
+            "Chr(&H41)",
+            "Identifier[Chr] LeftParen[(] Number[&H41] RightParen[)]",
+        ),
+        (
+            "Array(&H1, &H2)",
+            "Identifier[Array] LeftParen[(] Number[&H1] Comma[,] Number[&H2] RightParen[)]",
+        ),
+        (
+            "Const E_FAIL As Long = &H80004005",
+            "Keyword(Const)[Const] Identifier[E_FAIL] Keyword(As)[As] Identifier[Long] Equals[=] Number[&H80004005]",
+        ),
+    ]);
+}
+
+#[test]
+fn a_hexadecimal_or_octal_prefix_starts_a_number_after_a_name_too() {
+    check(&[
+        ("Sleep &H64", "Identifier[Sleep] Number[&H64]"),
+        ("MsgBox &HFF", "Identifier[MsgBox] Number[&HFF]"),
+        (
+            "Debug.Print &HFF",
+            "Identifier[Debug] Dot[.] Identifier[Print] Number[&HFF]",
+        ),
+        (
+            "keybd_event &H12, 0, 0, 0",
+            "Identifier[keybd_event] Number[&H12] Comma[,] Number[0] Comma[,] Number[0] Comma[,] Number[0]",
+        ),
+        ("a &H10", "Identifier[a] Number[&H10]"),
+        (r#""x" &HFF"#, r#"String["x"] Number[&HFF]"#),
+        (
+            "f(1) &H1",
+            "Identifier[f] LeftParen[(] Number[1] RightParen[)] Number[&H1]",
+        ),
+        ("a & &H10", "Identifier[a] Ampersand[&] Number[&H10]"),
+        ("a And &O7", "Identifier[a] Keyword(And)[And] Number[&O7]"),
+    ]);
+}
+
+#[test]
+fn a_bare_octal_prefix_starts_a_number_only_where_an_operand_is_expected() {
+    check(&[
+        ("x = &17", "Identifier[x] Equals[=] Number[&17]"),
+        ("(&7)", "LeftParen[(] Number[&7] RightParen[)]"),
+        ("a &17", "Identifier[a] Ampersand[&] Number[17]"),
+        (r#""x" &1"#, r#"String["x"] Ampersand[&] Number[1]"#),
+        (
+            "f(1) &7",
+            "Identifier[f] LeftParen[(] Number[1] RightParen[)] Ampersand[&] Number[7]",
+        ),
+        ("a & &17", "Identifier[a] Ampersand[&] Number[&17]"),
+    ]);
+}
+
+#[test]
+fn an_ampersand_is_an_operator_when_the_digits_do_not_close_a_literal() {
+    check(&[
+        (
+            "x = &Hex(5)",
+            "Identifier[x] Equals[=] Ampersand[&] Identifier[Hex] LeftParen[(] Number[5] RightParen[)]",
+        ),
+        (
+            "x = &H",
+            "Identifier[x] Equals[=] Ampersand[&] Identifier[H]",
+        ),
+        (
+            "x = &HG1",
+            "Identifier[x] Equals[=] Ampersand[&] Identifier[HG1]",
+        ),
+        (
+            "x = &O19",
+            "Identifier[x] Equals[=] Ampersand[&] Identifier[O19]",
+        ),
+        (
+            "x = &HFFg",
+            "Identifier[x] Equals[=] Ampersand[&] Identifier[HFFg]",
+        ),
+        ("x = &8", "Identifier[x] Equals[=] Ampersand[&] Number[8]"),
+        ("&", "Ampersand[&]"),
+        ("&&", "Ampersand[&] Ampersand[&]"),
+        ("&HFF&x", "Number[&HFF] Ampersand[&] Identifier[x]"),
+    ]);
+}
