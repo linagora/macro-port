@@ -56,36 +56,52 @@ fn physical_line<'a>(physical: &[&'a str], number: u32) -> &'a str {
     index.and_then(|n| physical.get(n)).copied().unwrap_or("")
 }
 
+/// The physical lines of a text that the crude readers look at, as their
+/// number and their code, trimmed: no comment, no continuation line. A line
+/// that ends with ` _` goes on over the next one, a comment too.
+fn crude_lines(text: &str) -> impl Iterator<Item = (u32, &str)> {
+    let mut continued = false;
+    (1u32..)
+        .zip(text.lines())
+        .filter_map(move |(number, line)| {
+            let code = line.trim();
+            let skipped = continued || code.starts_with('\'');
+            continued = code.ends_with(" _");
+            (!skipped).then_some((number, code))
+        })
+}
+
+static PROCEDURE_HEADER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^\s*((public|private|friend|static)\s+)*(sub|function|property\s+(get|let|set))\s+\[?\w",
+    )
+    .expect("a regular expression")
+});
+
+static PROCEDURE_END: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*end\s+(sub|function|property)\b").expect("a regular expression")
+});
+
 /// The headers and the ends of procedures that a regular expression finds in
-/// the physical lines of a text: no comment, no continuation line. A header
-/// that stands after a `:` is not found, nor is an end.
+/// the physical lines of a text, [`crude_lines`] only. A header that stands
+/// after a `:` is not found, nor is an end.
 struct CrudeProcedures {
     headers: BTreeSet<u32>,
     ends: BTreeSet<u32>,
 }
 
 fn crude_procedures(text: &str) -> CrudeProcedures {
-    let header = Regex::new(
-        r"(?i)^\s*((public|private|friend|static)\s+)*(sub|function|property\s+(get|let|set))\s+\[?\w",
-    )
-    .expect("a regular expression");
-    let end = Regex::new(r"(?i)^\s*end\s+(sub|function|property)\b").expect("a regular expression");
     let mut found = CrudeProcedures {
         headers: BTreeSet::new(),
         ends: BTreeSet::new(),
     };
-    let mut continued = false;
-    for (number, line) in (1u32..).zip(text.lines()) {
-        let code = line.trim();
-        if !continued && !code.starts_with('\'') {
-            if header.is_match(code) {
-                found.headers.insert(number);
-            }
-            if end.is_match(code) {
-                found.ends.insert(number);
-            }
+    for (number, code) in crude_lines(text) {
+        if PROCEDURE_HEADER.is_match(code) {
+            found.headers.insert(number);
         }
-        continued = code.ends_with(" _");
+        if PROCEDURE_END.is_match(code) {
+            found.ends.insert(number);
+        }
     }
     found
 }
@@ -415,7 +431,7 @@ static WITH_EVENTS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("a regular expression")
 });
 
-static OTHER: LazyLock<Regex> = LazyLock::new(|| {
+static KEYWORD_DECLARATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)^(?:(?:(?:public|private|global)\s+)?(const|type|enum|event)|(implements))\s+\w",
     )
@@ -451,7 +467,7 @@ fn crude_tag(code: &str) -> Option<String> {
     if let Some(found) = WITH_EVENTS.captures(code) {
         return Some(format!("withevents {}", group(&found, 1)));
     }
-    if let Some(found) = OTHER.captures(code) {
+    if let Some(found) = KEYWORD_DECLARATION.captures(code) {
         let word = group(&found, 1);
         return Some(
             if word.is_empty() {
@@ -473,22 +489,17 @@ fn crude_tag(code: &str) -> Option<String> {
 }
 
 /// The declarations that regular expressions find in the physical lines of a
-/// text, outside the procedures `inside` (the first and the last line of each),
-/// as their words and their lines. They read no comment, no continuation line
-/// and nothing after a `:`, and skip the members of a `Type` or an `Enum`.
+/// text, [`crude_lines`] only, outside the procedures `inside` (the first and
+/// the last line of each), as their words and their lines. They read nothing
+/// after a `:`, and skip the members of a `Type` or an `Enum`.
 fn crude_declarations(text: &str, inside: &[(u32, u32)]) -> Vec<(String, u32)> {
     let mut found = Vec::new();
-    let (mut in_block, mut continued) = (false, false);
-    for (number, line) in (1u32..).zip(text.lines()) {
-        let code = line.trim();
-        let comment = code.starts_with('\'');
-        let skipped = continued
-            || comment
-            || inside
-                .iter()
-                .any(|&(first, last)| (first..=last).contains(&number));
-        continued = !comment && code.ends_with(" _");
-        if skipped {
+    let mut in_block = false;
+    for (number, code) in crude_lines(text) {
+        let in_procedure = inside
+            .iter()
+            .any(|&(first, last)| (first..=last).contains(&number));
+        if in_procedure {
             continue;
         }
         if in_block {

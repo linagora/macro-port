@@ -139,9 +139,9 @@ fn the_lines_of_a_block_that_declare_nothing_are_its_members_whatever_they_look_
 
 #[test]
 fn a_member_that_reads_word_as_is_a_member_whatever_the_word() {
-    // Excel exports `Type As Long` as a member of a `Type` (corpus sample 13-06,
-    // line 105). Each of these would declare something, or open a procedure,
-    // anywhere else.
+    // Excel's own export of the corpus sample 13-06 has `Type As Long` as a
+    // member of a `Type` (lines 100 and 136 of its `.expected.cls` files). Each
+    // of these would declare something, or open a procedure, anywhere else.
     let text = "Type T\n    Type As Long\n    Event As Long\n    Declare As Long\n\
                 Const As Long\n    Sub As Long\n    Function As Long\nEnd Type\n\
                 Sub S()\nEnd Sub\n";
@@ -164,44 +164,11 @@ fn a_type_with_no_end_is_closed_by_the_next_procedure() {
 }
 
 #[test]
-fn a_block_with_no_end_is_closed_by_a_statement_that_declares_something() {
+fn a_type_or_an_enum_with_no_end_is_ended_by_each_other_statement_that_declares_something() {
     // A line that no `Type` or `Enum` can hold is read as what it is, and the
-    // block stops at the line before it.
-    let text = "Type T\n    a As Long\nPrivate Declare Function F Lib \"x\" ()\nPublic Const K = 1\n\
-                Dim v\nEnum E\n    A\nOption Explicit\nImplements I\nEvent Ev()\nType U\n\
-                End Type\n";
-    let module = module_of(text);
-    assert_eq!(
-        kinds(&module),
-        [
-            (Type, 1),
-            (declare("F", true), 3),
-            (Const, 4),
-            (Variable, 5),
-            (Enum, 6),
-            (DeclarationKind::Option(OptionKind::Explicit), 8),
-            (Implements, 9),
-            (Event, 10),
-            (Type, 11),
-        ]
-    );
-    let expected = [
-        (0, 2),
-        (2, 3),
-        (3, 4),
-        (4, 5),
-        (5, 7),
-        (7, 8),
-        (8, 9),
-        (9, 10),
-        (10, 12),
-    ];
-    assert_eq!(ranges(&module), expected);
-    assert_eq!(module.recoveries, [unclosed(1), unclosed(6)]);
-}
-
-#[test]
-fn every_kind_of_declaration_ends_a_type_or_an_enum_with_no_end() {
+    // block stops at the line before it. A `Type` or an `Enum` is the case of
+    // `a_block_opened_inside_a_block_with_no_end_ends_it`, and a directive is a
+    // member, not a statement that ends a block.
     let statements = [
         (
             "Option Explicit",
