@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+# Fuzz targets of the binary parsers and the lexer (A2), run with cargo-fuzz
+# from the repository root: `cargo +nightly fuzz run zip_entry`. Outside the
+# main workspace (the empty [workspace] below): libFuzzer is built from C++ and
+# needs a nightly toolchain, so the stable gates, the wasm32 build and
+# `cargo test --workspace` never see this crate.
+#
+# Its Cargo.lock is its own and started as a copy of the root one, so that the
+# parsers are fuzzed with the versions that ship. When macroport-core changes
+# its dependencies, or the root lock changes a version, catch up with:
+#   cp Cargo.lock fuzz/Cargo.lock && cargo fetch --manifest-path fuzz/Cargo.toml
+[package]
+name = "macroport-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/linagora/macro-port"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+macroport-core = { path = "../crates/macroport-core" }
+# Writes the packages of ooxml_xml and reads the seeds. As in the workspace
+# (ADR-0002).
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
+
+[[bin]]
+name = "zip_entry"
+path = "fuzz_targets/zip_entry.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ooxml_xml"
+path = "fuzz_targets/ooxml_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cfb_streams"
+path = "fuzz_targets/cfb_streams.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "biff_workbook"
+path = "fuzz_targets/biff_workbook.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dir_stream"
+path = "fuzz_targets/dir_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_stream"
+path = "fuzz_targets/project_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ovba_decompress"
+path = "fuzz_targets/ovba_decompress.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "module_source"
+path = "fuzz_targets/module_source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lexer"
+path = "fuzz_targets/lexer.rs"
+test = false
+doc = false
+bench = false
