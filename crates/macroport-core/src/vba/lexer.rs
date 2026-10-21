@@ -229,14 +229,12 @@ impl Token {
 pub struct Lexer<'a> {
     text: &'a str,
     at: usize,
-    /// Whether the last token ends an operand: a name, a literal or `)`. A
-    /// `.` that follows one reaches a member, and anywhere else it may start
-    /// a number.
-    after_operand: bool,
-    /// Whether the last token is `.` or `!`, after which every word is a name.
-    after_member: bool,
+    /// The kind of the last token: the context of the next one, since the
+    /// same characters mean different things after a name and after an
+    /// operator.
+    last_kind: Option<TokenKind>,
     /// Whether a `]` may still follow: false once a search has found none.
-    brackets: bool,
+    brackets_can_close: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -245,10 +243,30 @@ impl<'a> Lexer<'a> {
         Self {
             text,
             at: 0,
-            after_operand: false,
-            after_member: false,
-            brackets: true,
+            last_kind: None,
+            brackets_can_close: true,
         }
+    }
+
+    /// Whether the last token ends an operand: a name, a literal or `)`. A
+    /// `.` that follows one reaches a member, and anywhere else it may start
+    /// a number.
+    fn after_operand(&self) -> bool {
+        matches!(
+            self.last_kind,
+            Some(
+                TokenKind::Identifier
+                    | TokenKind::Number
+                    | TokenKind::String
+                    | TokenKind::Date
+                    | TokenKind::RightParen
+            )
+        )
+    }
+
+    /// Whether the last token is `.` or `!`, after which every word is a name.
+    fn after_member(&self) -> bool {
+        matches!(self.last_kind, Some(TokenKind::Dot | TokenKind::Bang))
     }
 
     /// The kind and the length in bytes of the token that starts `rest`,
@@ -257,16 +275,16 @@ impl<'a> Lexer<'a> {
         let after = |len: usize| rest.get(len..).and_then(|text| text.chars().next());
         match c {
             '"' => (TokenKind::String, string_len(rest).unwrap_or(rest.len())),
-            '[' if self.brackets => match bracket_len(rest) {
+            '[' if self.brackets_can_close => match bracket_len(rest) {
                 Some(len) => (TokenKind::Identifier, len),
                 None => {
-                    self.brackets = false;
+                    self.brackets_can_close = false;
                     (TokenKind::Unknown, 1)
                 }
             },
             _ if is_ident_start(c) || c == '_' => self.word(rest),
             '0'..='9' => (TokenKind::Number, number(rest)),
-            '.' if !self.after_operand && after(1).is_some_and(|next| next.is_ascii_digit()) => {
+            '.' if !self.after_operand() && after(1).is_some_and(|next| next.is_ascii_digit()) => {
                 (TokenKind::Number, number(rest))
             }
             '.' => (TokenKind::Dot, 1),
@@ -314,7 +332,7 @@ impl<'a> Lexer<'a> {
         let word = rest.get(..end).unwrap_or_default();
         let after = rest.get(end..).unwrap_or_default();
         let named_argument = after.trim_start_matches(is_space).starts_with(":=");
-        if !self.after_member
+        if !self.after_member()
             && !named_argument
             && let Some(keyword) = keyword(word)
         {
@@ -341,15 +359,7 @@ impl Iterator for Lexer<'_> {
         let (kind, len) = self.read(c, rest);
         let end = start.saturating_add(len);
         self.at = end;
-        self.after_operand = matches!(
-            kind,
-            TokenKind::Identifier
-                | TokenKind::Number
-                | TokenKind::String
-                | TokenKind::Date
-                | TokenKind::RightParen
-        );
-        self.after_member = matches!(kind, TokenKind::Dot | TokenKind::Bang);
+        self.last_kind = Some(kind);
         Some(Token { kind, start, end })
     }
 }
