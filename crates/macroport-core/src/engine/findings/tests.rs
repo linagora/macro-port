@@ -279,3 +279,19 @@ fn metrics_that_do_not_line_up_with_the_project_are_read_as_zero_or_left_out() {
     // A procedure that was not measured has no line: it is trivial.
     assert_eq!(found.modules[1].procedures[0].traits, ["trivial"]);
 }
+
+#[test]
+fn a_recovery_outside_any_procedure_gives_its_trait_to_the_file_and_to_no_procedure() {
+    // A stray `End Sub` is no procedure's: the module carries the flag.
+    let main = procedure("Main", 3, vec![line(4, "x = 1")]);
+    let stray = module("Stray", ModuleType::Standard, vec![main])
+        .with_declarations(vec![line(1, "End Sub")])
+        .recovered();
+    let measured = ProjectMetrics {
+        procedures: vec![vec![metrics(5)]],
+        file: metrics(5),
+    };
+    let found = run(&project(vec![stray]), &shipped(), &measured, &[]);
+    assert!(found.modules[0].procedures[0].traits.is_empty());
+    assert_eq!(found.file.traits, ["compile_error_suspected"]);
+}
