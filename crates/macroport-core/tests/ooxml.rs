@@ -40,6 +40,11 @@ fn zip_of(entries: &[(&str, &[u8], CompressionMethod)]) -> Vec<u8> {
     writer.finish().unwrap().into_inner()
 }
 
+/// A `.rels` part with this XML between the tags of its root.
+fn rels_with(body: &str) -> String {
+    format!(r#"<Relationships xmlns="{RELS_NAMESPACE}">{body}</Relationships>"#)
+}
+
 /// A `.rels` part with these `(type, target)` relationships.
 fn rels_of(relationships: &[(&str, &str)]) -> String {
     let relationships: String = relationships
@@ -49,18 +54,17 @@ fn rels_of(relationships: &[(&str, &str)]) -> String {
             format!(r#"<Relationship Id="r{id}" Type="{kind}" Target="{target}"/>"#)
         })
         .collect();
-    format!(r#"<Relationships xmlns="{RELS_NAMESPACE}">{relationships}</Relationships>"#)
+    rels_with(&relationships)
 }
 
-/// A package whose workbook is `xl/workbook.xml`, with these relationships of
-/// the workbook as `(type, target)` and these other parts.
-fn workbook_package(relationships: &[(&str, &str)], parts: &[(&str, &[u8])]) -> Vec<u8> {
-    let root = rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]);
-    let workbook = rels_of(relationships);
+/// A package from the bytes of the relationships of the package and of those
+/// of its workbook, `xl/workbook.xml`, with these other parts.
+fn package_of(root: &[u8], workbook: &[u8], parts: &[(&str, &[u8])]) -> Vec<u8> {
     let deflated = CompressionMethod::Deflated;
     let mut entries = vec![
-        ("_rels/.rels", root.as_bytes(), deflated),
-        ("xl/_rels/workbook.xml.rels", workbook.as_bytes(), deflated),
+        ("_rels/.rels", root, deflated),
+        ("xl/workbook.xml", b"<workbook/>".as_slice(), deflated),
+        ("xl/_rels/workbook.xml.rels", workbook, deflated),
     ];
     entries.extend(
         parts
@@ -68,6 +72,32 @@ fn workbook_package(relationships: &[(&str, &str)], parts: &[(&str, &[u8])]) -> 
             .map(|(name, content)| (*name, *content, deflated)),
     );
     zip_of(&entries)
+}
+
+/// A package whose workbook is `xl/workbook.xml`, with these relationships of
+/// the workbook as `(type, target)` and these other parts.
+fn workbook_package(relationships: &[(&str, &str)], parts: &[(&str, &[u8])]) -> Vec<u8> {
+    let workbook = rels_of(relationships);
+    package_of(root_rels().as_bytes(), workbook.as_bytes(), parts)
+}
+
+/// A package whose only relationships part, at the root, is `root`.
+fn package_with_root(root: &[u8]) -> Vec<u8> {
+    zip_of(&[("_rels/.rels", root, CompressionMethod::Deflated)])
+}
+
+/// A package whose relationships at the root are `root`, and whose workbook
+/// relates to `xl/custom.dat`. The VBA part is also there under its usual
+/// name, so that the part the reader returns tells whether it read `root`.
+fn related_package(root: &[u8]) -> Vec<u8> {
+    let workbook = rels_of(&[(VBA_RELATIONSHIP, "custom.dat")]);
+    let parts: [(&str, &[u8]); 2] = [("xl/custom.dat", b"by relationship"), (VBA, b"by name")];
+    package_of(root, workbook.as_bytes(), &parts)
+}
+
+/// The relationships of a package whose workbook is `xl/workbook.xml`.
+fn root_rels() -> String {
+    rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")])
 }
 
 /// A zip with one deflated entry, the VBA part.
@@ -133,10 +163,17 @@ fn workbooks_with_vba() -> Vec<String> {
     with_vba.collect()
 }
 
-/// `workbook` with its VBA part under another name, `xl/custom.dat`. The
-/// relationships keep saying `vbaProject.bin`, unless `relink` makes them say
-/// `custom.dat`.
-fn with_vba_moved(workbook: &[u8], relink: bool) -> Vec<u8> {
+/// What the relationships of a workbook whose VBA part has moved say about it.
+#[derive(Clone, Copy)]
+enum Link {
+    /// They still name `vbaProject.bin`, which is no longer there.
+    Broken,
+    /// They name the new place, `custom.dat`.
+    Followed,
+}
+
+/// `workbook` with its VBA part under another name, `xl/custom.dat`.
+fn with_vba_moved(workbook: &[u8], link: Link) -> Vec<u8> {
     let mut source = ZipArchive::new(Cursor::new(workbook)).unwrap();
     let mut parts = Vec::new();
     for index in 0..source.len() {
@@ -146,7 +183,7 @@ fn with_vba_moved(workbook: &[u8], relink: bool) -> Vec<u8> {
         let mut name = part.name().unwrap().into_owned();
         if name == VBA {
             name = "xl/custom.dat".to_owned();
-        } else if relink && name.ends_with(".rels") {
+        } else if matches!(link, Link::Followed) && name.ends_with(".rels") {
             let rels = String::from_utf8(content).unwrap();
             let moved = rels.replace(r#"Target="vbaProject.bin""#, r#"Target="custom.dat""#);
             content = moved.into_bytes();
@@ -181,9 +218,9 @@ fn every_generated_workbook_relates_to_its_vba_project() {
         let workbook = corpus::read(&path);
         // Moved and not related to any more, the part is lost: otherwise its
         // name would find it and the test would prove nothing.
-        let lost = with_vba_moved(&workbook, false);
+        let lost = with_vba_moved(&workbook, Link::Broken);
         assert!(read_ooxml(&lost).unwrap().vba_project.is_none(), "{path}");
-        let related = with_vba_moved(&workbook, true);
+        let related = with_vba_moved(&workbook, Link::Followed);
         assert_eq!(vba_of(&related), vba_of(&workbook), "{path}");
     }
 }
@@ -250,17 +287,20 @@ fn the_vba_part_is_found_by_name_whatever_the_case() {
 #[test]
 fn relationship_targets_are_resolved_as_paths() {
     let parts: [(&str, &[u8]); 2] = [("xl/custom/p.bin", b"by relationship"), (VBA, b"by name")];
+    // A `..` above the root is dropped, as RFC 3986 section 5.2.4 has it.
     let found: &[&str] = &[
         "custom/p.bin",
         "./custom/p.bin",
         "../xl/custom/p.bin",
+        "../../xl/custom/p.bin",
         "/xl/custom/p.bin",
         "..\\xl\\custom\\p.bin",
         "Custom/P.BIN",
         "custom/p.bin#fragment",
     ];
-    // A target that leaves the package, or names no part, leaves it to the name.
-    let not_found: &[&str] = &["../../xl/custom/p.bin", "custom/missing.bin", ""];
+    // A target that names no part, or the root of the package, leaves it to
+    // the name.
+    let not_found: &[&str] = &["custom/missing.bin", "", ".", "..", "/", "#custom/p.bin"];
     for (targets, expected) in [(found, "by relationship"), (not_found, "by name")] {
         for target in targets {
             let package = workbook_package(&[(VBA_RELATIONSHIP, target)], &parts);
@@ -269,13 +309,133 @@ fn relationship_targets_are_resolved_as_paths() {
     }
 }
 
+/// The parts of the decoy tests: the one that a decoy relationship leads to, the
+/// one that the real relationship leads to, and the one the name gives.
+const DECOY_PARTS: [(&str, &[u8]); 3] = [
+    ("xl/decoy.bin", b"decoy"),
+    ("xl/custom.dat", b"by relationship"),
+    (VBA, b"by name"),
+];
+
 #[test]
-fn a_relationship_of_another_type_does_not_name_the_vba_part() {
-    // A relationship counts by its whole type, not by what the type ends with.
-    let parts: [(&str, &[u8]); 2] = [("xl/decoy.xml", b"decoy"), (VBA, b"by name")];
-    let other = "http://example.com/relationships/vbaProject";
-    let package = workbook_package(&[(other, "decoy.xml")], &parts);
+fn a_vba_relationship_counts_by_its_exact_type() {
+    // Each decoy comes before the real relationship and leads to a part that
+    // exists. The type is compared as written, with its case and as a whole,
+    // not by what it ends with.
+    let decoys = [
+        "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature",
+        "http://schemas.microsoft.com/office/2006/relationships/VBAPROJECT",
+        "HTTP://schemas.microsoft.com/office/2006/relationships/vbaProject",
+        "http://example.com/relationships/vbaProject",
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+    ];
+    for decoy in decoys {
+        let relationships = [(decoy, "decoy.bin"), (VBA_RELATIONSHIP, "custom.dat")];
+        let package = workbook_package(&relationships, &DECOY_PARTS);
+        assert_eq!(vba_of(&package), b"by relationship", "{decoy}");
+    }
+    let untyped = r#"<Relationship Id="r0" Target="decoy.bin"/>"#;
+    let real = format!(r#"<Relationship Id="r1" Type="{VBA_RELATIONSHIP}" Target="custom.dat"/>"#);
+    let workbook = rels_with(&format!("{untyped}{real}"));
+    let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
+    assert_eq!(vba_of(&package), b"by relationship");
+}
+
+#[test]
+fn a_workbook_relationship_counts_by_its_exact_type() {
+    // The decoy workbook relates to a decoy VBA part and comes first. The
+    // Strict variant of the format has another type, which the reader does not
+    // know: its workbook is not followed.
+    let decoys = [
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/OFFICEDOCUMENT",
+        "http://example.com/relationships/officeDocument",
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+        "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument",
+    ];
+    for decoy in decoys {
+        let root = rels_of(&[
+            (decoy, "xl/decoy.xml"),
+            (OFFICE_DOCUMENT, "xl/workbook.xml"),
+        ]);
+        let decoy_rels = rels_of(&[(VBA_RELATIONSHIP, "decoy.bin")]);
+        let mut parts = DECOY_PARTS.to_vec();
+        parts.push(("xl/decoy.xml", b"<workbook/>"));
+        parts.push(("xl/_rels/decoy.xml.rels", decoy_rels.as_bytes()));
+        let workbook = rels_of(&[(VBA_RELATIONSHIP, "custom.dat")]);
+        let package = package_of(root.as_bytes(), workbook.as_bytes(), &parts);
+        assert_eq!(vba_of(&package), b"by relationship", "{decoy}");
+    }
+}
+
+#[test]
+fn an_external_relationship_is_not_followed() {
+    // The target of an external relationship is an address, not a part, even
+    // when a part of that name exists.
+    let relationship = |id: &str, target: &str, mode: &str| {
+        let mode = if mode.is_empty() {
+            String::new()
+        } else {
+            format!(r#" TargetMode="{mode}""#)
+        };
+        format!(r#"<Relationship Id="{id}" Type="{VBA_RELATIONSHIP}" Target="{target}"{mode}/>"#)
+    };
+    let external = relationship("r0", "decoy.bin", "External");
+    for mode in ["Internal", ""] {
+        let internal = relationship("r1", "custom.dat", mode);
+        let workbook = rels_with(&format!("{external}{internal}"));
+        let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
+        assert_eq!(vba_of(&package), b"by relationship", "{mode:?}");
+    }
+}
+
+#[test]
+fn an_unknown_target_mode_is_corrupted_where_the_reader_looks() {
+    // Only the two modes of the format are known, and compared as written: the
+    // reader cannot tell what Excel makes of another one. It matters only on a
+    // relationship of a type the reader needs.
+    for mode in ["external", "EXTERNAL", "other", ""] {
+        let odd = format!(
+            r#"<Relationship Id="r0" Type="{VBA_RELATIONSHIP}" Target="decoy.bin" TargetMode="{mode}"/>"#
+        );
+        let workbook = rels_with(&odd);
+        let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
+        assert_fails(&package, Corrupted, "ooxml.malformed_xml");
+    }
+    let hyperlink = r#"<Relationship Id="r0" Type="http://example.com/hyperlink" Target="x" TargetMode="odd"/>"#;
+    let workbook = rels_with(hyperlink);
+    let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
     assert_eq!(vba_of(&package), b"by name");
+}
+
+#[test]
+fn the_workbook_is_the_first_one_that_exists() {
+    let missing = (OFFICE_DOCUMENT, "xl/missing.xml");
+    let root = rels_of(&[missing, (OFFICE_DOCUMENT, "xl/workbook.xml")]);
+    assert_eq!(
+        vba_of(&related_package(root.as_bytes())),
+        b"by relationship"
+    );
+}
+
+#[test]
+fn the_package_itself_is_no_workbook() {
+    // `.` is the root of the package, and the relationships of the package are
+    // not those of a workbook: the VBA relationship there leads nowhere.
+    let stored = CompressionMethod::Stored;
+    for target in [".", "", "/", "..", "#xl/workbook.xml"] {
+        let root = rels_of(&[
+            (OFFICE_DOCUMENT, target),
+            (VBA_RELATIONSHIP, "xl/decoy.bin"),
+        ]);
+        let package = zip_of(&[
+            ("_rels/.rels", root.as_bytes(), stored),
+            // An entry that stands for the root, to look up by the empty name.
+            ("/", b"", stored),
+            ("xl/decoy.bin", b"decoy", stored),
+            (VBA, b"by name", stored),
+        ]);
+        assert_eq!(vba_of(&package), b"by name", "{target:?}");
+    }
 }
 
 #[test]
@@ -288,13 +448,7 @@ fn a_relationship_of_the_package_does_not_name_the_vba_part() {
         (VBA_RELATIONSHIP, "xl/decoy.bin"),
     ]);
     let workbook = rels_of(&[(VBA_RELATIONSHIP, "custom.dat")]);
-    let deflated = CompressionMethod::Deflated;
-    let package = zip_of(&[
-        ("_rels/.rels", root.as_bytes(), deflated),
-        ("xl/_rels/workbook.xml.rels", workbook.as_bytes(), deflated),
-        ("xl/decoy.bin", b"decoy", deflated),
-        ("xl/custom.dat", b"by relationship", deflated),
-    ]);
+    let package = package_of(root.as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
     assert_eq!(vba_of(&package), b"by relationship");
 }
 
@@ -311,16 +465,124 @@ fn a_relationship_to_a_very_long_name_is_not_followed() {
 
 #[test]
 fn a_relationship_part_that_is_not_well_formed_is_corrupted() {
-    let root = rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]);
     let (broken, deflated) = ("<Relationships><", CompressionMethod::Deflated);
     let in_package = zip_of(&[("_rels/.rels", broken.as_bytes(), deflated)]);
-    let in_workbook = zip_of(&[
-        ("_rels/.rels", root.as_bytes(), deflated),
-        ("xl/_rels/workbook.xml.rels", broken.as_bytes(), deflated),
-    ]);
+    let in_workbook = package_of(root_rels().as_bytes(), broken.as_bytes(), &[]);
     for package in [in_package, in_workbook] {
         assert_fails(&package, Corrupted, "ooxml.malformed_xml");
     }
+}
+
+#[test]
+fn a_relationship_part_that_is_not_what_the_format_says_is_corrupted() {
+    let vba = VBA_RELATIONSHIP;
+    let ns = RELS_NAMESPACE;
+    let evil = r#"xmlns:x="urn:evil""#;
+    let spelled = ns.replacen(':', "&#58;", 1);
+    let cases = [
+        // Not well formed.
+        String::new(),
+        format!(r#"<Relationships xmlns="{ns}">"#),
+        format!(r#"<Relationships xmlns="{ns}"></Relationships><Relationships xmlns="{ns}"/>"#),
+        "</Relationships>".to_owned(),
+        format!(r#"<Relationships xmlns="{ns}"/></Relationships>"#),
+        format!(r#"<Relationships xmlns="{ns}"><Relationship></Relationships>"#),
+        format!(r#"<Relationships xmlns="{ns}"><Relationship Target=a/></Relationships>"#),
+        format!("<Relationships xmlns=\"{ns}\">\u{0}</Relationships"),
+        // Not what the format has: a DTD, a repeated attribute.
+        format!(r#"<!DOCTYPE Relationships []><Relationships xmlns="{ns}"/>"#),
+        rels_with(&format!(
+            r#"<Relationship Type="{vba}" Target="a" Target="b"/>"#
+        )),
+        rels_with(r#"<Relationship Type="x" Type="y"/>"#),
+        // Not in the namespace of the format, at the root or among its children,
+        // or written so that only a parser that decodes it would see it.
+        "<Relationships/>".to_owned(),
+        format!(r#"<Other xmlns="{ns}"/>"#),
+        r#"<Relationships xmlns="urn:evil"/>"#.to_owned(),
+        format!(r#"<Relationships xmlns="{spelled}"/>"#),
+        rels_with(&format!(
+            r#"<x:Relationship {evil} Type="{vba}" Target="a"/>"#
+        )),
+        rels_with(&format!(
+            r#"<Relationship xmlns="urn:evil" Type="{vba}" Target="a"/>"#
+        )),
+        // Text where only the root may be.
+        format!(r#"junk<Relationships xmlns="{ns}"/>"#),
+        format!(r#"<Relationships xmlns="{ns}"/>junk"#),
+        format!(r#"<![CDATA[x]]><Relationships xmlns="{ns}"/>"#),
+        format!(r#"&amp;<Relationships xmlns="{ns}"/>"#),
+    ];
+    for xml in &cases {
+        let error = error_of(&package_with_root(xml.as_bytes()));
+        let found = (error.status, error.code);
+        assert_eq!(found, (Corrupted, "ooxml.malformed_xml"), "{xml}");
+    }
+    let error = error_of(&package_with_root(&[0xc3, 0x28]));
+    assert_eq!(error.code, "ooxml.malformed_xml");
+}
+
+#[test]
+fn a_relationship_part_in_the_namespace_of_the_format_is_read() {
+    let real = format!(r#"<Relationship Id="1" Type="{VBA_RELATIONSHIP}" Target="custom.dat"/>"#);
+    let prefixed = format!(
+        r#"<r:Relationships xmlns:r="{RELS_NAMESPACE}"><r:Relationship Id="1" Type="{VBA_RELATIONSHIP}" Target="custom.dat"/></r:Relationships>"#
+    );
+    let declared = format!(
+        "\n<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<!-- c -->\n{}\n",
+        rels_with(&real)
+    );
+    // The names of attributes count with their prefix: this decoy has no `Type`.
+    let decoy = format!(
+        r#"<Relationship xmlns:x="urn:x" Id="0" x:Type="{VBA_RELATIONSHIP}" Target="decoy.bin"/>"#
+    );
+    let with_decoy = rels_with(&format!("{decoy}{real}"));
+    for workbook in [prefixed, declared, with_decoy] {
+        let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &DECOY_PARTS);
+        assert_eq!(vba_of(&package), b"by relationship", "{workbook}");
+    }
+}
+
+#[test]
+fn a_relationship_part_is_read_as_utf8_with_or_without_a_byte_order_mark() {
+    let root = root_rels();
+    assert_eq!(
+        vba_of(&related_package(root.as_bytes())),
+        b"by relationship"
+    );
+    let marked = [&[0xef, 0xbb, 0xbf], root.as_bytes()].concat();
+    assert_eq!(vba_of(&related_package(&marked)), b"by relationship");
+    // Another encoding is not read: UTF-16 is not UTF-8.
+    let units = root.encode_utf16().flat_map(u16::to_le_bytes);
+    let utf16: Vec<u8> = [0xff, 0xfe].into_iter().chain(units).collect();
+    assert_fails(&related_package(&utf16), Corrupted, "ooxml.malformed_xml");
+}
+
+#[test]
+fn a_relationship_part_nested_too_deeply_is_corrupted() {
+    // Two levels are the format's; the reader stops at 32.
+    let nested = |depth: usize| {
+        let (open, close) = ("<a>".repeat(depth), "</a>".repeat(depth));
+        rels_with(&format!("{open}{close}"))
+    };
+    assert!(read_ooxml(&package_with_root(nested(31).as_bytes())).is_ok());
+    let deep = package_with_root(nested(32).as_bytes());
+    assert_fails(&deep, Corrupted, "ooxml.malformed_xml");
+}
+
+#[test]
+fn a_flood_of_namespace_declarations_is_corrupted() {
+    // The parser bounds the declarations it keeps, so a part cannot spend
+    // memory on them beyond its own size.
+    let declarations = |count: usize| {
+        let declared: String = (0..count)
+            .map(|n| format!(r#" xmlns:p{n}="urn:{n}""#))
+            .collect();
+        format!(r#"<Relationships xmlns="{RELS_NAMESPACE}"{declared}/>"#)
+    };
+    assert!(read_ooxml(&package_with_root(declarations(20).as_bytes())).is_ok());
+    let flood = package_with_root(declarations(1000).as_bytes());
+    assert_fails(&flood, Corrupted, "ooxml.malformed_xml");
 }
 
 #[test]

@@ -112,6 +112,11 @@ impl<'a> Archive<'a> {
         })
     }
 
+    /// Whether the archive has an entry called `name`.
+    pub(super) fn contains(&self, name: &str) -> bool {
+        self.names.contains_key(&normalize(name))
+    }
+
     /// The content of the entry called `name`, or `None` when there is no such
     /// entry. At most `cap` bytes are inflated.
     pub(super) fn read(&self, name: &str, cap: u64) -> Result<Option<Vec<u8>>, ContainerError> {
