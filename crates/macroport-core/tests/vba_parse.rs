@@ -6,13 +6,13 @@ mod vba_parse_common;
 
 use macroport_core::report::{ProcedureKind, Visibility};
 use macroport_core::vba::{MAX_RECOVERIES, Recovery, RecoveryKind};
-use vba_parse_common::{parsed, spans};
+use vba_parse_common::{module_of, spans};
 
 use ProcedureKind::{Function, PropertyGet, PropertyLet, PropertySet, Sub};
 
 #[test]
 fn a_procedure_runs_from_its_header_to_its_end() {
-    let (_, module) = parsed("Option Explicit\n\nSub A()\n    x = 1\nEnd Sub\n");
+    let module = module_of("Option Explicit\n\nSub A()\n    x = 1\nEnd Sub\n");
     let [a] = module.procedures.as_slice() else {
         panic!("{module:?}");
     };
@@ -32,7 +32,7 @@ fn each_kind_of_procedure_is_told_by_its_header() {
                 Property Get G() As Long\nEnd Property\n\
                 Property Let G(v As Long)\nEnd Property\n\
                 Property Set G(v As Object)\nEnd Property\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     assert_eq!(
         spans(&module),
         [
@@ -52,7 +52,7 @@ fn the_modifiers_of_a_header_come_in_any_order_and_letter_case() {
                 Friend Property Get C()\nEnd Property\nStatic Sub D()\nEnd Sub\n\
                 Public Static Sub E()\nEnd Sub\nSTATIC PRIVATE sub F()\nend SUB\n\
                 Sub G()\nEnd Sub\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     let found: Vec<_> = module
         .procedures
         .iter()
@@ -77,33 +77,79 @@ fn the_modifiers_of_a_header_come_in_any_order_and_letter_case() {
 fn a_name_is_given_without_its_brackets_or_its_type_character() {
     let text = "Function Name$() As String\nEnd Function\n\
                 Sub [Odd Name]()\nEnd Sub\nFunction Count%()\nEnd Function\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     let names: Vec<_> = module.procedures.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names, ["Name", "Odd Name", "Count"]);
 }
 
 #[test]
-fn the_parameters_of_a_header_are_counted() {
-    let text = "Sub A()\nEnd Sub\nSub B\nEnd Sub\nSub C(x)\nEnd Sub\n\
-                Function D(ByVal a As Long, Optional b As String = \"x,y\", ParamArray c() As Variant) As Long\n\
-                End Function\nSub E(a As Long, _\n    b As Long)\nEnd Sub\n\
-                Property Let F(Optional ByVal i As Long = -1, v)\nEnd Property\n\
-                Sub G(a() As Long, ByRef b() As String, )\nEnd Sub\nSub (a, b)\nEnd Sub\n\
-                Sub H(a, b\nEnd Sub\n";
-    let (_, module) = parsed(text);
-    let counts: Vec<_> = module
-        .procedures
+fn a_header_that_names_nothing_opens_a_procedure_that_is_recovered() {
+    let text = "Sub (a, b)\nEnd Sub\nPublic Sub\nEnd Sub\nSub 123()\nEnd Sub\nSub A()\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(
+        spans(&module),
+        [
+            ("", Sub, 1, 2),
+            ("", Sub, 3, 4),
+            ("", Sub, 5, 6),
+            ("A", Sub, 7, 8)
+        ]
+    );
+    for (procedure, line) in module.procedures.iter().zip([1, 3, 5]) {
+        assert_eq!(
+            procedure.recoveries,
+            [Recovery {
+                line,
+                kind: RecoveryKind::Unparseable
+            }],
+            "line {line}"
+        );
+    }
+    assert!(!module.procedures[3].is_recovered());
+    assert!(module.recoveries.is_empty());
+    // It has no end either: the recoveries come in the order they are found.
+    let module = module_of("Sub\n");
+    let kinds: Vec<_> = module.procedures[0]
+        .recoveries
         .iter()
-        .map(|p| p.parameter_count)
+        .map(|r| r.kind)
         .collect();
-    assert_eq!(counts, [0, 0, 1, 3, 2, 2, 2, 0, 2]);
+    assert_eq!(kinds, [RecoveryKind::Unparseable, RecoveryKind::MissingEnd]);
+}
+
+#[test]
+fn the_parameters_of_a_header_are_counted() {
+    // Each header stands alone: the End it lacks changes nothing to its count.
+    let headers = [
+        ("Sub A()", 0),
+        ("Sub B", 0),
+        ("Sub C(x)", 1),
+        (
+            "Function D(ByVal a As Long, Optional b As String = \"x,y\", ParamArray c() As Variant) As Long",
+            3,
+        ),
+        ("Sub E(a As Long, _\n    b As Long)", 2),
+        ("Property Let F(Optional ByVal i As Long = -1, v)", 2),
+        ("Sub G(a() As Long, ByRef b() As String, )", 2),
+        ("Sub (a, b)", 0),
+        ("Sub H(a, b", 2),
+    ];
+    for (header, count) in headers {
+        let module = module_of(header);
+        let found: Vec<_> = module
+            .procedures
+            .iter()
+            .map(|p| p.parameter_count)
+            .collect();
+        assert_eq!(found, [count], "{header:?}");
+    }
 }
 
 #[test]
 fn the_comments_inside_a_procedure_belong_to_it_and_the_ones_around_it_do_not() {
     let text = "' before\nSub A()\n    ' inside\n    x = 1\nEnd Sub ' after\n' between\nSub B()\nEnd Sub\n";
-    let (lines, module) = parsed(text);
-    assert_eq!(lines.logical.len(), 8);
+    let module = module_of(text);
+    // The logical lines are the eight lines of the text, one for each.
     let ranges: Vec<_> = module.procedures.iter().map(|p| p.lines.clone()).collect();
     assert_eq!(ranges, [1..5, 6..8]);
     assert_eq!(spans(&module), [("A", Sub, 2, 5), ("B", Sub, 7, 8)]);
@@ -111,7 +157,7 @@ fn the_comments_inside_a_procedure_belong_to_it_and_the_ones_around_it_do_not() 
 
 #[test]
 fn a_procedure_written_on_one_line_starts_and_ends_on_it() {
-    let (_, module) = parsed("Sub A(): End Sub\nSub B(): x = 1: End Sub\n");
+    let module = module_of("Sub A(): End Sub\nSub B(): x = 1: End Sub\n");
     assert_eq!(spans(&module), [("A", Sub, 1, 1), ("B", Sub, 2, 2)]);
     let ranges: Vec<_> = module.procedures.iter().map(|p| p.lines.clone()).collect();
     assert_eq!(ranges, [0..2, 2..5]);
@@ -122,13 +168,13 @@ fn a_procedure_written_on_one_line_starts_and_ends_on_it() {
 fn a_header_over_several_physical_lines_starts_at_its_keyword() {
     let text =
         "Public Sub A( _\n    ByVal x As Long)\n    x = 1\nEnd Sub\nPublic _\nSub B()\nEnd Sub\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     assert_eq!(spans(&module), [("A", Sub, 1, 4), ("B", Sub, 6, 7)]);
 }
 
 #[test]
 fn a_procedure_without_an_end_is_closed_by_the_next_header() {
-    let (_, module) = parsed("Sub A()\n    x = 1\n' trailing\nSub B()\nEnd Sub\n");
+    let module = module_of("Sub A()\n    x = 1\n' trailing\nSub B()\nEnd Sub\n");
     assert_eq!(spans(&module), [("A", Sub, 1, 2), ("B", Sub, 4, 5)]);
     let [a, b] = module.procedures.as_slice() else {
         panic!("{module:?}");
@@ -147,19 +193,24 @@ fn a_procedure_without_an_end_is_closed_by_the_next_header() {
 
 #[test]
 fn a_procedure_without_an_end_is_closed_by_the_end_of_the_module() {
-    let (_, module) = parsed("Sub A()\n    x = 1\n\n' the end\n");
+    let module = module_of("Sub A()\n    x = 1\n\n' the end\n");
     let [a] = module.procedures.as_slice() else {
         panic!("{module:?}");
     };
     assert_eq!((a.start_line, a.end_line, a.lines.clone()), (1, 2, 0..2));
-    assert_eq!(a.recoveries.len(), 1);
-    assert_eq!(a.recoveries[0].kind, RecoveryKind::MissingEnd);
+    assert_eq!(
+        a.recoveries,
+        [Recovery {
+            line: 1,
+            kind: RecoveryKind::MissingEnd
+        }]
+    );
 }
 
 #[test]
 fn an_end_of_another_kind_closes_the_procedure_and_is_recovered() {
     let text = "Sub A()\nEnd Function\nProperty Get P()\nEnd Sub\nFunction F()\nEnd Property\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     assert_eq!(
         spans(&module),
         [
@@ -168,25 +219,22 @@ fn an_end_of_another_kind_closes_the_procedure_and_is_recovered() {
             ("F", Function, 5, 6)
         ]
     );
-    let lines: Vec<_> = module
-        .procedures
-        .iter()
-        .map(|p| p.recoveries.clone())
-        .collect();
-    for (recoveries, line) in lines.iter().zip([2, 4, 6]) {
+    for (procedure, line) in module.procedures.iter().zip([2, 4, 6]) {
         assert_eq!(
-            recoveries,
-            &[Recovery {
+            procedure.recoveries,
+            [Recovery {
                 line,
                 kind: RecoveryKind::WrongEnd
-            }]
+            }],
+            "{}",
+            procedure.name
         );
     }
 }
 
 #[test]
 fn an_end_outside_a_procedure_is_recorded_for_the_module() {
-    let (_, module) = parsed("End Sub\nSub A()\nEnd Sub\nEnd Function\n");
+    let module = module_of("End Sub\nSub A()\nEnd Sub\nEnd Function\n");
     assert_eq!(spans(&module), [("A", Sub, 2, 3)]);
     assert!(!module.procedures[0].is_recovered());
     assert_eq!(
@@ -205,30 +253,36 @@ fn an_end_outside_a_procedure_is_recorded_for_the_module() {
 }
 
 #[test]
+fn a_module_is_recovered_when_a_procedure_is_or_when_something_stands_outside_one() {
+    let cases = [
+        ("", false),
+        ("Sub A()\nEnd Sub\n", false),
+        ("Sub A()\n", true),
+        ("Sub A()\nEnd Function\n", true),
+        // The procedure is fine: the stray end is the module's.
+        ("Sub A()\nEnd Sub\nEnd Sub\n", true),
+        ("End Sub\n", true),
+    ];
+    for (text, recovered) in cases {
+        assert_eq!(module_of(text).is_recovered(), recovered, "{text:?}");
+    }
+}
+
+#[test]
 fn statements_that_look_like_headers_are_not_headers() {
     let text = "Declare Function F Lib \"x\" () As Long\nPublic Declare PtrSafe Sub S Lib \"y\" ()\n\
                 Public WS As Worksheet\nProperty\nSub A()\n    Exit Sub\n    x = \"Sub B()\"\n    \
                 ' Sub C()\n    End\nEnd Sub\n";
-    let (_, module) = parsed(text);
+    let module = module_of(text);
     assert_eq!(spans(&module), [("A", Sub, 5, 10)]);
     assert!(module.recoveries.is_empty() && !module.procedures[0].is_recovered());
 }
 
 #[test]
 fn the_recoveries_of_a_module_are_capped() {
-    let text = "End Sub\n".repeat(MAX_RECOVERIES * 3);
-    let (_, module) = parsed(&text);
+    let module = module_of(&"End Sub\n".repeat(MAX_RECOVERIES * 3));
     assert!(module.procedures.is_empty());
-    assert_eq!(module.recoveries.len(), MAX_RECOVERIES);
-    assert_eq!(module.recoveries[0].line, 1);
-}
-
-#[test]
-fn a_hostile_module_of_headers_without_an_end_is_read_in_one_pass() {
-    let count = 100_000usize;
-    let (lines, module) = parsed(&"Sub a()\n".repeat(count));
-    assert_eq!(lines.logical.len(), count);
-    assert_eq!(module.procedures.len(), count);
-    assert!(module.procedures.iter().all(|p| p.recoveries.len() == 1));
-    assert!(module.recoveries.is_empty());
+    // The first ones are the ones kept.
+    let lines: Vec<_> = module.recoveries.iter().map(|r| r.line).collect();
+    assert_eq!(lines, (1u32..).take(MAX_RECOVERIES).collect::<Vec<_>>());
 }

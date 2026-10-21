@@ -15,8 +15,9 @@ pub(super) struct Header {
     pub name: String,
     /// How many parameters follow the name.
     pub parameter_count: usize,
-    /// Offset of the `Sub`, `Function` or `Property` keyword in the line.
-    pub keyword: usize,
+    /// Byte offset of the `Sub`, `Function` or `Property` keyword in the text
+    /// of the line.
+    pub keyword_offset: usize,
 }
 
 /// The kind of procedure that an `End` names.
@@ -78,7 +79,8 @@ fn header(tokens: &[Token], text: &str) -> Option<Header> {
         at = at.saturating_add(1);
     }
     let keyword = tokens.get(at)?;
-    let (kind, words) = match keyword.kind {
+    // The kind, and how many tokens the keyword takes: `Property Get` is two.
+    let (kind, keyword_tokens) = match keyword.kind {
         TokenKind::Keyword(Keyword::Sub) => (ProcedureKind::Sub, 1usize),
         TokenKind::Keyword(Keyword::Function) => (ProcedureKind::Function, 1),
         TokenKind::Keyword(Keyword::Property) => match tokens.get(at.saturating_add(1))?.kind {
@@ -89,7 +91,7 @@ fn header(tokens: &[Token], text: &str) -> Option<Header> {
         },
         _ => return None,
     };
-    let name_at = at.saturating_add(words);
+    let name_at = at.saturating_add(keyword_tokens);
     let name = tokens
         .get(name_at)
         .filter(|token| token.kind == TokenKind::Identifier)
@@ -108,7 +110,7 @@ fn header(tokens: &[Token], text: &str) -> Option<Header> {
         is_static,
         name,
         parameter_count,
-        keyword: keyword.start,
+        keyword_offset: keyword.start,
     })
 }
 
