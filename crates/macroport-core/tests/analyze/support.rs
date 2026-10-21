@@ -44,6 +44,12 @@ pub fn codes(report: &FileReport) -> Vec<&str> {
     errors.map(|error| error.code.as_str()).collect()
 }
 
+/// The traits that the shipped rules give to what did not parse cleanly: the
+/// ones tied to the predicate `parse_recovered`.
+pub fn recovery_traits() -> Vec<String> {
+    vec!["compile_error_suspected".to_owned()]
+}
+
 /// The signal `id` of `severity` that a container indicator makes: it is the
 /// file's, with no module and no evidence.
 pub fn file_signal(id: &str, severity: Severity) -> Signal {
