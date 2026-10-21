@@ -28,6 +28,32 @@
 <p class="notice">{{ messages.text("html-redacted") }}</p>
 {% endif -%}
 </header>
+<main>
+<section>
+<h2>{{ messages.text("html-totals") }}</h2>
+<dl class="totals">
+{% for count in counts -%}
+<div><dt>{{ count.label }}</dt><dd>{{ count.value }}</dd></div>
+{% endfor -%}
+</dl>
+</section>
+<div class="distributions">
+{% for distribution in distributions -%}
+<section>
+<h2>{{ distribution.title }}</h2>
+{% if distribution.rows.is_empty() -%}
+<p>{{ messages.text("html-none") }}</p>
+{% else -%}
+<table>
+{% for row in distribution.rows -%}
+<tr><th scope="row">{{ row.label }}</th><td class="count">{{ row.value }}</td><td><meter min="0" max="{{ distribution.max }}" value="{{ row.value }}" aria-hidden="true"></meter></td></tr>
+{% endfor -%}
+</table>
+{% endif -%}
+</section>
+{% endfor -%}
+</div>
+</main>
 <script type="application/json" id="report-data">{{ data }}</script>
 </body>
 </html>

@@ -11,3 +11,21 @@ html-scanned = Scanned paths
 html-duration = Scan duration
 html-ms = ms
 html-redacted = Redacted report: paths and project names are hashed, code snippets are removed and error messages are replaced by “[redacted]”. Module and procedure names are kept, unless they were hashed on request.
+html-none = None.
+
+## Totals
+
+html-totals = Totals
+html-files = Files
+html-files-with-macros = Files with macros
+html-files-failed = Files that failed
+html-modules = Modules
+html-procedures = Procedures
+html-logical-loc = Logical lines of code
+html-possibly-unused = Possibly unused procedures
+
+## Distributions
+
+html-by-status = Files by status
+html-by-complexity = Files by complexity
+html-by-severity = Files by highest severity

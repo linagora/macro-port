@@ -4,14 +4,14 @@
 
 mod common;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use macroport_cli::i18n::{Messages, RESOURCES};
 use macroport_cli::render::html::render;
-use macroport_core::report::{Lang, Report};
-use macroport_core::rules::{RuleSet, RulesSources};
+use macroport_core::report::{Lang, Level, Report, Status, Totals};
+use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::report_problems;
 use sha2::{Digest, Sha256};
 
@@ -104,6 +104,13 @@ fn visible_text(markup: &str) -> String {
         .replace("&#34;", "\"")
         .replace("&#39;", "'")
         .replace("&#38;", "&")
+}
+
+/// The words of `markup` with one space between them: what a reader sees, in
+/// the order of the page.
+fn words(markup: &str) -> String {
+    let text = visible_text(markup);
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The source that a policy needs to allow `text` as the content of an inline
@@ -246,15 +253,17 @@ fn parse_tag(inside: &str) -> Tag {
     }
 }
 
-const ELEMENTS: [&str; 18] = [
-    "html", "head", "meta", "title", "link", "style", "body", "header", "h1", "dl", "div", "dt",
-    "dd", "p", "ul", "li", "code", "script",
+const ELEMENTS: [&str; 26] = [
+    "html", "head", "meta", "title", "link", "style", "body", "header", "main", "section", "h1",
+    "h2", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter", "code",
+    "script",
 ];
 
-/// Whether the page may write `element` with `attribute` set to `value`. What
-/// comes from the report is never among the values: the page writes only fixed
-/// words.
+/// Whether the page may write `element` with `attribute` set to `value`. No
+/// string of the report is among the values: the page writes only fixed words
+/// and, in a `meter`, numbers.
 fn is_allowed(element: &str, attribute: &str, value: &str) -> bool {
+    let number = !value.is_empty() && value.chars().all(|c| c.is_ascii_digit());
     match (element, attribute) {
         ("html", "lang") => ["en", "fr"].contains(&value),
         ("meta", "charset") => value == "utf-8",
@@ -267,7 +276,10 @@ fn is_allowed(element: &str, attribute: &str, value: &str) -> bool {
         ("link", "href") => value == "data:,",
         ("script", "type") => value == "application/json",
         ("script", "id") => value == "report-data",
-        (_, "class") => ["facts", "notice"].contains(&value),
+        ("th", "scope") => value == "row",
+        ("meter", "min" | "max" | "value") => number,
+        ("meter", "aria-hidden") => value == "true",
+        (_, "class") => ["facts", "notice", "totals", "distributions", "count"].contains(&value),
         _ => false,
     }
 }
@@ -365,6 +377,16 @@ fn only_the_style_and_the_data_are_marked_safe() {
     assert_eq!(RENDERER.matches("Safe(").count(), 2);
 }
 
+/// The code of the renderer: no comment and no unit test, so that an id in
+/// either does not count as asked for.
+fn renderer() -> String {
+    let (code, _tests) = (RENDERER.split_once("#[cfg(test)]")).unwrap_or((RENDERER, ""));
+    (code.lines())
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Whether `text` is the id of a message of `html.ftl`.
 fn is_html_id(text: &str) -> bool {
     (text.strip_prefix("html-")).is_some_and(|name| {
@@ -384,7 +406,9 @@ fn the_page_asks_for_every_message_of_html_ftl_and_for_no_other() {
         .map(|(id, _)| id)
         .filter(|id| is_html_id(id))
         .collect();
+    let renderer = renderer();
     let asked: BTreeSet<&str> = (TEMPLATE.split('"'))
+        .chain(renderer.split('"'))
         .filter(|piece| is_html_id(piece))
         .collect();
     assert_eq!(asked, defined);
@@ -410,6 +434,133 @@ fn the_page_is_in_the_language_that_was_asked_for() {
     assert!(fr.contains("<html lang=\"fr\">"));
     assert!(fr.contains("<title>Rapport Macro-Port</title>"));
     assert!(visible_text(&markup(&fr)).contains("Durée de l’analyse"));
+}
+
+#[test]
+fn the_totals_and_the_distributions_are_those_of_the_report() {
+    let report = common::fleet();
+    let en = words(&markup(&page(&report, Lang::En)));
+    let fr = words(&markup(&page(&report, Lang::Fr)));
+
+    for expected in [
+        "Totals Files 11 Files with macros 4 Files that failed 4 Modules 5 Procedures 7 \
+         Logical lines of code 67 Possibly unused procedures 1",
+        "Files by status Analysed 4 No macros 1 Encrypted 1 Corrupted 1 Unsupported 1 \
+         Too large 1 Suspicious archive 1 Error 1",
+        "Files by complexity Low 4 Medium 1",
+        "Files by highest severity Medium 3 High 1",
+    ] {
+        assert!(en.contains(expected), "{expected:?} in {en}");
+    }
+    for expected in [
+        "Totaux Fichiers 11 Fichiers avec macros 4 Fichiers en échec 4 Modules 5 Procédures 7 \
+         Lignes de code logiques 67 Procédures possiblement inutilisées 1",
+        "Fichiers par statut Analysé 4 Sans macros 1 Chiffré 1 Corrompu 1 Non pris en charge 1 \
+         Trop volumineux 1 Archive suspecte 1 Erreur 1",
+        "Fichiers par complexité Faible 4 Moyenne 1",
+        "Fichiers par gravité maximale Moyenne 3 Élevée 1",
+    ] {
+        assert!(fr.contains(expected), "{expected:?} in {fr}");
+    }
+
+    // A full bar is the 11 files of the scan, in each of the 12 rows.
+    let page = page(&report, Lang::En);
+    let bar =
+        |value: u32| format!(r#"<meter min="0" max="11" value="{value}" aria-hidden="true">"#);
+    assert_eq!(page.matches("<meter ").count(), 12);
+    assert_eq!(page.matches(&bar(4)).count(), 2);
+    assert_eq!(page.matches(&bar(3)).count(), 1);
+    assert_eq!(page.matches(&bar(1)).count(), 9);
+}
+
+#[test]
+fn each_number_is_shown_with_its_own_label() {
+    // No two numbers are alike, so a label on the wrong field would show.
+    let mut report = common::fleet();
+    report.scan.files_total = 31;
+    report.scan.files_with_macros = 32;
+    report.scan.files_failed = 33;
+    report.summary.totals = Some(Totals {
+        modules: Some(34),
+        procedures: Some(35),
+        logical_loc: Some(36),
+        possibly_unused_procedures: Some(37),
+    });
+    report.summary.by_status = BTreeMap::from([
+        (Status::Ok, 41),
+        (Status::NoMacros, 42),
+        (Status::Encrypted, 43),
+        (Status::Corrupted, 44),
+        (Status::Unsupported, 45),
+        (Status::TooLarge, 46),
+        (Status::SuspiciousArchive, 47),
+        (Status::Error, 48),
+    ]);
+    report.summary.by_complexity =
+        BTreeMap::from([(Level::Low, 51), (Level::Medium, 52), (Level::High, 53)]);
+    report.summary.by_severity = BTreeMap::from([
+        (Severity::Info, 61),
+        (Severity::Low, 62),
+        (Severity::Medium, 63),
+        (Severity::High, 64),
+    ]);
+
+    let page = page(&report, Lang::En);
+    let shown = words(&markup(&page));
+    for expected in [
+        "Totals Files 31 Files with macros 32 Files that failed 33 Modules 34 Procedures 35 \
+         Logical lines of code 36 Possibly unused procedures 37",
+        "Files by status Analysed 41 No macros 42 Encrypted 43 Corrupted 44 Unsupported 45 \
+         Too large 46 Suspicious archive 47 Error 48",
+        "Files by complexity Low 51 Medium 52 High 53",
+        "Files by highest severity Info 61 Low 62 Medium 63 High 64",
+    ] {
+        assert!(shown.contains(expected), "{expected:?} in {shown}");
+    }
+    assert_eq!(page.matches(r#"<meter min="0" max="31" "#).count(), 15);
+}
+
+#[test]
+fn the_totals_that_the_summary_lacks_are_left_out() {
+    let mut report = common::fleet();
+    report.summary.totals = None;
+    let shown = words(&markup(&page(&report, Lang::En)));
+    assert!(
+        shown.contains("Totals Files 11 Files with macros 4 Files that failed 4 Files by status"),
+        "{shown}"
+    );
+
+    report.summary.totals = Some(Totals {
+        modules: Some(5),
+        procedures: None,
+        logical_loc: Some(67),
+        possibly_unused_procedures: None,
+    });
+    let shown = words(&markup(&page(&report, Lang::En)));
+    assert!(
+        shown.contains(
+            "Totals Files 11 Files with macros 4 Files that failed 4 Modules 5 \
+             Logical lines of code 67 Files by status"
+        ),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_report_on_no_file_says_so() {
+    let report = empty();
+    let en = words(&markup(&page(&report, Lang::En)));
+    // The three distributions have no row.
+    assert_eq!(en.matches("None.").count(), 3, "{en}");
+    assert!(
+        en.contains(
+            "Totals Files 0 Files with macros 0 Files that failed 0 Modules 0 Procedures 0 \
+             Logical lines of code 0 Possibly unused procedures 0"
+        ),
+        "{en}"
+    );
+    let fr = words(&markup(&page(&report, Lang::Fr)));
+    assert_eq!(fr.matches("Aucun.").count(), 3, "{fr}");
 }
 
 #[test]

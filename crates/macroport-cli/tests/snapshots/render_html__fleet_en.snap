@@ -13,6 +13,49 @@ expression: body
 <div><dt>Scan duration</dt><dd>842 ms</dd></div>
 </dl>
 </header>
+<main>
+<section>
+<h2>Totals</h2>
+<dl class="totals">
+<div><dt>Files</dt><dd>11</dd></div>
+<div><dt>Files with macros</dt><dd>4</dd></div>
+<div><dt>Files that failed</dt><dd>4</dd></div>
+<div><dt>Modules</dt><dd>5</dd></div>
+<div><dt>Procedures</dt><dd>7</dd></div>
+<div><dt>Logical lines of code</dt><dd>67</dd></div>
+<div><dt>Possibly unused procedures</dt><dd>1</dd></div>
+</dl>
+</section>
+<div class="distributions">
+<section>
+<h2>Files by status</h2>
+<table>
+<tr><th scope="row">Analysed</th><td class="count">4</td><td><meter min="0" max="11" value="4" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">No macros</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Encrypted</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Corrupted</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Unsupported</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Too large</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Suspicious archive</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Error</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+</table>
+</section>
+<section>
+<h2>Files by complexity</h2>
+<table>
+<tr><th scope="row">Low</th><td class="count">4</td><td><meter min="0" max="11" value="4" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">Medium</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+</table>
+</section>
+<section>
+<h2>Files by highest severity</h2>
+<table>
+<tr><th scope="row">Medium</th><td class="count">3</td><td><meter min="0" max="11" value="3" aria-hidden="true"></meter></td></tr>
+<tr><th scope="row">High</th><td class="count">1</td><td><meter min="0" max="11" value="1" aria-hidden="true"></meter></td></tr>
+</table>
+</section>
+</div>
+</main>
 <script type="application/json" id="report-data"></script>
 </body>
 </html>
