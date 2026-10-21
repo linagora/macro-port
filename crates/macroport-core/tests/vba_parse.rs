@@ -80,6 +80,9 @@ fn the_modifiers_of_a_header_come_in_any_order_and_letter_case() {
         ]
     );
     assert!(module.recoveries.is_empty());
+    // The other modules can call the public ones, and those that say nothing.
+    let public: Vec<_> = module.procedures.iter().map(Procedure::is_public).collect();
+    assert_eq!(public, [true, false, false, true, true, false, true]);
 }
 
 #[test]
