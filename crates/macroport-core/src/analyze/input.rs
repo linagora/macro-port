@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), with what measuring the procedures
-//! showed ([`Analysis::measures`]). Five conventions matter to the engine:
+//! showed ([`Analysis::measures`]). Six conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -16,15 +16,18 @@
 //!   of the block (`.Font` under `With Range("A1")` is `Range.Font`). The
 //!   blocks are followed within a procedure, and within each run of lines
 //!   between two procedures: a block never outlives the run that opens it.
+//! - The ProgIDs of a statement are the classes that it passes to
+//!   `CreateObject` and `GetObject`, folded like its strings. The dependencies
+//!   of the procedures and of the file are counted from them (see
+//!   [`metrics`](super::metrics)), and the trait `trivial` reads the former.
 //! - `parse_recovered` holds for a procedure when the parser recovered in it,
-//!   when a statement of it nests expressions deeper than the reader follows,
-//!   or when its blocks do not match (SPEC M2 item 6). It holds for the module
-//!   when it holds for one of its procedures, or when the parser recovered
-//!   outside any.
+//!   when a statement of it nests expressions deeper than the reader follows
+//!   (that statement has no ProgID), or when its blocks do not match (SPEC M2
+//!   item 6). It holds for the module when it holds for one of its procedures,
+//!   or when the parser recovered outside any.
 //!
-//! What the front end does not read yet is left empty, not guessed: the ProgIDs
-//! of the statements, and the predicates `chr_obfuscation` and
-//! `possibly_unused`.
+//! What the front end does not read yet is left empty, not guessed: the
+//! predicates `chr_obfuscation` and `possibly_unused`.
 //!
 //! The facts of a statement weigh a few dozen times its text, and only the text
 //! of the file bounds how many statements it holds. The engine keeps what it
@@ -158,6 +161,14 @@ fn with_copies(text: &str, tokens: &[Token]) -> usize {
 /// What a statement of `text` and `tokens` may take at the most once it is read
 /// as a line, known before its facts are: a line over what is left of the room
 /// is refused without being read.
+///
+/// The strings that folding builds out of the constants of the module are not
+/// in it, nor are the ProgIDs that copy them: the reader holds what it builds
+/// to four times the text of the statement and 1 KiB, which a statement full of
+/// references to a long constant can spend. Such a line may weigh more than its
+/// ceiling by about that much twice over, which the room takes in full once the
+/// line is read (see [`Room::take`]): the ceiling only spares reading what could
+/// not fit.
 fn ceiling(text: &str, tokens: &[Token]) -> usize {
     size_of::<CodeLine>()
         .saturating_add(text.len().saturating_mul(COPIES))
@@ -445,7 +456,7 @@ impl Converter<'_, '_> {
             members: facts.members.into_iter().map(member).collect(),
             calls: facts.calls.into_iter().map(call).collect(),
             chains: facts.chains,
-            ..CodeLine::default()
+            progids: facts.progids,
         };
         self.room.take(line_bytes(&converted))?;
         Ok((converted, facts.too_deep))
@@ -617,17 +628,35 @@ mod tests {
     }
 
     #[test]
-    fn what_the_front_end_does_not_read_yet_is_left_empty() {
-        let adapted = adapted(
-            "Sub Run()\n    Set o = CreateObject(\"WScript.Shell\")\n    x = Chr(65) & Chr(66)\n\
-             End Sub\n",
-        );
+    fn the_predicates_that_the_front_end_does_not_read_yet_are_left_unset() {
+        // A sub that obfuscates a string, and that nothing calls.
+        let adapted = adapted("Sub Run()\n    x = Chr(65) & Chr(66)\nEnd Sub\n");
 
         let procedure = &adapted.input.procedures[0];
         assert_eq!(procedure.predicates, ParserPredicates::default());
-        for line in &procedure.lines {
-            assert!(line.progids.is_empty(), "{line:?}");
-        }
+    }
+
+    #[test]
+    fn the_progids_of_a_statement_are_those_the_reader_finds() {
+        let adapted = adapted(
+            "Sub Run()\n    Set o = CreateObject(\"WScript.Shell\")\n    Set p = CreateObject(Prog)\n\
+             \x20   Set q = GetObject(\"C:\\book.xlsx\", \"Word.\" & \"Application\")\n    Shell \"calc\"\n\
+             End Sub\nPrivate Const Prog = \"WScr\" & \"ipt.\" & \"Shell\"\n\
+             Set r = CreateObject(\"Excel.Application\")\n",
+        );
+
+        let lines = &adapted.input.procedures[0].lines;
+        assert_eq!(lines[1].progids, ["WScript.Shell"]);
+        // The constant is declared after the procedure, and still folds.
+        assert_eq!(lines[2].progids, ["WScript.Shell"]);
+        // The path of `GetObject` is no ProgID, and its class is folded.
+        assert_eq!(lines[3].progids, ["Word.Application"]);
+        assert!(lines[4].progids.is_empty());
+        // A statement outside the procedures is read the same way.
+        let outside = (adapted.input.declarations.iter()).flat_map(|line| &line.progids);
+        assert_eq!(outside.collect::<Vec<_>>(), ["Excel.Application"]);
+        // A ProgID is listed with the strings of its statement as well.
+        assert!(lines[1].strings.contains(&"WScript.Shell".to_owned()));
     }
 
     #[test]

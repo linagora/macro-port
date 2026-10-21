@@ -21,12 +21,11 @@
 //! be read of a file is judged whatever else went wrong with it, and when the
 //! extraction raised a container indicator, so that its signal is made.
 //!
-//! The ProgIDs of the statements are not read yet, nor are the entry points and
-//! the call graph: what depends on them is left out, since a missing value is
-//! not a zero (see [`input`](super::input)). The external dependencies of the
-//! procedures and of the file are such a field: their count would fall short, so
-//! the report leaves it out, and the rule engine reads what is known of it, a
-//! value that the report leaves out counting as 0 for it.
+//! The entry points and the call graph are not read yet: what depends on them
+//! is left out, since a missing value is not a zero (see
+//! [`input`](super::input)). The external dependencies are not such a field:
+//! the ProgIDs and the calls of the statements are read, so the report counts
+//! them for the procedures and, when the file has a project, for the file.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -35,7 +34,7 @@ mod text_file;
 
 use super::apply::apply;
 use super::input::{Adapted, Measured, Room, adapt};
-use super::metrics::{count, progids, project_metrics};
+use super::metrics::{count, progids, project_metrics, report_dependencies};
 use super::{Extraction, Failure, Options, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
@@ -275,14 +274,9 @@ impl<'r> Front<'r> {
         let has_project = sizes.is_some();
         let metrics = project_metrics(&project, &measured, sizes.unwrap_or_default());
         if has_project {
-            file.metrics = Some(Metrics {
-                // The ProgIDs that the statements pass to `CreateObject` and
-                // `GetObject` are not read yet, so the count would fall short.
-                // The engine reads it all the same, as a lower bound.
-                external_dependencies: None,
-                ..metrics.file.clone()
-            });
+            file.metrics = Some(metrics.file.clone());
         }
+        report_dependencies(file, &metrics, &measured);
         let judged = measured.iter().any(|module| module.read);
         if judged || !indicators.is_empty() {
             let decided = findings::run(&project, rules, &metrics, indicators);

@@ -6,14 +6,13 @@
 //! `analyze_modules`, as modules of a text file, so that the signals are those
 //! of the whole pipeline: front end, rule engine and report.
 //!
-//! Some of the signals wait for facts that the front end does not read yet
-//! (the ProgIDs and the obfuscated character codes of the statements). The
-//! test is a ratchet: `WAITING` lists the signals that are known not to fire,
-//! by the sample, and the test fails both when a signal is missing that is not
-//! listed and when a listed signal fires, so that the list only shrinks and
-//! ends empty. The other bullet of A5, the obfuscated ProgID of 14-02 resolved
-//! to `WScript.Shell`, needs the ProgIDs too: it is checked here through
-//! `sec.wscript-run` on that sample, which is in `WAITING` until then.
+//! Two of the signals wait for a fact that the front end does not read yet
+//! (the obfuscated character codes of the statements). The test is a ratchet:
+//! `WAITING` lists the signals that are known not to fire, by the sample, and
+//! the test fails both when a signal is missing that is not listed and when a
+//! listed signal fires, so that the list only shrinks and ends empty. The other
+//! bullet of A5, the obfuscated ProgID of 14-02 resolved to `WScript.Shell`, is
+//! checked here through `sec.wscript-run` on that sample.
 
 // The helpers are test code: a panic in one is a failed test. `clippy.toml`
 // only exempts the bodies of `#[test]` functions. The file reads the corpus
@@ -33,19 +32,12 @@ use macroport_testkit::corpus;
 /// The signals of each sample of family 14 that are known not to fire yet, and
 /// the fact of the front end they wait for.
 const WAITING: &[(&str, &[&str])] = &[
-    // The ProgIDs of `CreateObject`, the character codes of `Chr`, and the chains
-    // of signals that the first two complete.
+    // The character codes of `Chr` (the predicate `chr_obfuscation`), and the
+    // chain of signals that the signal on them completes.
     (
         "14-02",
-        &[
-            "sec.wscript-run",
-            "sec.chr-obfuscation",
-            "sec.chain.autoexec-execution",
-            "sec.chain.obfuscated-execution",
-        ],
+        &["sec.chr-obfuscation", "sec.chain.obfuscated-execution"],
     ),
-    // The ProgIDs of `CreateObject`, and the chain of signals that one completes.
-    ("14-03", &["sec.http", "sec.chain.download-write"]),
 ];
 
 static RULES: LazyLock<RuleSet> = LazyLock::new(|| {
