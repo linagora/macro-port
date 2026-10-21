@@ -2,8 +2,9 @@
 //! Reading streams by path.
 
 use cfb::Version;
+use macroport_core::container::MAX_STREAM_SIZE;
 
-use crate::support::{container, open, pattern};
+use crate::support::{STREAM_SIZE, container, offset_of_entry, open, pattern, put_u64};
 
 #[test]
 fn streams_read_back_whatever_their_size() {
@@ -89,6 +90,34 @@ fn a_path_that_names_no_stream_reads_as_none() {
     for path in paths {
         assert_eq!(file.read_stream(path).unwrap(), None, "{path:?}");
         assert!(!file.has_stream(path), "{path:?}");
+        assert_eq!(file.stream_len(path), None, "{path:?}");
+    }
+}
+
+#[test]
+fn the_length_of_a_stream_is_the_one_that_the_directory_claims() {
+    let mut bytes = container(
+        Version::V3,
+        &[
+            ("Dir/Empty", b""),
+            ("Dir/Short", b"data"),
+            ("Big", &pattern(5000)),
+        ],
+    );
+    {
+        let file = open(&bytes);
+        assert_eq!(file.stream_len("Dir/Empty"), Some(0));
+        assert_eq!(file.stream_len("DIR/short"), Some(4));
+        assert_eq!(file.stream_len("/Big"), Some(5000));
+    }
+
+    // Nothing is read to check it: a claim that the chain cannot back, or
+    // that a read refuses, is told as it is.
+    let size_at = offset_of_entry(&bytes, "Big") + STREAM_SIZE;
+    for claimed in [9000, MAX_STREAM_SIZE, MAX_STREAM_SIZE + 1] {
+        put_u64(&mut bytes, size_at, claimed);
+
+        assert_eq!(open(&bytes).stream_len("Big"), Some(claimed));
     }
 }
 
