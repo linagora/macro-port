@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The structural parser on the whole corpus (SPEC M2: no panic on any corpus
 //! file, the deliberate compile errors included): the text samples and Excel's
-//! own exports of the binary fixtures. The spans are checked against the
-//! physical lines of the text, read by a second, much cruder reader.
+//! own exports of the binary fixtures. The spans and the declarations are
+//! checked against the physical lines of the text, read by a second, much
+//! cruder reader.
 
 // clippy.toml excuses `expect` in the `#[test]` functions only, not in helpers.
 #![allow(clippy::expect_used)]
@@ -10,11 +11,12 @@
 mod vba_parse_common;
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
 use macroport_core::report::ProcedureKind::{self, Function, Sub};
-use macroport_core::vba::{Procedure, RecoveryKind, SkipKind, parse};
+use macroport_core::vba::{DeclarationKind, Procedure, RecoveryKind, SkipKind, parse};
 use macroport_testkit::corpus;
-use regex::Regex;
+use regex::{Captures, Regex};
 use vba_parse_common::{lines_of, module_of, spans};
 
 /// The text of the corpus file `path`.
@@ -396,4 +398,269 @@ fn the_physical_line_numbers_count_the_headers_and_attributes_of_the_export() {
         }
     }
     assert!(checked > 1300, "{checked}");
+}
+
+static OPTION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^option\s+(explicit|base|compare|vbasupport|private\s+module)\b")
+        .expect("a regular expression")
+});
+
+static DECLARE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:(?:public|private)\s+)?declare\s+(?:ptrsafe\s+)?(function|sub)\s+(\w+)")
+        .expect("a regular expression")
+});
+
+static WITH_EVENTS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:(?:public|private|dim)\s+)+withevents\s+(\w+)")
+        .expect("a regular expression")
+});
+
+static OTHER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:(?:(?:public|private|global)\s+)?(const|type|enum|event)|(implements))\s+\w",
+    )
+    .expect("a regular expression")
+});
+
+static VARIABLE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:public|private|dim|global)\s+(\[?\w+)").expect("a regular expression")
+});
+
+static DIRECTIVE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^#\s*(if|elseif|else|end\s+if|const)\b").expect("a regular expression")
+});
+
+static BLOCK_END: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^end\s+(type|enum)\b").expect("a regular expression"));
+
+/// The text of the group `index` of a match.
+fn group<'a>(found: &Captures<'a>, index: usize) -> &'a str {
+    found.get(index).map_or("", |group| group.as_str())
+}
+
+/// The declaration that the code of a physical line makes, if it makes one, in
+/// the words of [`describe`].
+fn crude_tag(code: &str) -> Option<String> {
+    let squeezed = |words: &str| words.split_whitespace().collect::<String>();
+    if let Some(found) = OPTION.captures(code) {
+        return Some(format!("option {}", squeezed(group(&found, 1))));
+    }
+    if let Some(found) = DECLARE.captures(code) {
+        return Some(format!("declare {} {}", group(&found, 1), group(&found, 2)));
+    }
+    if let Some(found) = WITH_EVENTS.captures(code) {
+        return Some(format!("withevents {}", group(&found, 1)));
+    }
+    if let Some(found) = OTHER.captures(code) {
+        let word = group(&found, 1);
+        return Some(
+            if word.is_empty() {
+                group(&found, 2)
+            } else {
+                word
+            }
+            .to_owned(),
+        );
+    }
+    if let Some(found) = VARIABLE.captures(code) {
+        // The headers of procedures come with a scope too.
+        let word = group(&found, 1).to_ascii_lowercase();
+        let header = ["sub", "function", "property", "static", "friend"];
+        return (!header.contains(&word.as_str())).then(|| "variable".to_owned());
+    }
+    let found = DIRECTIVE.captures(code)?;
+    Some(format!("directive({})", squeezed(group(&found, 1))))
+}
+
+/// The declarations that regular expressions find in the physical lines of a
+/// text, outside the procedures `inside` (the first and the last line of each),
+/// as their words and their lines. They read no comment, no continuation line
+/// and nothing after a `:`, and skip the members of a `Type` or an `Enum`.
+fn crude_declarations(text: &str, inside: &[(u32, u32)]) -> Vec<(String, u32)> {
+    let mut found = Vec::new();
+    let (mut in_block, mut continued) = (false, false);
+    for (number, line) in (1u32..).zip(text.lines()) {
+        let code = line.trim();
+        let comment = code.starts_with('\'');
+        let skipped = continued
+            || comment
+            || inside
+                .iter()
+                .any(|&(first, last)| (first..=last).contains(&number));
+        continued = !comment && code.ends_with(" _");
+        if skipped {
+            continue;
+        }
+        if in_block {
+            in_block = !BLOCK_END.is_match(code);
+        } else if let Some(tag) = crude_tag(code) {
+            let tag = tag.to_ascii_lowercase();
+            in_block = tag == "type" || tag == "enum";
+            found.push((tag, number));
+        }
+    }
+    found
+}
+
+/// A declaration in the words of the crude reader: in lowercase, with a name
+/// for a `Declare` and for a variable declared `WithEvents`.
+fn describe(kind: &DeclarationKind) -> String {
+    let words = match kind {
+        DeclarationKind::Option(option) => format!("option {option:?}"),
+        DeclarationKind::Declare { name, is_function } => {
+            let routine = if *is_function { "function" } else { "sub" };
+            format!("declare {routine} {name}")
+        }
+        DeclarationKind::WithEvents { name } => format!("withevents {name}"),
+        other => format!("{other:?}"),
+    };
+    words.to_ascii_lowercase()
+}
+
+#[test]
+fn the_declarations_of_every_module_are_the_ones_a_crude_reader_finds_outside_its_procedures() {
+    let mut compared = 0usize;
+    for (path, text) in modules() {
+        let module = module_of(&text);
+        let inside: Vec<_> = module
+            .procedures
+            .iter()
+            .map(|p| (p.start_line, p.end_line))
+            .collect();
+        let parsed: Vec<_> = module
+            .declarations
+            .iter()
+            .map(|d| (describe(&d.kind), d.line))
+            .collect();
+        let crude = crude_declarations(&text, &inside);
+        assert_eq!(parsed, crude, "{path}");
+        compared = compared.saturating_add(crude.len());
+    }
+    assert!(compared > 1000, "{compared} declarations");
+}
+
+#[test]
+fn the_declarations_never_overlap_the_procedures_and_a_block_runs_to_its_end() {
+    for (path, text) in modules() {
+        let lines = lines_of(&text);
+        let module = parse(&lines);
+        let mut ranges: Vec<_> = module
+            .procedures
+            .iter()
+            .map(|p| p.lines.clone())
+            .chain(module.declarations.iter().map(|d| d.lines.clone()))
+            .collect();
+        ranges.sort_by_key(|range| range.start);
+        for pair in ranges.windows(2) {
+            assert!(pair[0].end <= pair[1].start, "{path}: {pair:?}");
+        }
+        for d in &module.declarations {
+            let first = &lines.logical[d.lines.start];
+            let last = &lines.logical[d.lines.end.saturating_sub(1)];
+            assert!(
+                first.line <= d.line && d.line <= first.end_line,
+                "{path}:{}",
+                d.line
+            );
+            if matches!(d.kind, DeclarationKind::Type | DeclarationKind::Enum) {
+                let end = format!("end {}", describe(&d.kind));
+                assert!(
+                    last.text
+                        .trim_start()
+                        .to_ascii_lowercase()
+                        .starts_with(&end),
+                    "{path}:{}: ends at {}",
+                    d.line,
+                    last.line
+                );
+            } else {
+                assert_eq!(d.lines.len(), 1, "{path}:{}", d.line);
+            }
+        }
+    }
+}
+
+/// The text samples with at least one declaration of a kind, and how many.
+fn samples_with(is_kind: fn(&DeclarationKind) -> bool) -> Vec<String> {
+    let samples = modules()
+        .into_iter()
+        .filter(|(path, _)| path.starts_with("families/"));
+    samples
+        .filter_map(|(path, text)| {
+            let count = module_of(&text)
+                .declarations
+                .iter()
+                .filter(|d| is_kind(&d.kind))
+                .count();
+            let file = path.rsplit('/').next().unwrap_or_default();
+            (count > 0).then(|| format!("{file}: {count}"))
+        })
+        .collect()
+}
+
+#[test]
+fn the_declare_statements_and_the_variables_with_events_of_the_samples_are_all_found() {
+    // Counted by hand: 116 `Declare` statements, 7 variables `WithEvents`.
+    assert_eq!(
+        samples_with(|kind| matches!(kind, DeclarationKind::Declare { .. })),
+        [
+            "10-06-libfiletools-bibliotheque.bas: 36",
+            "11-05-vba-json-jsonconverter.bas: 14",
+            "13-01-declare-ptrsafe-compilation-conditionnelle.bas: 6",
+            "13-05-getobject-findwindow-sendmessage.bas: 2",
+            "13-06-stdclipboard-api-presse-papiers.cls: 58",
+        ]
+    );
+    assert_eq!(
+        samples_with(|kind| matches!(kind, DeclarationKind::WithEvents { .. })),
+        ["09-01-ecouteur-evenements-controles.cls: 7"]
+    );
+}
+
+#[test]
+fn the_declarations_of_the_deliberate_compile_errors_are_the_ones_outside_the_procedures() {
+    // Found by hand in the text of each (ACCEPTANCE A2): the `Dim` of a
+    // procedure declares nothing at module level.
+    let expected: [(&str, &[(&str, u32)]); 7] = [
+        (
+            "01-mise-en-forme/01-06-edit-table-report.bas",
+            &[("option explicit", 8), ("variable", 9)],
+        ),
+        (
+            "02-consolidation/02-04-consolidating-workbooks-filedialog.bas",
+            &[("option explicit", 8)],
+        ),
+        (
+            "05-formulaires-saisie/05-04-formulaire-commercial-region.bas",
+            &[("variable", 8), ("variable", 9), ("variable", 10)],
+        ),
+        (
+            "06-generation-rapports/06-02-mise-en-page-impression-rapport.bas",
+            &[("option explicit", 8)],
+        ),
+        (
+            "08-fonctions-personnalisees/08-04-udf-somme-cellules-visibles.bas",
+            &[],
+        ),
+        (
+            "08-fonctions-personnalisees/08-05-udf-montant-en-lettres.bas",
+            &[],
+        ),
+        ("09-evenements/09-03-horodatage-statut.cls", &[]),
+    ];
+    for (path, declarations) in expected {
+        let path = format!("families/{path}");
+        let module = module_of(&text_of(&path));
+        let found: Vec<_> = module
+            .declarations
+            .iter()
+            .map(|d| (describe(&d.kind), d.line))
+            .collect();
+        let expected: Vec<_> = declarations
+            .iter()
+            .map(|&(words, line)| (words.to_owned(), line))
+            .collect();
+        assert_eq!(found, expected, "{path}");
+        assert!(module.recoveries.is_empty(), "{path}");
+    }
 }
