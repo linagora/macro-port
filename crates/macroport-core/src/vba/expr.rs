@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The expression reader: it walks the tokens of a statement as expressions,
-//! with the precedence of VBA, and lists the strings and the members it finds.
+//! with the precedence of VBA, and lists the strings, the members and the calls
+//! it finds.
 //!
 //! A string literal is listed as it is. A literal that is part of an
 //! expression the closed set of [`super::fold`] folds is listed once, as the
@@ -9,7 +10,11 @@
 //! result.
 //!
 //! Every identifier is a member, but the words for a value (`True`), the
-//! label of a jump and what an `On` statement holds.
+//! label of a jump and what an `On` statement holds. It is a call when it is
+//! invoked with arguments, or when it stands alone as an operand without being
+//! assigned to: the reader does not know which names are variables, so it
+//! takes those that the syntax does not rule out, like the calibration
+//! prototype.
 //!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
@@ -20,7 +25,7 @@
 //! [`Budget`] that the text of the statement sets, so that its memory and
 //! time are too.
 
-use super::facts::{Facts, MemberUse};
+use super::facts::{CallSite, Facts, MemberUse};
 use super::fold::{Budget, ConstTable, Folding, Value, parse_number};
 use super::lexer::{Keyword, Token, TokenKind};
 
@@ -43,7 +48,7 @@ const SIGN_POWER: u8 = 23;
 const LIBRARIES: [&str; 2] = ["VBA", "Strings"];
 
 /// The words that stand for a value, which the lexer reads as identifiers: they
-/// are no member.
+/// are no member and no call.
 const LITERALS: [&str; 5] = ["True", "False", "Nothing", "Null", "Empty"];
 
 /// What an operand is worth.
@@ -122,6 +127,41 @@ fn starts_operand(kind: TokenKind) -> bool {
     )
 }
 
+/// Whether the statement `tokens` declares something: a variable, a constant,
+/// a procedure, a type. It holds names and constant expressions only, so the
+/// names in it are no calls. `ReDim` declares nothing: its bounds are
+/// ordinary expressions.
+fn declares(tokens: &[Token]) -> bool {
+    match tokens {
+        [first, second, ..] if first.kind == TokenKind::Identifier => {
+            // The element of a `Type` block: `Name As String`.
+            second.kind == TokenKind::Keyword(Keyword::As)
+        }
+        [first, ..] => matches!(
+            first.kind,
+            TokenKind::Keyword(
+                Keyword::Dim
+                    | Keyword::Const
+                    | Keyword::Static
+                    | Keyword::Private
+                    | Keyword::Public
+                    | Keyword::Friend
+                    | Keyword::Global
+                    | Keyword::Declare
+                    | Keyword::Sub
+                    | Keyword::Function
+                    | Keyword::Property
+                    | Keyword::Type
+                    | Keyword::Enum
+                    | Keyword::Event
+                    | Keyword::Implements
+                    | Keyword::Option
+            )
+        ),
+        [] => false,
+    }
+}
+
 /// The facts `found`, each with the index of the token it was found at, in
 /// the order of the source.
 fn in_order<T>(mut found: Vec<(usize, T)>) -> Vec<T> {
@@ -155,12 +195,17 @@ pub(super) struct Reader<'a> {
     depth: usize,
     /// What is left to build out of strings.
     budget: Budget,
+    /// Whether the statement declares something, so that no name in it is
+    /// called.
+    declaration: bool,
     /// Whether the rest of the statement was read flat, for it nests too deep.
     too_deep: bool,
     /// The strings found, by the index of their first token.
     strings: Vec<(usize, String)>,
     /// The members found, by the index of their token.
     members: Vec<(usize, MemberUse)>,
+    /// The calls found, by the index of their token.
+    calls: Vec<(usize, CallSite)>,
 }
 
 impl<'a> Reader<'a> {
@@ -173,9 +218,11 @@ impl<'a> Reader<'a> {
             pos: 0,
             depth: 0,
             budget: Budget::for_text(text),
+            declaration: declares(tokens),
             too_deep: false,
             strings: Vec::new(),
             members: Vec::new(),
+            calls: Vec::new(),
         }
     }
 
@@ -218,6 +265,7 @@ impl<'a> Reader<'a> {
         Facts {
             strings: in_order(self.strings),
             members: in_order(self.members),
+            calls: in_order(self.calls),
             too_deep: self.too_deep,
         }
     }
@@ -270,12 +318,15 @@ impl<'a> Reader<'a> {
 
     /// Reads the rest of the statement without its structure: the strings it
     /// holds, one by one, as the source spells them, and its names, which are
-    /// members (labels and type names included, which the structure would
-    /// tell apart). Nesting deeper than the reader goes hides nothing that way.
+    /// members, and calls by the rule of [`Reader::bare_call`] (labels and
+    /// type names included, which the structure would tell apart). Nesting
+    /// deeper than the reader goes hides nothing that way.
     fn read_flat(&mut self) {
         self.too_deep = true;
         let tokens = self.tokens;
+        let kind_of = |index: usize| tokens.get(index).map(|token| token.kind);
         for (at, token) in tokens.iter().enumerate().skip(self.pos) {
+            let next = kind_of(at.saturating_add(1));
             match token.kind {
                 TokenKind::String => {
                     if let Some(text) = token.string_value(self.text) {
@@ -283,8 +334,15 @@ impl<'a> Reader<'a> {
                     }
                 }
                 TokenKind::Identifier => {
-                    let next = tokens.get(at.saturating_add(1)).map(|token| token.kind);
                     self.member(at, next == Some(TokenKind::ColonEquals));
+                    let before = at.checked_sub(1).and_then(kind_of);
+                    let after_dot = matches!(before, Some(TokenKind::Dot | TokenKind::Bang));
+                    if next == Some(TokenKind::LeftParen) {
+                        self.call(at, after_dot);
+                    } else if !after_dot && !matches!(next, Some(TokenKind::Dot | TokenKind::Bang))
+                    {
+                        self.bare_call(at, next);
+                    }
                 }
                 _ => {}
             }
@@ -419,7 +477,7 @@ impl<'a> Reader<'a> {
     }
 
     /// Reads the type that `As` or `New` introduces, as in `As New
-    /// Scripting.Dictionary`. Its names are members.
+    /// Scripting.Dictionary`. Its names are members, and none is called.
     fn type_name(&mut self) {
         if self.kind() == Some(TokenKind::Keyword(Keyword::New)) {
             self.advance();
@@ -481,6 +539,22 @@ impl<'a> Reader<'a> {
                 MemberUse {
                     name,
                     named_argument,
+                },
+            ));
+        }
+    }
+
+    /// Lists the name at `at` as a call, unless the statement declares it.
+    fn call(&mut self, at: usize, after_dot: bool) {
+        if self.declaration {
+            return;
+        }
+        if let Some(name) = self.name(at) {
+            self.calls.push((
+                at,
+                CallSite {
+                    name: name.to_owned(),
+                    after_dot,
                 },
             ));
         }
@@ -550,8 +624,8 @@ impl<'a> Reader<'a> {
     }
 
     /// An element of `chain` that a `.` or a `!` follows, which is the token
-    /// at `at` and has `arguments` if a `(` followed it. It is a member. A
-    /// library name is followed by a `.`.
+    /// at `at` and has `arguments` if a `(` followed it. It is a member, and a
+    /// call if it has arguments. A library name is followed by a `.`.
     fn inner_element(
         &mut self,
         chain: &mut Chain,
@@ -563,12 +637,16 @@ impl<'a> Reader<'a> {
             && self.kind() == Some(TokenKind::Dot)
             && arguments.is_none()
             && self.is_library(at);
-        self.finish_all(arguments.unwrap_or_default());
+        if let Some(arguments) = arguments {
+            self.call(at, chain.qualified);
+            self.finish_all(arguments);
+        }
     }
 
     /// What the last element of `chain` is worth: it is the token at `at` and
     /// has `arguments` if a `(` followed it. It is a member. With arguments it
-    /// may be a call of the closed set of folding; without, a constant.
+    /// is a call, of the closed set of folding perhaps; without, it may be a
+    /// constant, or a call all the same.
     fn last_element(
         &mut self,
         chain: &Chain,
@@ -578,13 +656,21 @@ impl<'a> Reader<'a> {
         self.member(at, false);
         let start = chain.start;
         let Some(arguments) = arguments else {
-            // A qualified name belongs to another object, not to the module.
-            return if chain.qualified {
-                Node::unknown(start)
-            } else {
-                self.constant(start, at)
+            // A qualified name belongs to another object, not to the module:
+            // a property that is read or set, or a method without arguments.
+            // No call is listed for it.
+            if chain.qualified {
+                return Node::unknown(start);
+            }
+            return match self.constant(start, at) {
+                Some(node) => node,
+                None => {
+                    self.bare_call(at, self.kind());
+                    Node::unknown(start)
+                }
             };
         };
+        self.call(at, chain.qualified);
         match Folding::named(self.name_at(at)).filter(|_| chain.library) {
             Some(function) => self.fold(start, function, arguments),
             None => {
@@ -594,19 +680,32 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// The value of the name at `at`, if it is a constant of the module whose
-    /// string fits in the budget.
-    fn constant(&mut self, start: usize, at: usize) -> Node {
-        let Some(value) = self.consts.get(self.name_at(at)) else {
-            return Node::unknown(start);
-        };
-        if !self.budget.take(value.len()) {
-            return Node::unknown(start);
+    /// Lists the name at `at`, which stands alone with no dot before it and
+    /// no argument list after it, as a call, unless the token `next` that
+    /// follows it makes it a variable: it is assigned to or compared with `=`
+    /// (`Dir = 1`), or it is the variable of a `For Each`. The reader cannot
+    /// tell a function from a variable otherwise.
+    fn bare_call(&mut self, at: usize, next: Option<TokenKind>) {
+        if !matches!(
+            next,
+            Some(TokenKind::Equals | TokenKind::ColonEquals | TokenKind::Keyword(Keyword::In))
+        ) {
+            self.call(at, false);
         }
-        Node {
+    }
+
+    /// The constant of the module that the name at `at` stands for, if it is
+    /// one with a string. The node has the string if it fits in the budget,
+    /// and none otherwise.
+    fn constant(&mut self, start: usize, at: usize) -> Option<Node> {
+        let value = self.consts.get(self.name_at(at))?;
+        if !self.budget.take(value.len()) {
+            return Some(Node::unknown(start));
+        }
+        Some(Node {
             value: Value::Text(value.to_owned()),
             start,
-        }
+        })
     }
 
     /// What `function` makes of its `arguments`: one expression whose value
