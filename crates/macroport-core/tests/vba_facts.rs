@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The members and the calls of a statement (SPEC M2 item 3, SPEC section 7).
-//! The cases give them as the names in order, apart by spaces: `Name:=` for a
-//! named argument, `.Name` for a call after a dot.
+//! The members, the calls and the chains of a statement (SPEC M2 item 3, SPEC
+//! section 7). The cases give them as the names in order, apart by spaces:
+//! `Name:=` for a named argument, `.Name` for a call after a dot, and the
+//! elements of a chain joined by dots.
 #![allow(clippy::expect_used)]
 // clippy.toml keeps the clock out of the core, not out of its tests.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use std::time::{Duration, Instant};
 
-use macroport_core::vba::{ConstTable, Facts, StatementReader, split_lines, tokenize};
+use macroport_core::vba::{ConstTable, Facts, LogicalKind, StatementReader, split_lines, tokenize};
 
 /// What reading a long statement may take: far above one pass, far below a
 /// quadratic one.
@@ -26,6 +27,16 @@ fn facts_in_time(text: &str) -> Facts {
     let elapsed = started.elapsed();
     assert!(elapsed < LIMIT, "took {elapsed:?}");
     read
+}
+
+/// The facts of each statement of `source` that is code, which one reader
+/// reads in order.
+fn block(source: &str) -> Vec<Facts> {
+    let lines = split_lines(source).expect("lines").logical;
+    let consts = ConstTable::default();
+    let mut reader = StatementReader::new(&consts);
+    let code = lines.iter().filter(|line| line.kind == LogicalKind::Code);
+    code.map(|line| reader.read(line)).collect()
 }
 
 /// The members of a set of facts, written as the cases do.
@@ -61,6 +72,25 @@ fn check_calls(cases: &[(&str, &str)]) {
     for (text, expected) in cases {
         assert_eq!(calls_of(&facts(text)), *expected, "{text}");
     }
+}
+
+/// The chains of a set of facts, written as the cases do.
+fn chains_of(facts: &Facts) -> String {
+    let chains = facts.chains.iter().map(|chain| chain.join("."));
+    chains.collect::<Vec<_>>().join(" ")
+}
+
+/// Checks that each statement gives the chains next to it.
+fn check_chains(cases: &[(&str, &str)]) {
+    for (text, expected) in cases {
+        assert_eq!(chains_of(&facts(text)), *expected, "{text}");
+    }
+}
+
+/// The chains of each statement of `source` that is code, written as the
+/// cases do.
+fn block_chains(source: &str) -> Vec<String> {
+    block(source).iter().map(chains_of).collect()
 }
 
 #[test]
@@ -198,6 +228,110 @@ fn the_name_of_a_constant_is_no_call_and_a_line_that_is_not_code_holds_no_fact()
 }
 
 #[test]
+fn a_chain_lists_its_elements_without_the_arguments_of_the_calls_in_it() {
+    check_chains(&[
+        (r#"Workbooks.Open "a.xls""#, "Workbooks.Open"),
+        (
+            r#"ThisWorkbook.Worksheets("X").Range("A1").Interior.Color = 1"#,
+            "ThisWorkbook.Worksheets.Range.Interior.Color",
+        ),
+        ("x = ws.End(xlUp).Row", "ws.End.Row"),
+        ("rs!Name.Value = 1", "rs.Name.Value"),
+        ("Call Application.Run(m)", "Application.Run"),
+        ("If x.y Then z.w = 1", "x.y z.w"),
+    ]);
+}
+
+#[test]
+fn a_chain_in_an_argument_is_listed_apart_in_the_order_of_its_first_token() {
+    check_chains(&[
+        (
+            "x = Worksheets(1).Range(a.b).Interior",
+            "Worksheets.Range.Interior a.b",
+        ),
+        ("x = Foo(a.b, c.d).e", "Foo.e a.b c.d"),
+        (r#"r.Replace What:="a", With:=x.y"#, "r.Replace x.y"),
+    ]);
+}
+
+#[test]
+fn a_name_between_brackets_is_one_element_of_a_chain() {
+    assert_eq!(facts("[Sheet 1].Select").chains, [["Sheet 1", "Select"]]);
+    assert_eq!(facts("[a.b].c = 1").chains, [["a.b", "c"]]);
+}
+
+#[test]
+fn a_name_alone_or_a_type_is_no_chain() {
+    check_chains(&[
+        ("x = y", ""),
+        ("Foo(1)", ""),
+        ("Call Helper(1, 2)", ""),
+        ("x = a.", ""),
+        ("x = .", ""),
+        ("Set d = New Scripting.Dictionary", ""),
+        ("Dim d As Scripting.Dictionary", ""),
+    ]);
+}
+
+#[test]
+fn the_index_lists_of_a_call_do_not_end_its_chain() {
+    check_chains(&[
+        (r#"Range("A1:C3")(2, 2).Value = 1"#, "Range.Value"),
+        ("x = Cells(1)(2)(3).Value", "Cells.Value"),
+    ]);
+}
+
+#[test]
+fn a_dot_after_a_group_starts_a_chain_of_its_own() {
+    // The reader does not know what the group is: the chain is what follows.
+    check_chains(&[("x = (a).b.c", "b.c"), ("x = (a + b).c", "")]);
+}
+
+#[test]
+fn a_chain_that_starts_with_a_dot_has_the_names_after_the_dot_only() {
+    // The object of the `With` block that the dot belongs to is not known.
+    check_chains(&[
+        (".Font.Bold = True", "Font.Bold"),
+        ("x = .Text", ""),
+        ("x = !Id.Value", "Id.Value"),
+    ]);
+    let source = "With Range(\"A1\")\n.Font.Bold = True\nEnd With\n";
+    assert_eq!(block_chains(source), ["", "Font.Bold", ""]);
+}
+
+#[test]
+fn a_dot_after_a_space_starts_an_operand_of_its_own() {
+    check_chains(&[
+        // The argument of `Add` is a member of the object of a `With` block,
+        // not a member of `Add`.
+        ("list.Add .Name", "list.Add"),
+        ("Set c = list.Item(1) .Value", "list.Item"),
+        ("x = a.b . c", "a.b"),
+        ("Kill .path", ""),
+        // The chain that the detached dot starts goes on with the dots that touch.
+        ("x = a.b .c.d", "a.b c.d"),
+    ]);
+    // Neither the members nor the calls tie the name to the one before.
+    let read = facts("list.Add .Name");
+    assert_eq!(members_of(&read), "list Add Name");
+    assert_eq!(calls_of(&read), "");
+    assert_eq!(calls_of(&facts("Erase .arr")), "Erase");
+}
+
+#[test]
+fn a_dot_that_opens_a_continued_line_continues_the_chain_before_it() {
+    let source = "x.Interior _\n    .Color = 1\n";
+    assert_eq!(block_chains(source), ["x.Interior.Color"]);
+    let source = "Set r = ws.Range(\"A1\") _\n    .Offset(1) _\n    .Value\n";
+    assert_eq!(block_chains(source), ["ws.Range.Offset.Value"]);
+    // Only the dot that opens the line does; a dot after a space does not.
+    let source = "x.Interior _\n    .Color = c .Value\n";
+    assert_eq!(block_chains(source), ["x.Interior.Color"]);
+    // Without the continuation mark the line is a statement of its own.
+    assert_eq!(block_chains("x.Interior\n.Color = 1\n"), ["x.Interior", ""]);
+}
+
+#[test]
 fn a_statement_that_stops_short_is_read_as_far_as_it_goes() {
     check_members(&[
         ("x = a.", "x a"),
@@ -211,9 +345,13 @@ fn a_statement_that_stops_short_is_read_as_far_as_it_goes() {
 fn a_very_long_statement_is_read_in_proportion_to_its_size() {
     let chain = facts_in_time(&format!("x = a{}", ".b".repeat(100_000)));
     assert_eq!((chain.members.len(), chain.calls.len()), (100_002, 0));
+    // The chain is `a` and the 100,000 names after it, without the `x`.
+    let lengths: Vec<_> = chain.chains.iter().map(Vec::len).collect();
+    assert_eq!(lengths, [100_001]);
     let arguments = facts_in_time(&format!("f({})", "a, ".repeat(100_000)));
     assert_eq!(arguments.members.len(), 100_001);
     assert_eq!(arguments.calls.len(), 100_001);
+    assert!(arguments.chains.is_empty());
 }
 
 #[test]
@@ -235,4 +373,8 @@ fn nesting_beyond_the_limit_hides_no_name() {
     }
     let read = facts_in_time(&format!("{open}.Run Path:=1"));
     assert_eq!(members_of(&read), "Run Path:=");
+    // What lies below the limit is no chain: its names are listed flat.
+    let read = facts_in_time(&format!("y = {}a.b", "Not ".repeat(100_000)));
+    assert!(read.too_deep);
+    assert!(read.chains.is_empty());
 }
