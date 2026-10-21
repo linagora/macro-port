@@ -92,9 +92,10 @@ impl fmt::Debug for OoxmlPackage {
 /// The ZIP archive is read without being trusted: an entry that inflates
 /// beyond its limit or its ratio makes the file a suspicious archive, however
 /// small the sizes in its headers say it is. The VBA project is the part that
-/// a relationship of the workbook names, else the first part that the content
-/// types make a VBA project, else the part called `xl/vbaProject.bin`. The
-/// macro sheets are counted by name only: no sheet is inflated.
+/// a relationship of the workbook names, else a part that the content types
+/// make a VBA project (`xl/vbaProject.bin` if it is one, else the first by
+/// name), else the part called `xl/vbaProject.bin`. The macro sheets are
+/// counted by name only: no sheet is inflated.
 pub fn read_ooxml(bytes: &[u8]) -> Result<OoxmlPackage, ContainerError> {
     let archive = Archive::open(bytes)?;
     let package = Relations::of_package(&archive)?;
@@ -142,7 +143,9 @@ fn vba_project(
 /// How many parts are macro sheets: those that the content types make macro
 /// sheets, and those that a relationship of the package or of its workbook
 /// names as one. A part counts once however many say so, and a relationship to
-/// a part that is not there counts for nothing. A sheet is never read.
+/// a part that is not there counts for nothing. A sheet is never read. Only the
+/// two content types and the relationship suffix of SPEC M1 count: the
+/// international macro sheets (`xlIntlMacrosheet`) and the dialog sheets do not.
 fn macro_sheets(archive: &Archive<'_>, types: &ContentTypes<'_>, related: [&Relations; 2]) -> u32 {
     let typed = types.parts().filter(|(_, kinds)| kinds.macro_sheet);
     let mut sheets: BTreeSet<&str> = typed.map(|(name, _)| name).collect();

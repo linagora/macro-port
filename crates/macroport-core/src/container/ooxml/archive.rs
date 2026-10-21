@@ -180,7 +180,8 @@ impl<'a> Archive<'a> {
 
 /// The name an entry is looked up by: slashes, not backslashes, no leading
 /// slash, the percent-escapes decoded, and lowercase. OPC compares part names
-/// without regard to case, and `my%20file` and `my file` name one part.
+/// without regard to case. That `my%20file` and `my file` name one part is the
+/// reader's choice, not checked against Excel.
 fn normalize(name: &str) -> String {
     let name = name.replace('\\', "/");
     unescape(name.trim_start_matches('/')).to_ascii_lowercase()
