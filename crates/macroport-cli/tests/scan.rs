@@ -5,8 +5,9 @@
 mod support;
 
 use std::fs::{self, File};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 
 use macroport_cli::scan::EXTENSIONS;
 use macroport_core::report::{Build, Report, Status};
@@ -320,9 +321,48 @@ fn scan_exits_with_3_when_the_reports_cannot_be_written_and_scans_nothing() {
         stderr.starts_with("error: cannot create the directory blocker/out"),
         "{stderr}"
     );
-    // The output is checked before the files are read.
+    // The output directory is made before the files are read.
     assert!(!stderr.contains("Files analysed"), "{stderr}");
     assert!(text(&output.stdout).is_empty());
+}
+
+#[test]
+fn scan_exits_with_3_when_a_report_cannot_be_written() {
+    let dir = scratch("scan_unwritable");
+    put(&dir, "m.bas", MODULE);
+    // A directory where the report goes: the output directory can be made, the
+    // file cannot be written.
+    fs::create_dir_all(dir.join("out/report.json")).expect("a directory named like the report");
+
+    let output = run_in(&dir, &["scan", "m.bas", "-o", "out"]);
+
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    let stderr = text(&output.stderr);
+    assert!(
+        stderr.contains("error: cannot write the file out/report.json: "),
+        "{stderr}"
+    );
+    assert!(text(&output.stdout).is_empty());
+}
+
+#[test]
+fn the_errors_follow_the_language() {
+    let dir = scratch("scan_fatal_fr");
+    put(&dir, "m.bas", MODULE);
+    put(&dir, "blocker", b"a file, not a directory");
+
+    let output = run_in(
+        &dir,
+        &["scan", "m.bas", "-o", "blocker/out", "--lang", "fr"],
+    );
+
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    let stderr = text(&output.stderr);
+    // French puts a space before the colon, in the message and in the reason.
+    assert!(
+        stderr.starts_with("erreur : impossible de créer le répertoire blocker/out : "),
+        "{stderr}"
+    );
 }
 
 #[cfg(unix)]
@@ -350,17 +390,17 @@ fn a_console_that_is_gone_does_not_stop_the_scan() {
         put(&dir, &format!("tree/m{n:02}.bas"), MODULE);
     }
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_macro-port"))
+    // The reader of the pipe is closed before the command starts: nobody reads
+    // the progress or the summary, and every line that it prints fails.
+    let (reader, writer) = io::pipe().expect("a pipe");
+    drop(reader);
+    let status = Command::new(env!("CARGO_BIN_EXE_macro-port"))
         .current_dir(&dir)
         .args(["scan", "tree", "-o", "out"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stdout(writer.try_clone().expect("the pipe is cloned"))
+        .stderr(writer)
+        .status()
         .expect("the macro-port binary runs");
-    // Nobody reads the progress or the summary: writing to them fails.
-    drop(child.stdout.take());
-    drop(child.stderr.take());
-    let status = child.wait().expect("the command ends");
 
     assert_eq!(status.code(), Some(0));
     assert_eq!(read_report(&dir.join("out")).files.len(), 30);

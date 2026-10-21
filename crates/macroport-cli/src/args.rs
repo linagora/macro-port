@@ -45,8 +45,8 @@ pub struct AnalysisArgs {
     #[arg(long, value_enum, default_value_t)]
     pub lang: LangArg,
 
-    /// Largest file to read, in MB. A larger file is not opened: it is
-    /// reported as too large.
+    /// Largest file to analyse, in MB. A larger file is not analysed: it is
+    /// hashed and reported as too large.
     #[arg(
         long,
         value_name = "MB",

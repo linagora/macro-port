@@ -10,7 +10,7 @@
 mod analyse;
 mod walk;
 
-use std::io::{self, Write};
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
@@ -22,6 +22,7 @@ use macroport_core::rules::{RuleSet, RulesSources};
 
 use crate::args::{AnalysisArgs, existing_path};
 use crate::clock::Clock;
+use crate::console::{self, say_on_stderr, say_on_stdout};
 use crate::i18n::Messages;
 
 pub use analyse::{PANIC_CODE, Progress, UNREADABLE_CODE};
@@ -72,18 +73,18 @@ pub struct Settings<'a> {
     pub clock: Clock,
 }
 
-impl Args {
-    fn settings<'a>(&self, rules: &'a RuleSet) -> Settings<'a> {
+impl<'a> Settings<'a> {
+    /// The settings of a command that analyses with `rules`: on `jobs` threads,
+    /// as many as there are cores if it is none, and as `analysis` says.
+    pub fn new(rules: &'a RuleSet, jobs: Option<u32>, analysis: &AnalysisArgs) -> Self {
         let cores = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
         let mut options = Options::new(rules);
-        options.max_file_size = self.analysis.max_file_size_bytes();
-        Settings {
+        options.max_file_size = analysis.max_file_size_bytes();
+        Self {
             options,
-            jobs: self
-                .jobs
-                .map_or(cores, |jobs| usize::try_from(jobs).unwrap_or(cores)),
-            lang: self.analysis.lang(),
-            clock: Clock::new(self.analysis.deterministic),
+            jobs: jobs.map_or(cores, |jobs| usize::try_from(jobs).unwrap_or(cores)),
+            lang: analysis.lang(),
+            clock: Clock::new(analysis.deterministic),
         }
     }
 }
@@ -105,10 +106,11 @@ pub fn run(args: &Args) -> ExitCode {
         }
     };
     let messages = Messages::new(args.analysis.lang(), &rules);
+    console::print_only_where_a_panic_happened(messages.text("cli-panic"));
     match execute(args, &rules, &messages) {
         Ok(code) => code,
         Err(error) => {
-            say_on_stderr(&format!("{} {error}", messages.text("cli-error")));
+            say_on_stderr(&messages.text_with("cli-error", &[("message", &error)]));
             ExitCode::from(FATAL)
         }
     }
@@ -116,14 +118,17 @@ pub fn run(args: &Args) -> ExitCode {
 
 /// The scan, or the fatal error that stopped it.
 fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode, String> {
-    // A scan can take minutes: an output that cannot be written is known first.
+    // The output directory is made before the scan, which can take minutes: a
+    // path that cannot be made is known first. A file that cannot be written is
+    // only known once the reports are.
     create_directory(&args.output, messages)?;
     // The messages are not shared between threads: the label is.
     let label = messages.text("cli-progress");
-    let report = scan(&args.paths, &args.settings(rules), &|progress| {
+    let settings = Settings::new(rules, args.jobs, &args.analysis);
+    let report = scan(&args.paths, &settings, &|progress| {
         print_progress(&label, progress);
     })
-    .map_err(|error| format!("{} {error}", messages.text("cli-error-threads")))?;
+    .map_err(|error| messages.text_with("cli-error-threads", &[("reason", &error.to_string())]))?;
 
     write(&args.output, "report.json", &report, messages)?;
     print_summary(&report, &args.output, messages);
@@ -171,50 +176,38 @@ fn print_progress(label: &str, progress: Progress) {
     }
 }
 
-/// Prints a line on stderr. The failure of the console is ignored: a pipe that
-/// the reader closed is no reason to lose a scan, and `eprintln!` would panic.
-fn say_on_stderr(line: &str) {
-    let _ = writeln!(io::stderr().lock(), "{line}");
-}
-
-/// Prints a line on stdout, like [`say_on_stderr`].
-fn say_on_stdout(line: &str) {
-    let _ = writeln!(io::stdout().lock(), "{line}");
-}
-
 /// Creates `directory`, and the directories above it, if need be.
 fn create_directory(directory: &Path, messages: &Messages) -> Result<(), String> {
     std::fs::create_dir_all(directory)
-        .map_err(|error| failure(messages, "cli-error-create", directory, &error))
+        .map_err(|error| path_error(messages, "cli-error-create", directory, &error))
 }
 
 /// Writes `report` as JSON to the file `name` of `directory`.
 fn write(directory: &Path, name: &str, report: &Report, messages: &Messages) -> Result<(), String> {
     let json = report.to_json().map_err(|error| error.to_string())?;
     let path = directory.join(name);
-    std::fs::write(&path, json).map_err(|error| failure(messages, "cli-error-write", &path, &error))
+    std::fs::write(&path, json)
+        .map_err(|error| path_error(messages, "cli-error-write", &path, &error))
 }
 
-/// The error message `what` about `path`, with the reason `error`.
-fn failure(messages: &Messages, what: &str, path: &Path, error: &dyn std::fmt::Display) -> String {
-    format!("{} {}: {error}", messages.text(what), path.display())
+/// The message `id` about `path`, with the reason `error`.
+fn path_error(messages: &Messages, id: &str, path: &Path, error: &dyn Display) -> String {
+    let path = path.display().to_string();
+    messages.text_with(id, &[("path", &path), ("reason", &error.to_string())])
 }
 
 /// Prints the outcome of the scan on stdout.
 fn print_summary(report: &Report, directory: &Path, messages: &Messages) {
-    let scan = &report.scan;
-    say_on_stdout(&format!(
-        "{} {} ({} {}, {} {})",
-        messages.text("cli-files"),
-        scan.files_total,
-        messages.text("cli-with-macros"),
-        scan.files_with_macros,
-        messages.text("cli-failed"),
-        scan.files_failed,
+    let totals = &report.scan;
+    say_on_stdout(&messages.text_with(
+        "cli-summary",
+        &[
+            ("files", &totals.files_total.to_string()),
+            ("with_macros", &totals.files_with_macros.to_string()),
+            ("failed", &totals.files_failed.to_string()),
+        ],
     ));
-    say_on_stdout(&format!(
-        "{} {}",
-        messages.text("cli-written"),
-        directory.display()
-    ));
+    say_on_stdout(
+        &messages.text_with("cli-written", &[("path", &directory.display().to_string())]),
+    );
 }
