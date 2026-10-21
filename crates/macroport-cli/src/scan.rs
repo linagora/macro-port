@@ -19,22 +19,17 @@ use std::time::Instant;
 use clap::Args as ClapArgs;
 use macroport_core::analyze::Options;
 use macroport_core::report::{Build, Lang, Report};
-use macroport_core::rules::{RuleSet, RulesSources};
+use macroport_core::rules::RuleSet;
 
 use crate::args::{AnalysisArgs, Format, existing_path};
 use crate::clock::Clock;
-use crate::console::{self, say_on_stderr, say_on_stdout};
+use crate::command;
+use crate::console::{say_on_stderr, say_on_stdout};
 use crate::i18n::Messages;
 use crate::reports;
 
 pub use analyse::{PANIC_CODE, Progress, UNREADABLE_CODE};
 pub use walk::{Candidate, EXTENSIONS, report_path, walk};
-
-/// Exit code of a scan that completed with at least one failed file (SPEC M4).
-const FAILED_FILES: u8 = 1;
-
-/// Exit code of a fatal error (SPEC M4).
-const FATAL: u8 = 3;
 
 /// The directory that the reports go to when `--output` is not given.
 const DEFAULT_OUTPUT: &str = "macro-port-report";
@@ -104,29 +99,12 @@ impl<'a> Settings<'a> {
 
 /// Runs `macro-port scan`.
 pub fn run(args: &Args) -> ExitCode {
-    let rules = match RuleSet::load(&RulesSources::EMBEDDED) {
-        Ok(rules) => rules,
-        Err(problems) => {
-            // The tests check the embedded rules, so a build that ships does
-            // not get here. The messages take the labels of the rules, so
-            // without them there is no Fluent text to print.
-            let first = problems.first().map(ToString::to_string);
-            say_on_stderr(&format!(
-                "error: the embedded rules do not load: {}",
-                first.unwrap_or_default()
-            ));
-            return ExitCode::from(FATAL);
-        }
-    };
-    let messages = Messages::new(args.analysis.lang(), &rules);
-    console::print_only_where_a_panic_happened(messages.text("cli-panic"));
-    match execute(args, &rules, &messages) {
-        Ok(code) => code,
-        Err(error) => {
-            say_on_stderr(&messages.text_with("cli-error", &[("message", &error)]));
-            ExitCode::from(FATAL)
-        }
-    }
+    let analysis = &args.analysis;
+    command::run(
+        analysis.lang(),
+        analysis.rules.as_deref(),
+        |rules, messages| execute(args, rules, messages),
+    )
 }
 
 /// The scan, or the fatal error that stopped it.
@@ -145,11 +123,7 @@ fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode
 
     write_reports(&args.output, &args.format, &report, messages)?;
     print_summary(&report, &args.output, messages);
-    Ok(if report.scan.files_failed > 0 {
-        ExitCode::from(FAILED_FILES)
-    } else {
-        ExitCode::SUCCESS
-    })
+    Ok(command::exit_code_of(&report))
 }
 
 /// Scans `paths` and gives the fleet report.

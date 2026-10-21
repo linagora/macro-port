@@ -6,49 +6,20 @@ mod support;
 
 use std::fs::{self, File};
 use std::io;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::path::Path;
+use std::process::Command;
 
 use macroport_cli::scan::EXTENSIONS;
 use macroport_core::report::{Build, Report, Status};
 use macroport_testkit::{corpus, report_problems};
 use serde_json::Value;
-use support::{put, scratch};
+use support::{as_arg, put, run, run_in, scratch, text};
 
 /// The `generated_at` of a deterministic report (SPEC M4).
 const EPOCH: &str = "1970-01-01T00:00:00Z";
 
 /// A module with a procedure, small enough to be analysed at once.
 const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
-
-/// The root of the repository.
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-/// Runs `macro-port` in `dir` with `args`.
-fn run_in(dir: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_macro-port"))
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .expect("the macro-port binary runs")
-}
-
-/// Runs `macro-port` at the root of the repository, so that the paths in its
-/// reports are the relative paths `corpus/...`.
-fn run(args: &[&str]) -> Output {
-    run_in(&repo_root(), args)
-}
-
-fn text(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
-}
-
-fn as_arg(path: &Path) -> &str {
-    path.to_str()
-        .expect("a path of the target directory is UTF-8")
-}
 
 /// The text of the `report.json` in `out`, once it has passed the schema: every
 /// JSON that the tests read is validated (ACCEPTANCE A3).

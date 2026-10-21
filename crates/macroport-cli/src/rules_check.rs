@@ -3,6 +3,9 @@
 //! against its JSON Schema; once every file passes, the core loads the rules,
 //! which compiles the regexes, rejects duplicate ids and checks the
 //! references between rules.
+//!
+//! The commands that take `--rules` load the rules the same way
+//! ([`load`]), so that rules they accept are rules that `rules check` accepts.
 
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -16,6 +19,9 @@ use macroport_core::rules::{
     self, COMPLEXITY_FILE, FAMILIES_FILE, Problem, RuleSet, RulesSources, SECURITY_FILE,
 };
 use serde_json::Value;
+
+use crate::command::FATAL;
+use crate::console::{say_on_stderr, say_on_stdout};
 
 const FAMILIES_SCHEMA: &str = include_str!("../../../schema/rules/families.schema.json");
 const SECURITY_SCHEMA: &str = include_str!("../../../schema/rules/security.schema.json");
@@ -52,63 +58,77 @@ const COMPLEXITY: RulesFile = RulesFile {
 const MAX_FILE_MIB: u64 = 1;
 const MAX_FILE_BYTES: u64 = MAX_FILE_MIB << 20;
 
-/// Exit code when the rules have problems.
+/// Exit code of `rules check` when the rules have problems.
 const PROBLEMS_FOUND: u8 = 1;
 
-/// Exit code of a fatal error (SPEC M4).
-const FATAL: u8 = 3;
-
-/// How a check that could run ends.
-enum Outcome {
-    /// Every rules file is valid.
-    Valid,
-    /// Problems found by the core.
-    CoreProblems(Vec<Problem>),
+/// Why the rules cannot be used.
+#[derive(Debug)]
+pub enum Failure {
+    /// The check could not run: a rules file cannot be read, or an embedded
+    /// schema is broken.
+    Fatal(String),
     /// Problems found before the core loads the rules: size, encoding, YAML
     /// or schema.
-    FileProblems(Vec<Problem>),
+    File(Vec<Problem>),
+    /// Problems found by the core: regexes, ids and references.
+    Core(Vec<Problem>),
+}
+
+impl Failure {
+    /// Prints what is wrong on stderr, in the words of `rules check`: one line
+    /// for each problem, then their count.
+    pub fn print(&self) {
+        match self {
+            Self::Fatal(message) => say_on_stderr(&format!("error: {message}")),
+            Self::File(problems) => print_problems(
+                problems,
+                " (regexes, ids and references are not checked yet)",
+            ),
+            Self::Core(problems) => print_problems(problems, ""),
+        }
+    }
 }
 
 /// Checks the rules of `dir`, or the embedded rules, and prints the outcome.
 pub fn run(dir: Option<&Path>) -> ExitCode {
-    match check(dir) {
-        Ok(Outcome::Valid) => {
+    match load(dir) {
+        Ok(_) => {
             for file in [FAMILIES, SECURITY, COMPLEXITY] {
-                println!("{}: ok", file.name);
+                say_on_stdout(&format!("{}: ok", file.name));
             }
             ExitCode::SUCCESS
         }
-        Ok(Outcome::CoreProblems(problems)) => print_problems(&problems, ""),
-        Ok(Outcome::FileProblems(problems)) => print_problems(
-            &problems,
-            " (regexes, ids and references are not checked yet)",
-        ),
-        Err(message) => {
-            eprintln!("error: {message}");
-            ExitCode::from(FATAL)
+        Err(failure) => {
+            failure.print();
+            ExitCode::from(match failure {
+                Failure::Fatal(_) => FATAL,
+                Failure::File(_) | Failure::Core(_) => PROBLEMS_FOUND,
+            })
         }
     }
 }
 
-/// `Err` when the check cannot run: a rules file cannot be read, or an
-/// embedded schema is broken.
-fn check(dir: Option<&Path>) -> Result<Outcome, String> {
+/// The rules of `dir`, or the embedded rules, once they pass the check.
+///
+/// # Errors
+///
+/// [`Failure::Fatal`] when the check cannot run, [`Failure::File`] or
+/// [`Failure::Core`] when the rules have problems.
+pub fn load(dir: Option<&Path>) -> Result<RuleSet, Failure> {
     let mut problems = Vec::new();
-    let families = file_stage(dir, &FAMILIES, &mut problems)?;
-    let security = file_stage(dir, &SECURITY, &mut problems)?;
-    let complexity = file_stage(dir, &COMPLEXITY, &mut problems)?;
+    let families = file_stage(dir, &FAMILIES, &mut problems).map_err(Failure::Fatal)?;
+    let security = file_stage(dir, &SECURITY, &mut problems).map_err(Failure::Fatal)?;
+    let complexity = file_stage(dir, &COMPLEXITY, &mut problems).map_err(Failure::Fatal)?;
     let (Some(families), Some(security), Some(complexity)) = (families, security, complexity)
     else {
-        return Ok(Outcome::FileProblems(problems));
+        return Err(Failure::File(problems));
     };
-    match RuleSet::load(&RulesSources {
+    RuleSet::load(&RulesSources {
         families: &families,
         security: &security,
         complexity: &complexity,
-    }) {
-        Ok(_) => Ok(Outcome::Valid),
-        Err(problems) => Ok(Outcome::CoreProblems(problems)),
-    }
+    })
+    .map_err(Failure::Core)
 }
 
 /// The text of `file` if it passes the checks that come before the core.
@@ -146,14 +166,13 @@ fn file_stage(
 }
 
 /// Prints `problems`, then their count followed by `note`.
-fn print_problems(problems: &[Problem], note: &str) -> ExitCode {
+fn print_problems(problems: &[Problem], note: &str) {
     for problem in problems {
-        eprintln!("{problem}");
+        say_on_stderr(&problem.to_string());
     }
     let count = problems.len();
     let noun = if count == 1 { "problem" } else { "problems" };
-    eprintln!("{count} {noun} found{note}");
-    ExitCode::from(PROBLEMS_FOUND)
+    say_on_stderr(&format!("{count} {noun} found{note}"));
 }
 
 /// Parses one rules file. The core reports the same YAML errors, but without

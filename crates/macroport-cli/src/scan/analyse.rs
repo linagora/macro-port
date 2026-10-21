@@ -98,7 +98,7 @@ fn analyse_one(candidate: &Candidate, settings: &Settings<'_>) -> FileReport {
         return failure(path, Content::unread(), UNREADABLE_CODE, reason, options);
     }
     match read(&candidate.location, options.max_file_size) {
-        Input::Bytes(bytes) => analyse_bytes(&bytes, path, options, &dispatch),
+        Input::Bytes(bytes) => analyse_bytes(&bytes, path, options, &analyze::analyze),
         Input::TooLarge(content) => analyze::too_large(path, content.size, content.sha256, options),
         Input::Unreadable(error) => failure(
             path,
@@ -113,19 +113,13 @@ fn analyse_one(candidate: &Candidate, settings: &Settings<'_>) -> FileReport {
 /// How the bytes of a file become its report.
 type Analyser = dyn Fn(&[u8], &str, &Options<'_>) -> FileReport;
 
-/// The report of the file `path`, which holds `bytes`: the entry point of the
-/// core that reads this kind of file is chosen here, and nowhere else.
-///
-/// Every file goes through [`analyze::analyze`], the text modules (`.bas`,
-/// `.cls`, `.frm`) included. They are meant for `analyze_modules`, which the
-/// core does not have yet (M2): until then `analyze` reports them as it does,
-/// today as `unsupported`, and the switch is a change of this function.
-fn dispatch(bytes: &[u8], path: &str, options: &Options<'_>) -> FileReport {
-    analyze::analyze(bytes, path, options)
-}
-
 /// The report that `analyser` gives for `bytes`, the content of the file
 /// `path`.
+///
+/// The analyser is always [`analyze::analyze`], for every file whatever its
+/// extension: the core is given the name of the file with its bytes, and it is
+/// the core that decides how to read it. The parameter is there so that a test
+/// can put a panicking analyser in its place.
 ///
 /// The core is written not to panic. A panic is still a bug in one file, not a
 /// reason to lose the report on all the others: it becomes the failure of that
