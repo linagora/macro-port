@@ -13,14 +13,8 @@ use macroport_testkit::corpus;
 
 use crate::support::{
     checked, codes, corpus_report, marks_recovery, module, modules, options, procedures,
+    sample_text, samples,
 };
-
-/// The text samples of the families, by their paths relative to `corpus/`.
-fn samples() -> Vec<String> {
-    let samples = corpus::files("families", &["bas", "cls", "frm"]);
-    assert!(samples.len() >= 80, "{} samples", samples.len());
-    samples
-}
 
 /// The name of the file at `path` without its directories and its extension.
 fn stem(path: &str) -> &str {
@@ -330,7 +324,7 @@ fn analyze_modules_gives_what_analyze_gives_for_the_text_of_a_sample() {
         let source = ModuleSource {
             name: only.name.clone(),
             module_type: only.module_type,
-            text: String::from_utf8(corpus::read(&path)).expect("a sample is UTF-8"),
+            text: sample_text(&path),
         };
 
         let by_modules = checked(analyze_modules(vec![source], &path, &options()));

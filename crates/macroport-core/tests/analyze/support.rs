@@ -105,6 +105,18 @@ pub fn corpus_report(path: &str) -> FileReport {
     checked(analyze(&corpus::read(path), path, &options()))
 }
 
+/// The text samples of the families, by their paths relative to `corpus/`.
+pub fn samples() -> Vec<String> {
+    let samples = corpus::files("families", &["bas", "cls", "frm"]);
+    assert!(samples.len() >= 80, "{} samples", samples.len());
+    samples
+}
+
+/// The text of the sample `path` of `corpus/`, relative to it.
+pub fn sample_text(path: &str) -> String {
+    String::from_utf8(corpus::read(path)).expect("a sample is UTF-8")
+}
+
 /// The modules of the VBA project of `file`.
 pub fn modules(file: &FileReport) -> &[ModuleReport] {
     &file.vba_project.as_ref().expect("a VBA project").modules
