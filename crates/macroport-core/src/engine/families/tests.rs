@@ -191,13 +191,18 @@ fn a_module_signal_cites_the_hits_outside_the_procedure_at_its_declaration() {
     assert_eq!(lines_cited(&found[0][1].families[0]), [9, 9]);
 }
 
+/// A signal of weight 4 and project scope, for the references to a `Kernel`
+/// library.
+fn kernel() -> FamilySignal {
+    signal("a.ref", &[], 4)
+        .at(Scope::Project)
+        .matching(references(&["Kernel"]))
+}
+
 #[test]
 fn a_project_signal_gives_half_its_weight_to_every_procedure_of_every_module() {
-    let kernel = signal("a.ref", &[], 4)
-        .at(Scope::Project)
-        .matching(references(&["Kernel"]));
     let project = modules_with_foo().with_references(&["Kernel Library", "Other Library"]);
-    let found = classify(&project, &rules_of(vec![kernel])).modules;
+    let found = classify(&project, &rules_of(vec![kernel()])).modules;
     for found in found.iter().flatten() {
         assert_eq!(scores(found), [("01-a", 2.0)]);
     }
@@ -287,16 +292,19 @@ fn equal_scores_go_to_the_family_with_more_distinct_signals_then_to_the_lower_id
 #[test]
 fn the_primary_family_needs_the_minimum_score() {
     let rules = rules_of(vec![signal("a.foo", &["Foo"], 1)]);
-    let found = |names: &[&str]| classify(&hits_of(names), &rules).modules[0][0].clone();
-    assert_eq!(found(&["Foo", "Foo", "Foo"]).primary_family, "01-a");
+    let procedure_using = |names: &[&str]| classify(&hits_of(names), &rules).modules[0][0].clone();
+    assert_eq!(
+        procedure_using(&["Foo", "Foo", "Foo"]).primary_family,
+        "01-a"
+    );
     // Below 3 the score is given with its evidence, but nothing is primary or
     // secondary.
-    let below = found(&["Foo", "Foo"]);
+    let below = procedure_using(&["Foo", "Foo"]);
     assert_eq!(below.primary_family, UNCLASSIFIED);
     assert_eq!(scores(&below), [("01-a", 2.0)]);
     assert_eq!(lines_cited(&below.families[0]), [2, 3]);
     assert!(below.secondary_families.is_empty());
-    let none = found(&["Bar"]);
+    let none = procedure_using(&["Bar"]);
     assert_eq!(none.primary_family, UNCLASSIFIED);
     assert!(none.families.is_empty());
 }
@@ -305,26 +313,24 @@ fn the_primary_family_needs_the_minimum_score() {
 /// weight given for it.
 fn weighed(weights: &[u32]) -> Families {
     let ids = ["01-a", "02-b", "03-c"];
-    let signals = |id, &weight| family(id, vec![signal(id, &["Foo"], weight)]);
-    rules(
-        ids.iter()
-            .zip(weights)
-            .map(|(id, w)| signals(id, w))
-            .collect(),
-    )
+    let families = ids
+        .iter()
+        .zip(weights)
+        .map(|(&id, &weight)| family(id, vec![signal(id, &["Foo"], weight)]));
+    rules(families.collect())
 }
 
 #[test]
 fn secondary_families_reach_the_ratio_of_the_primary_score() {
-    let found =
+    let with_weights =
         |weights: &[u32]| classify(&hits_of(&["Foo"]), &weighed(weights)).modules[0][0].clone();
     // 0.6 x 10 = 6: the score at the ratio is secondary, the one below is not.
-    let found_all = found(&[10, 6, 5]);
-    assert_eq!(found_all.primary_family, "01-a");
-    assert_eq!(found_all.secondary_families, ["02-b"]);
-    assert_eq!(found_all.families.len(), 3);
+    let found = with_weights(&[10, 6, 5]);
+    assert_eq!(found.primary_family, "01-a");
+    assert_eq!(found.secondary_families, ["02-b"]);
+    assert_eq!(found.families.len(), 3);
     // The minimum score of 3 is not a threshold of the secondary families.
-    assert_eq!(found(&[3, 2]).secondary_families, ["02-b"]);
+    assert_eq!(with_weights(&[3, 2]).secondary_families, ["02-b"]);
 }
 
 /// `First` and `Second` of `Module1`, `Third` of `Module2`, each from line 1,
@@ -351,8 +357,8 @@ fn the_families_of_a_file_are_the_sums_of_its_procedures() {
     // No procedure reaches 3, the file does: 2 + 1 + 1 for 01-a, 1 for 02-b.
     let project = three_procedures(&["Foo", "Foo"], &["Foo", "Bar"], &["Foo"]);
     let found = classify(&project, &rules);
-    let procedures = found.modules.iter().flatten();
-    assert!(procedures.clone().all(|p| p.primary_family == UNCLASSIFIED));
+    let unclassified = |p: &ProcedureFamilies| p.primary_family == UNCLASSIFIED;
+    assert!(found.modules.iter().flatten().all(unclassified));
     assert_eq!(found.file.primary_family, "01-a");
     assert_eq!(file_scores(&found), [("01-a", 4.0), ("02-b", 1.0)]);
     // A file has no evidence.
@@ -384,27 +390,20 @@ fn the_tie_break_of_a_file_counts_each_signal_once() {
 
 #[test]
 fn the_code_of_a_module_with_no_procedure_counts_for_the_file_only() {
-    let kernel = signal("a.ref", &[], 4)
-        .at(Scope::Project)
-        .matching(references(&["Kernel"]));
     let rules = rules_of(vec![
         signal("a.foo", &["Foo"], 2),
         signal("a.ptr", &["Ptr"], 4).at(Scope::Module),
-        kernel,
+        kernel(),
     ]);
-    let code = vec![
-        uses(2, "Foo"),
-        uses(3, "Foo"),
-        uses(4, "Ptr"),
-        uses(5, "Bar"),
-    ];
-    let snippet = module("Module1", ModuleType::Standard, Vec::new()).with_declarations(code);
-    let sheet = module("Sheet1", ModuleType::Document, Vec::new());
-    let project = project(vec![snippet, sheet]).with_references(&["Kernel Library"]);
+    let script = module("Module1", ModuleType::Standard, Vec::new());
+    let script = script.with_declarations(uses_each(&["Foo", "Foo", "Ptr", "Bar"]));
+    let empty_sheet = module("Sheet1", ModuleType::Document, Vec::new());
+    let project = project(vec![script, empty_sheet]).with_references(&["Kernel Library"]);
     let found = classify(&project, &rules);
     assert!(found.modules.iter().all(Vec::is_empty));
     // Two hits of the procedure signal (2 x 2) and one of the module signal
-    // (4 / 2). The project signal reaches procedures only.
+    // (4 / 2). The project signal describes the project, not this code, and
+    // the sheet with no code adds nothing.
     assert_eq!(file_scores(&found), [("01-a", 6.0)]);
     assert_eq!(found.file.primary_family, "01-a");
 }

@@ -21,10 +21,12 @@
 //!   (ACCEPTANCE A4). When the cap cuts the hits of a signal of module or
 //!   project scope, the hits in the procedure are the ones kept.
 //! - The families of the file are the sums of the scores of its procedures,
-//!   ranked the same way, with no evidence. The code of a module that has no
-//!   procedure is scored like one, for the file only, by its signals of
-//!   procedure and module scope: a snippet, or a module of `Declare`
-//!   statements, is still a file about something.
+//!   ranked the same way, with no evidence. The code outside the procedures of
+//!   a module that has none (a snippet, or a module of `Declare` statements) is
+//!   scored like the body of one, for the file only, by the signals of
+//!   procedure and module scope: it is still a file about something. The
+//!   signals of project scope stay out of it: they describe the project, and
+//!   the sheets of a workbook are modules with no code (ADR-0004).
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -70,7 +72,8 @@ pub struct ProcedureFamilies {
 pub struct FileFamilies {
     /// The family that the file is about, or [`UNCLASSIFIED`].
     pub primary_family: String,
-    /// The sums of the scores of the procedures, best first, with no evidence.
+    /// The sums of the scores of the procedures and of the code outside them
+    /// (see the module documentation), best first, with no evidence.
     pub families: Vec<FamilyScore>,
 }
 
@@ -85,7 +88,7 @@ pub fn classify(project: &ProjectInput, rules: &Families) -> ProjectFamilies {
     for (module, owner) in project.modules.iter().enumerate() {
         let mut procedures = Vec::with_capacity(owner.procedures.len());
         if owner.procedures.is_empty() {
-            sums.add(&scorer.score_code(module));
+            sums.merge(&scorer.score_code(module));
         } else {
             let module_hits = scorer.module_hits(module);
             for (index, procedure) in owner.procedures.iter().enumerate() {
@@ -95,7 +98,7 @@ pub fn classify(project: &ProjectInput, rules: &Families) -> ProjectFamilies {
                     procedure,
                 };
                 let tallies = scorer.score(at, &module_hits);
-                sums.add(&tallies);
+                sums.merge(&tallies);
                 procedures.push(procedure_families(tallies, &rules.scoring));
             }
         }
@@ -199,21 +202,24 @@ impl<'a> Scorer<'a> {
                     (hits, hits_inside(hits, at))
                 }
             };
-            let counted = counted_hits(hits, &inside, cap(signal));
+            let counted = counted_hits(hits, &inside, max_hits(signal));
             if counted.is_empty() {
                 continue;
             }
             let cited = counted.iter().map(|hit| evidence(&signal.id, hit, at));
-            let tally = tallies.0.entry(family).or_default();
-            tally.count(&signal.id, half_points(signal), counted.len());
-            tally.evidence.extend(cited);
+            tallies
+                .count(family, signal, counted.len())
+                .evidence
+                .extend(cited);
         }
         tallies
     }
 
-    /// The scores of the code of a module that has no procedure, which count
-    /// for the file only and have no evidence: the signals of procedure and
-    /// module scope read all of it. Those of project scope reach procedures.
+    /// The scores of the code of a module that has no procedure. Its
+    /// declarations stand for the body of one, so the signals of procedure and
+    /// module scope read them. The scores count for the file only, and have no
+    /// evidence. The signals of project scope are left out: they describe the
+    /// project, and the sheets of a workbook would each add them again.
     fn score_code(&self, module: usize) -> Tallies<'a> {
         let mut tallies = Tallies::default();
         for &(family, signal) in &self.signals {
@@ -223,10 +229,9 @@ impl<'a> Scorer<'a> {
             let hits = self
                 .evaluator
                 .module_hits(module, &signal.matcher, signal.text);
-            let counted = hits.len().min(cap(signal));
+            let counted = hits.len().min(max_hits(signal));
             if counted > 0 {
-                let tally = tallies.0.entry(family).or_default();
-                tally.count(&signal.id, half_points(signal), counted);
+                tallies.count(family, signal, counted);
             }
         }
         tallies
@@ -234,13 +239,14 @@ impl<'a> Scorer<'a> {
 }
 
 /// The most hits that the signal counts.
-fn cap(signal: &FamilySignal) -> usize {
+fn max_hits(signal: &FamilySignal) -> usize {
     usize::try_from(signal.max_hits_per_procedure).unwrap_or(usize::MAX)
 }
 
-/// What a hit of the signal adds to a score, in half points: its weight when
-/// the signal reads the procedure only, half of it when it reaches beyond.
-fn half_points(signal: &FamilySignal) -> u64 {
+/// What one hit of the signal adds to a score, in half points: twice its
+/// weight when the signal reads the procedure only, its weight (half of the
+/// weight in points) when it reaches beyond.
+fn half_points_per_hit(signal: &FamilySignal) -> u64 {
     let weight = u64::from(signal.weight);
     match signal.scope {
         Scope::Procedure => weight.saturating_mul(2),
@@ -309,20 +315,17 @@ struct Tally<'a> {
 }
 
 impl<'a> Tally<'a> {
-    /// Adds `hits` hits of the signal `id`, each worth `per_hit` half points.
-    fn count(&mut self, id: &'a str, per_hit: u64, hits: usize) {
-        let hits = u64::try_from(hits).unwrap_or(u64::MAX);
-        self.half_points = self
-            .half_points
-            .saturating_add(per_hit.saturating_mul(hits));
-        self.signals.insert(id);
-    }
-
     /// Adds the points and the signals of `other`: all that a file keeps of a
     /// procedure.
     fn merge(&mut self, other: &Tally<'a>) {
         self.half_points = self.half_points.saturating_add(other.half_points);
         self.signals.extend(&other.signals);
+    }
+
+    /// The score of the report. An `f64` holds every whole number below 2^53
+    /// exactly, far above the half points of any rules.
+    fn score(&self) -> f64 {
+        self.half_points as f64 / 2.0
     }
 
     /// The score of `family`, with its evidence in the order of the lines.
@@ -331,7 +334,7 @@ impl<'a> Tally<'a> {
         self.evidence.sort_by(by_line);
         FamilyScore {
             family: family.to_owned(),
-            score: points(self.half_points),
+            score: self.score(),
             evidence: Some(self.evidence),
         }
     }
@@ -342,8 +345,19 @@ impl<'a> Tally<'a> {
 struct Tallies<'a>(BTreeMap<&'a str, Tally<'a>>);
 
 impl<'a> Tallies<'a> {
+    /// Counts `hits` hits of `signal` for `family`, and gives the tally of the
+    /// family for the caller to add the evidence to.
+    fn count(&mut self, family: &'a str, signal: &'a FamilySignal, hits: usize) -> &mut Tally<'a> {
+        let hits = u64::try_from(hits).unwrap_or(u64::MAX);
+        let added = half_points_per_hit(signal).saturating_mul(hits);
+        let tally = self.0.entry(family).or_default();
+        tally.half_points = tally.half_points.saturating_add(added);
+        tally.signals.insert(&signal.id);
+        tally
+    }
+
     /// Adds the tallies of `other`: the file sums those of its procedures.
-    fn add(&mut self, other: &Tallies<'a>) {
+    fn merge(&mut self, other: &Tallies<'a>) {
         for (&family, tally) in &other.0 {
             self.0.entry(family).or_default().merge(tally);
         }
@@ -364,12 +378,6 @@ impl<'a> Tallies<'a> {
     }
 }
 
-/// A score in half points as the score of the report. An `f64` holds every
-/// whole number below 2^53 exactly, far above the half points of any rules.
-fn points(half_points: u64) -> f64 {
-    half_points as f64 / 2.0
-}
-
 /// The primary family of a ranking, and the secondary ones. Below `min_score`
 /// nothing is primary, and then nothing is secondary either.
 fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<String>) {
@@ -377,12 +385,10 @@ fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<Stri
     let Some(((family, best), others)) = ranked.split_first() else {
         return unclassified();
     };
-    let top = points(best.half_points);
+    let top = best.score();
     if top >= scoring.min_score {
         let floor = scoring.secondary_ratio * top;
-        let close = others
-            .iter()
-            .filter(|(_, tally)| points(tally.half_points) >= floor);
+        let close = others.iter().filter(|(_, tally)| tally.score() >= floor);
         let secondary = close.map(|&(id, _)| id.to_owned()).collect();
         ((*family).to_owned(), secondary)
     } else {
@@ -390,6 +396,7 @@ fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<Stri
     }
 }
 
+/// The family fields of a procedure, from its tallies.
 fn procedure_families(tallies: Tallies<'_>, scoring: &Scoring) -> ProcedureFamilies {
     let ranked = tallies.ranked();
     let (primary_family, secondary_families) = verdict(&ranked, scoring);
@@ -404,14 +411,17 @@ fn procedure_families(tallies: Tallies<'_>, scoring: &Scoring) -> ProcedureFamil
     }
 }
 
+/// The family fields of the file, from the sums of its tallies. The file has no
+/// secondary families, and no evidence to give.
 fn file_families(sums: Tallies<'_>, scoring: &Scoring) -> FileFamilies {
     let ranked = sums.ranked();
     let (primary_family, _) = verdict(&ranked, scoring);
     let families = ranked
         .into_iter()
         .map(|(family, tally)| FamilyScore {
+            family: family.to_owned(),
+            score: tally.score(),
             evidence: None,
-            ..tally.into_score(family)
         })
         .collect();
     FileFamilies {
