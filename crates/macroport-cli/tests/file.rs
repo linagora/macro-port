@@ -87,7 +87,7 @@ fn file_exits_with_2_on_a_usage_error() {
     let dir = scratch("file_usage");
     put(&dir, "m.bas", MODULE);
     put(&dir, "tree/n.bas", MODULE);
-    let cases: [&[&str]; 8] = [
+    let cases: [&[&str]; 10] = [
         &["file"],
         &["file", "missing.bas"],
         &["file", "tree"],
@@ -96,6 +96,10 @@ fn file_exits_with_2_on_a_usage_error() {
         &["file", "m.bas", "--lang", "de"],
         &["file", "m.bas", "--jobs", "2"],
         &["file", "m.bas", "--rules", "no-such-rules"],
+        // The reports of a scan are the ones to share: `file` has no privacy
+        // options.
+        &["file", "m.bas", "--no-snippets"],
+        &["file", "m.bas", "--redact"],
     ];
 
     for args in cases {

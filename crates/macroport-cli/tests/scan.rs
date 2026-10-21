@@ -12,21 +12,12 @@ use macroport_core::report::{Build, Status};
 use macroport_testkit::corpus;
 use serde_json::Value;
 use support::{
-    MODULE, as_arg, put, read_report, repo_root, report_json, run, run_in, run_with_console_closed,
-    scratch, text,
+    EVERY_REPORT, MODULE, as_arg, put, read_report, repo_root, report_json, run, run_in,
+    run_with_console_closed, scratch, text,
 };
 
 /// The `generated_at` of a deterministic report (SPEC M4).
 const EPOCH: &str = "1970-01-01T00:00:00Z";
-
-/// Every file that `scan` writes when it is asked for every format.
-const EVERY_REPORT: [&str; 5] = [
-    "files.csv",
-    "procedures.csv",
-    "report.html",
-    "report.json",
-    "signals.csv",
-];
 
 /// The UTF-8 byte order mark that makes Excel read a CSV file as UTF-8.
 const BYTE_ORDER_MARK: &[u8] = b"\xEF\xBB\xBF";
