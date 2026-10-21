@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Writes the seed corpora of the fuzz targets from the binary fixtures, which
-//! are only read, so that a run starts from real workbooks. The seeds of each
-//! target go to `<out>/<target>/`:
+//! Writes the seed corpora of the fuzz targets from the fixtures, which are
+//! only read, so that a run starts from real workbooks and real module
+//! sources. The seeds of each target go to `<out>/<target>/`:
 //! `cargo run --manifest-path fuzz/Cargo.toml --example seeds -- corpus/fixtures <out>`
 
 use std::error::Error;
@@ -10,10 +10,14 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 use macroport_core::container::{CfbFile, read_ooxml};
-use macroport_core::ovba::{MAX_DIR_STREAM, decompress, parse_dir};
+use macroport_core::ovba::{MAX_DIR_STREAM, decode_text, decompress, parse_dir};
 use zip::ZipArchive;
 
 const CFB_SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
+/// The code page of Excel's exports of the fixtures' modules, as the A1 test
+/// reads them.
+const EXPORT_CODE_PAGE: u16 = 1252;
 
 /// Where the VBA project sits in a compound file: in a workbook (`.xls`) and
 /// in a `vbaProject.bin`. Its `VBA` storage and `PROJECT` stream are here.
@@ -55,6 +59,10 @@ impl Seeds {
             }
         } else if bytes.starts_with(&CFB_SIGNATURE) {
             self.add_container(name, bytes)?;
+        } else if name.ends_with(".bas") || name.ends_with(".cls") {
+            // The lexer reads text: the source of a module, decoded.
+            let source = decode_text(bytes, Some(EXPORT_CODE_PAGE));
+            self.write("lexer", name, source.as_bytes())?;
         }
         Ok(())
     }
