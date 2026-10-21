@@ -8,6 +8,7 @@
 //! gets the summary, once the reports are written.
 
 mod analyse;
+mod privacy;
 mod walk;
 
 use std::collections::BTreeSet;
@@ -29,6 +30,7 @@ use crate::i18n::Messages;
 use crate::reports;
 
 pub use analyse::{PANIC_CODE, Progress, UNREADABLE_CODE};
+pub use privacy::{Privacy, PrivacyArgs};
 pub use walk::{Candidate, EXTENSIONS, report_path, walk};
 
 /// The directory that the reports go to when `--output` is not given.
@@ -65,6 +67,9 @@ pub struct Args {
     /// whatever the number. Defaults to the number of cores.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=MOST_JOBS))]
     pub jobs: Option<u32>,
+
+    #[command(flatten)]
+    pub privacy: PrivacyArgs,
 
     #[command(flatten)]
     pub analysis: AnalysisArgs,
@@ -109,18 +114,23 @@ pub fn run(args: &Args) -> ExitCode {
 
 /// The scan, or the fatal error that stopped it.
 fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode, String> {
-    // The output directory is made before the scan, which can take minutes: a
-    // path that cannot be made is known first. A file that cannot be written is
+    // The key of a redaction and the output directory are made before the scan,
+    // which can take minutes: a system that gives no random bytes, or a path
+    // that cannot be made, is known first. A file that cannot be written is
     // only known once the reports are.
+    let privacy = Privacy::new(&args.privacy)
+        .map_err(|reason| messages.text_with("cli-error-key", &[("reason", &reason)]))?;
     create_directory(&args.output, messages)?;
     // The messages are not shared between threads: the label is.
     let label = messages.text("cli-progress");
     let settings = Settings::new(rules, args.jobs, &args.analysis);
-    let report = scan(&args.paths, &settings, &|progress| {
+    let mut report = scan(&args.paths, &settings, &|progress| {
         print_progress(&label, progress);
     })
     .map_err(|error| threads_error(messages, &error))?;
 
+    // Every report is written from the report as it is after this.
+    privacy.apply(&mut report);
     write_reports(&args.output, &args.format, &report, messages)?;
     print_summary(&report, &args.output, messages);
     Ok(command::exit_code_of(&report))

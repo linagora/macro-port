@@ -13,6 +13,7 @@ cli-error-threads = cannot start the threads of the analysis: { $reason }
 cli-error-create = cannot create the directory { $path }: { $reason }
 cli-error-write = cannot write the file { $path }: { $reason }
 cli-error-print = cannot print on the standard output: { $reason }
+cli-error-key = cannot get the key of the redaction: { $reason }
 cli-panic = internal error at
 
 ## Rules
