@@ -5,6 +5,7 @@
 
 use macroport_core::analyze::{DEFAULT_MAX_FILE_SIZE, Options, too_large};
 use macroport_core::report::{Container, Status};
+use macroport_testkit::corpus;
 
 use crate::support::{RULES, extraction, extraction_with, report_problems_of};
 
@@ -117,6 +118,24 @@ fn the_extension_names_the_container_in_any_case() {
         ("a", Container::Unknown),
     ] {
         assert_eq!(extraction(b"", path).file.container, container, "{path}");
+    }
+}
+
+#[test]
+fn a_file_under_the_name_of_another_family_has_no_container() {
+    let workbook = corpus::read("fixtures/generated/01-01-hide-unhide-columns-find.xls");
+    let package = corpus::read("fixtures/generated/01-01-hide-unhide-columns-find.xlsm");
+    let encrypted = corpus::read("fixtures/generated/enc-01-open-password.xlsm");
+
+    for (bytes, path, container) in [
+        (&workbook, "a.xlt", Container::Xlt),
+        (&workbook, "a.xlsx", Container::Unknown),
+        (&package, "a.xltm", Container::Xltm),
+        (&package, "a.xla", Container::Unknown),
+        (&encrypted, "a.xlam", Container::Xlam),
+        (&encrypted, "a.xls", Container::Unknown),
+    ] {
+        assert_eq!(extraction(bytes, path).file.container, container, "{path}");
     }
 }
 
