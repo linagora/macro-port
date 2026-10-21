@@ -5,7 +5,7 @@
 #![allow(clippy::expect_used)]
 
 use macroport_core::report::ProcedureKind;
-use macroport_core::vba::{ParsedModule, SourceLines, parse, split_lines};
+use macroport_core::vba::{ParsedModule, Recovery, RecoveryKind, SourceLines, parse, split_lines};
 
 /// The logical lines of `text`.
 pub fn lines_of(text: &str) -> SourceLines {
@@ -24,4 +24,16 @@ pub fn spans(module: &ParsedModule) -> Vec<(&str, ProcedureKind, u32, u32)> {
         .iter()
         .map(|p| (p.name.as_str(), p.kind, p.start_line, p.end_line))
         .collect()
+}
+
+/// What the parser records for a statement that cannot be read, found on the
+/// physical line `line`.
+// Each test file compiles its own copy of this module, and some of them never
+// look at the statements that cannot be read.
+#[allow(dead_code)]
+pub fn unreadable(line: u32) -> Recovery {
+    Recovery {
+        line,
+        kind: RecoveryKind::Unparseable,
+    }
 }
