@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
 
 use cfb::CompoundFile;
+use macroport_core::analyze::{Options, analyze};
 use macroport_core::container::read_ooxml;
 use macroport_core::ovba::{DirModule, MAX_PROJECT_STREAM, parse_compressed_dir};
 use macroport_core::report::{Status, Xlm};
@@ -21,7 +22,7 @@ use macroport_testkit::corpus;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-use crate::support::{codes, extraction, file_signal};
+use crate::support::{RULES, codes, extraction, file_signal};
 
 type Compound = CompoundFile<Cursor<Vec<u8>>>;
 
@@ -275,6 +276,31 @@ fn a_module_whose_source_was_taken_out_is_suspected_of_having_lost_it() {
         ]);
         assert_eq!(suspected, expected, "{path}");
         assert_eq!(extraction.indicators, ["sec.source-missing"], "{path}");
+        let signal = file_signal("sec.source-missing", Severity::High);
+        assert_eq!(report.signals, Some(vec![signal]), "{path}");
+        assert_eq!(report.max_severity, Some(Severity::High), "{path}");
+    }
+}
+
+#[test]
+fn a_file_whose_source_was_taken_out_is_ok_after_the_front_end_with_the_same_signal() {
+    let files = [
+        ("a.xlsm", package(|c| stomp(c, "", "M_01_01"))),
+        (
+            "a.xls",
+            workbook(|c| stomp(c, "/_VBA_PROJECT_CUR", "M_01_01")),
+        ),
+    ];
+    for (path, bytes) in &files {
+        let report = analyze(bytes, path, &Options::new(&RULES));
+
+        // The front end finds no procedure in the source that is left, and the
+        // procedures that were compiled count all the same.
+        let project = report.vba_project.as_ref().expect("a described project");
+        let procedures = (project.modules.iter()).map(|module| module.procedures.len());
+        assert_eq!(procedures.sum::<usize>(), 0, "{path}");
+        assert_eq!(report.status, Status::Ok, "{path}");
+        // The signals are those that extraction made from the indicators.
         let signal = file_signal("sec.source-missing", Severity::High);
         assert_eq!(report.signals, Some(vec![signal]), "{path}");
         assert_eq!(report.max_severity, Some(Severity::High), "{path}");
