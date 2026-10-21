@@ -12,8 +12,8 @@ use regex::Regex;
 
 use super::glob::glob_matches;
 use super::hit::{Hit, Place};
-use super::input::{CallSite, CodeLine, MemberUse, ProcedureInput};
-use super::names::{same_name, without_type_char};
+use super::input::{CallSite, CodeLine, MemberUse, ModuleInput, ProcedureInput};
+use super::names::{is_one_of, same_name, without_type_char};
 use super::unit::Unit;
 use crate::rules::{ModuleType, TextMode};
 
@@ -70,12 +70,27 @@ fn per_item<'p, T: 'p>(
     }
 }
 
+/// A hit at the declaration of each procedure of the units for which `fits`
+/// holds, given the module that has it. The declarations of a module are not a
+/// procedure.
+fn per_procedure<'p>(
+    units: &[Unit<'p>],
+    fits: impl Fn(&ModuleInput, &ProcedureInput) -> bool,
+    hits: &mut Vec<Hit<'p>>,
+) {
+    for unit in units {
+        if let Some(procedure) = unit.procedure
+            && fits(unit.owner, procedure)
+        {
+            hits.push(declaration_hit(unit.module, procedure));
+        }
+    }
+}
+
 /// `member`: an identifier used as a member or as a standalone object name,
 /// never a named argument. One hit per use.
 pub(super) fn member<'p>(units: &[Unit<'p>], names: &[String], hits: &mut Vec<Hit<'p>>) {
-    let fits = |used: &MemberUse| {
-        !used.named_argument && names.iter().any(|name| same_name(name, &used.name))
-    };
+    let fits = |used: &MemberUse| !used.named_argument && is_one_of(&used.name, names);
     per_item(units, |line| line.members.as_slice(), fits, hits);
 }
 
@@ -109,9 +124,7 @@ fn contains_run(elements: &[String], pattern: &str) -> bool {
 /// `call`: a procedure, a function or a statement invoked by name, not
 /// preceded by `.`. One hit per call.
 pub(super) fn call<'p>(units: &[Unit<'p>], names: &[String], hits: &mut Vec<Hit<'p>>) {
-    let fits = |invoked: &CallSite| {
-        !invoked.after_dot && names.iter().any(|name| same_name(name, &invoked.name))
-    };
+    let fits = |invoked: &CallSite| !invoked.after_dot && is_one_of(&invoked.name, names);
     per_item(units, |line| line.calls.as_slice(), fits, hits);
 }
 
@@ -158,13 +171,10 @@ fn any_match(patterns: &[Regex], subject: &str) -> bool {
 /// type-declaration character that may end it. One hit per procedure, at its
 /// declaration. The declarations of a module have no name to match.
 pub(super) fn procedure_name<'p>(units: &[Unit<'p>], patterns: &[Regex], hits: &mut Vec<Hit<'p>>) {
-    for unit in units {
-        if let Some(procedure) = unit.procedure
-            && any_match(patterns, without_type_char(&procedure.name))
-        {
-            hits.push(declaration_hit(unit.module, procedure));
-        }
-    }
+    let fits = |_: &ModuleInput, procedure: &ProcedureInput| {
+        any_match(patterns, without_type_char(&procedure.name))
+    };
+    per_procedure(units, fits, hits);
 }
 
 /// `module_type`: a module of one of the types. The type belongs to the module

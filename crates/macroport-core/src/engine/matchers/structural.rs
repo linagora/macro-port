@@ -12,7 +12,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{declaration_hit, per_item, statement_hit};
+use super::{per_item, per_procedure, statement_hit};
 use crate::engine::hit::Hit;
 use crate::engine::input::{ModuleInput, NameSet, ProcedureInput};
 use crate::engine::names::{fold_case, is_one_of, same_name, without_type_char};
@@ -70,15 +70,12 @@ pub(in crate::engine) fn structural<'p>(
 /// A hit at the declaration of each procedure for which a predicate holds. The
 /// declarations of a module are not a procedure.
 fn procedures<'p>(units: &[Unit<'p>], predicates: &[StructuralPredicate], hits: &mut Vec<Hit<'p>>) {
-    for unit in units {
-        if let Some(procedure) = unit.procedure
-            && predicates
-                .iter()
-                .any(|&predicate| holds(predicate, unit.owner, procedure))
-        {
-            hits.push(declaration_hit(unit.module, procedure));
-        }
-    }
+    let fits = |owner: &ModuleInput, procedure: &ProcedureInput| {
+        predicates
+            .iter()
+            .any(|&predicate| holds(predicate, owner, procedure))
+    };
+    per_procedure(units, fits, hits);
 }
 
 /// Whether `predicate` holds for the whole of `procedure`, which is in the
