@@ -3,18 +3,21 @@
 //! dir stream of the `.xls` workbooks: the project information and the module
 //! list agree with `fixtures.yaml`, and the source of each module decompresses
 //! from the offset that the dir stream gives. The `PROJECT` stream of every
-//! workbook, `.xlsm` and `.xlsb` included: the protection agrees with
-//! `fixtures.yaml`. A1, which compares the decoded sources with Excel's own
-//! export, belongs to the ticket that decodes them.
+//! workbook, `.xlsm` and `.xlsb` included: the protection and the type of each
+//! module agree with `fixtures.yaml`. A1, which compares the decoded sources
+//! with Excel's own export, belongs to the ticket that decodes them.
 
 // The helpers build their own inputs: a panic in one is a failed test.
 #![allow(clippy::unwrap_used)]
 
+use std::collections::BTreeSet;
 use std::io::{Cursor, Read};
 
 use cfb::CompoundFile;
 use macroport_core::container::read_ooxml;
-use macroport_core::ovba::{DirInfo, decompress, parse_compressed_dir, parse_project};
+use macroport_core::ovba::{
+    DirInfo, DirModule, ProjectInfo, decompress, parse_compressed_dir, parse_project,
+};
 use macroport_testkit::corpus;
 use serde::Deserialize;
 
@@ -105,6 +108,19 @@ impl Project {
     fn project_stream(&mut self) -> Vec<u8> {
         read_stream(&mut self.compound, &format!("{}/PROJECT", self.storage))
     }
+
+    /// What the `PROJECT` stream says of the project.
+    fn info(&mut self) -> ProjectInfo {
+        parse_project(&self.project_stream(), self.dir.code_page)
+    }
+}
+
+/// The module that the dir stream lists under `name`.
+fn module_named<'a>(dir: &'a DirInfo, name: &str) -> &'a DirModule {
+    dir.modules
+        .iter()
+        .find(|module| module.name == name)
+        .unwrap()
 }
 
 fn read_stream(compound: &mut CompoundFile<Cursor<Vec<u8>>>, path: &str) -> Vec<u8> {
@@ -151,11 +167,7 @@ fn reads_the_modules_of_every_xls_fixture() {
             assert!(names.contains(&name), "{}: {name}", fixture.file);
         }
         for expected in &fixture.modules {
-            let module = dir
-                .modules
-                .iter()
-                .find(|module| module.name == expected.name)
-                .unwrap();
+            let module = module_named(&dir, &expected.name);
             // Only a standard module is procedural: documents, classes and
             // forms are not.
             assert_eq!(
@@ -226,8 +238,7 @@ fn never_panics_on_a_damaged_dir_stream() {
 fn reads_the_protection_of_every_fixture() {
     let mut protected = Vec::new();
     for fixture in fixtures() {
-        let mut project = Project::open(&fixture.file);
-        let info = parse_project(&project.project_stream(), project.dir.code_page);
+        let info = Project::open(&fixture.file).info();
         assert_eq!(
             info.protected, fixture.expected_protected,
             "{}",
@@ -241,4 +252,28 @@ fn reads_the_protection_of_every_fixture() {
     // editor, which COM cannot do for Build-Fixtures.ps1.
     assert_eq!(protected.len(), 3, "{protected:?}");
     assert!(protected.iter().all(|file| file.ends_with(".xlsm")));
+}
+
+#[test]
+fn reads_the_module_types_of_every_fixture() {
+    let mut seen = BTreeSet::new();
+    for fixture in fixtures() {
+        let mut project = Project::open(&fixture.file);
+        let info = project.info();
+        for expected in &fixture.modules {
+            let module = module_named(&project.dir, &expected.name);
+            assert_eq!(
+                info.module_type(module).name(),
+                expected.kind,
+                "{}: {}",
+                fixture.file,
+                expected.name
+            );
+            seen.insert(expected.kind.clone());
+        }
+    }
+    // The checks are not vacuous. There is no fixture with a form.
+    for kind in ["document", "standard", "class"] {
+        assert!(seen.contains(kind), "{kind}");
+    }
 }
