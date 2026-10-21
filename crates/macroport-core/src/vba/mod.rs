@@ -17,7 +17,10 @@ pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
 };
-pub use parse::{MAX_RECOVERIES, ParsedModule, Procedure, Recovery, RecoveryKind, parse};
+pub use parse::{
+    Declaration, DeclarationKind, Directive, MAX_RECOVERIES, OptionKind, ParsedModule, Procedure,
+    Recovery, RecoveryKind, parse,
+};
 
 /// The source of one module: what the extraction layer, or a text file,
 /// hands to the front end.
