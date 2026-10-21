@@ -3,13 +3,26 @@
 //! expressions of the closed set replaced by their value, and nothing else
 //! evaluated. The cases are statements of one logical line.
 
-use macroport_core::vba::{StatementReader, tokenize};
+// clippy.toml keeps the clock out of the core, not out of its tests.
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+#![allow(clippy::expect_used)]
+
+use std::time::{Duration, Instant};
+
+use macroport_core::vba::{Facts, MAX_NESTING, StatementReader, split_lines, tokenize};
+
+/// What reading a long statement may take: far above one pass, far below a
+/// quadratic one.
+const LIMIT: Duration = Duration::from_secs(5);
+
+/// The facts of the statement `text`.
+fn facts(text: &str) -> Facts {
+    StatementReader::new().read_tokens(text, &tokenize(text))
+}
 
 /// The strings of the statement `text`.
 fn strings(text: &str) -> Vec<String> {
-    StatementReader::new()
-        .read_tokens(text, &tokenize(text))
-        .strings
+    facts(text).strings
 }
 
 /// Checks that each statement gives the strings next to it.
@@ -26,6 +39,7 @@ fn a_string_literal_is_listed_with_its_doubled_quotes_read_as_one() {
         (r#"x = "say ""hi"" now""#, &[r#"say "hi" now"#]),
         (r#"x = """#, &[""]),
         (r#"MsgBox "a", vbOKOnly, "b""#, &["a", "b"]),
+        (r#"x = "a" ' "b""#, &["a"]),
         ("x = 1 + 2", &[]),
     ]);
 }
@@ -43,11 +57,11 @@ fn literals_joined_with_and_or_plus_are_folded_into_one_string() {
 }
 
 #[test]
-fn chr_chrw_and_chrb_of_a_number_fold_to_a_character() {
+fn chr_and_chrw_of_a_number_fold_to_a_character() {
     check(&[
         ("x = Chr(65)", &["A"]),
         (
-            "x = Chr$(110) & Chr(111) & ChrW(116) & ChrB(101)",
+            "x = Chr$(110) & Chr(111) & ChrW(116) & ChrW$(101)",
             &["note"],
         ),
         ("x = ChrW(8364)", &["\u{20ac}"]),
@@ -71,6 +85,10 @@ fn strreverse_lcase_and_ucase_fold_the_value_they_are_given() {
         (r#"x = UCase("abc") & LCase$("DEF")"#, &["ABCdef"]),
         (r#"x = StrReverse(UCase("ab" & "c"))"#, &["CBA"]),
         (r#"x = LCase(StrReverse("AB") & Chr(67))"#, &["bac"]),
+        // The case changes one character at a time: `ß` stays.
+        (r#"x = UCase("straße")"#, &["STRAßE"]),
+        // A call that is not closed folds as far as it reads.
+        (r#"x = UCase("a" & "b""#, &["AB"]),
     ]);
 }
 
@@ -80,7 +98,6 @@ fn a_call_of_the_set_with_an_argument_outside_it_stays_unresolved() {
         ("x = Chr(n)", &[]),
         ("x = Chr(65 + 1)", &[]),
         ("x = Chr(65.5)", &[]),
-        ("x = Chr(256)", &[]),
         ("x = Chr(-5)", &[]),
         ("x = ChrW(65536)", &[]),
         ("x = ChrW(&HD800)", &[]),
@@ -94,19 +111,52 @@ fn a_call_of_the_set_with_an_argument_outside_it_stays_unresolved() {
         (r#"x = UCase(y) & "b""#, &["b"]),
         (r#"x = UCase("a", "b")"#, &["a", "b"]),
         (r#"x = Chr(65) & Chr(y) & Chr(67)"#, &["A", "C"]),
-        (r#"x = obj.Chr(65)"#, &[]),
-        (r#"x = .Chr(65)"#, &[]),
-        (r#"x = Foo.Chr(65)"#, &[]),
-        (r#"x = Foo.VBA.Chr(65)"#, &[]),
-        (r#"x = VBA.Foo.Chr(65)"#, &[]),
-        (r#"x = VBA(1).Chr(65)"#, &[]),
-        (r#"x = Chr(65).Foo"#, &[]),
     ]);
 }
 
 #[test]
+fn the_bytes_of_a_code_page_and_chrb_stay_unresolved() {
+    // Above 127, `Chr` is a character of the code page of the machine, and
+    // `ChrB` a half character that the next byte completes.
+    check(&[
+        ("x = Chr(128)", &[]),
+        ("x = Chr(255) & Chr(256)", &[]),
+        ("x = ChrB(65)", &[]),
+        ("x = ChrB(87) & ChrB(0) & ChrB$(83)", &[]),
+    ]);
+}
+
+#[test]
+fn only_a_library_name_may_qualify_a_function_of_the_set() {
+    check(&[
+        ("x = obj.Chr(65)", &[]),
+        ("x = .Chr(65)", &[]),
+        ("x = Foo.Chr(65)", &[]),
+        ("x = Foo.VBA.Chr(65)", &[]),
+        ("x = VBA.Foo.Chr(65)", &[]),
+        ("x = VBA(1).Chr(65)", &[]),
+        ("x = VBA!Chr(65)", &[]),
+        ("x = Chr(65).Foo", &[]),
+        (r#"x = Interaction.UCase("a")"#, &["a"]),
+    ]);
+}
+
+#[test]
+fn what_a_string_function_builds_is_paid_for_out_of_the_text_of_its_statement() {
+    // `UCase` nested sixty times around a literal of 100 KB: a few levels
+    // copy it, the others are refused, and what was built is listed.
+    let long = "a".repeat(100_000);
+    let nested = format!("x = {}\"{long}\"{}", "UCase(".repeat(60), ")".repeat(60));
+    assert_eq!(strings_in_time(&nested), ["A".repeat(100_000)]);
+    // The literals themselves are never held back.
+    let joined = format!("y = \"{long}\" & \"{long}\"");
+    assert_eq!(strings_in_time(&joined), [format!("{long}{long}")]);
+}
+
+#[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
-    // Each of these leaves every literal apart, and folds nothing around them.
+    // Each of these folds only what the closed set covers, and leaves the
+    // other literals apart.
     check(&[
         (r#"x = "a" & y & "b""#, &["a", "b"]),
         (r#"x = "a" & Left("bcd", 2)"#, &["a", "bcd"]),
@@ -115,17 +165,31 @@ fn an_expression_outside_the_closed_set_stays_unresolved() {
         (r#"x = "1" + 2"#, &["1"]),
         (r#"x = "a" & vbCrLf & "b""#, &["a", "b"]),
         (r#"x = Mid("abc", 2)"#, &["abc"]),
-        (r#"x = String(3, "a")"#, &["a"]),
         (r#"x = "a" & Trim("b")"#, &["a", "b"]),
-        (r#"x = "a" & CStr(5) & "b""#, &["a", "b"]),
-        (r#"x = "a" & obj.Name & "b""#, &["a", "b"]),
         (r#"x = "a" & obj.Name("c") & "b""#, &["a", "c", "b"]),
         (r#"x = "a" & ws.Cells(1, 1) & "b""#, &["a", "b"]),
         (r#"x = "a" & b!c & "d""#, &["a", "d"]),
-        (r#"x = "a" = "b""#, &["a", "b"]),
-        (r#"x = "a" & "b" Like "c" & "d""#, &["ab", "cd"]),
-        (r#"x = Not "a" & "b""#, &["ab"]),
         (r#"x = -"a" & "b""#, &["a", "b"]),
+    ]);
+}
+
+#[test]
+fn the_operators_group_as_in_vba() {
+    check(&[
+        // `+` binds tighter than `&`, and `*` tighter than both.
+        (r#"x = "a" & "b" + y"#, &["a", "b"]),
+        (r#"x = "a" + "b" & y"#, &["ab"]),
+        (r#"x = "a" & "b" * 2"#, &["a", "b"]),
+        // Comparisons bind looser than `&`, `Not` looser than a comparison.
+        (r#"x = "a" & "b" Like "c" & "d""#, &["ab", "cd"]),
+        (r#"x = "a" = "b""#, &["a", "b"]),
+        (r#"x = Not "a" & "b""#, &["ab"]),
+        // The operators group from the left: nothing joins to what comes
+        // after an operand that is not known.
+        (
+            r#"x = s & "WScr" & "ipt.Sh" & "ell""#,
+            &["WScr", "ipt.Sh", "ell"],
+        ),
     ]);
 }
 
@@ -146,7 +210,6 @@ fn what_is_not_a_string_expression_is_left_alone() {
         ("If a = b Then c = d", &[]),
         ("For i = 1 To 10 Step 2", &[]),
         ("", &[]),
-        ("'", &[]),
         ("& + ) ( , ,", &[]),
         ("x = (", &[]),
         ("x = (\"a\"", &["a"]),
@@ -157,38 +220,75 @@ fn what_is_not_a_string_expression_is_left_alone() {
 }
 
 #[test]
-fn nesting_beyond_the_depth_limit_gives_up_without_overflowing_the_stack() {
-    let deep = |open: &str, close: &str, inner: &str| {
-        format!(
-            "x = {}{inner}{}",
-            open.repeat(100_000),
-            close.repeat(100_000)
-        )
-    };
-    for text in [
-        deep("(", ")", r#""a""#),
-        deep("-", "", "1"),
-        deep("Not ", "", "a"),
-        deep("f(", ")", r#""a""#),
-        deep("a.b(", ")", r#""a""#),
-        deep("UCase(", ")", r#""a""#),
-    ] {
-        // Only that it returns: the strings that were read before giving up
-        // are not specified.
-        let _ = strings(&text);
-    }
-    // A reasonable nesting still folds.
-    let ok = format!("x = {}\"a\"{}", "(".repeat(20), ")".repeat(20));
-    assert_eq!(strings(&ok), ["a"]);
-    let ok = format!("x = {}\"a\"{}", "UCase(".repeat(20), ")".repeat(20));
-    assert_eq!(strings(&ok), ["A"]);
+fn a_line_that_is_not_code_holds_no_string() {
+    let mut reader = StatementReader::new();
+    let lines = split_lines("' x = \"a\"\nDone:\nx = \"b\"\n")
+        .expect("lines")
+        .logical;
+    let read: Vec<_> = lines.iter().map(|line| reader.read(line).strings).collect();
+    assert_eq!(read, [vec![], vec![], vec!["b".to_string()]]);
 }
 
 #[test]
-fn a_statement_with_many_operands_is_read_without_quadratic_work() {
-    // 600,000 tokens, under the cap of the lexer.
-    let text = format!("x = {}\"a\"", "\"b\" & ".repeat(300_000));
-    let folded = strings(&text);
-    assert_eq!(folded.len(), 1);
-    assert_eq!(folded.first().map(String::len), Some(300_001));
+fn nesting_beyond_the_limit_reads_the_rest_flat_and_flags_the_statement() {
+    let nested = |groups: usize| {
+        let (open, close) = ("(".repeat(groups), ")".repeat(groups));
+        facts(&format!(r#"{open}"a" & "b"{close} & "c""#))
+    };
+    // The statement and the right operand of `&` each take a level.
+    let fits = nested(MAX_NESTING.saturating_sub(2));
+    assert_eq!(
+        (fits.strings, fits.too_deep),
+        (vec!["abc".to_string()], false)
+    );
+    let beyond = nested(MAX_NESTING.saturating_sub(1));
+    assert_eq!(beyond.strings, ["a", "b", "c"]);
+    assert!(beyond.too_deep);
+}
+
+#[test]
+fn deep_nesting_of_every_shape_keeps_every_string_without_overflowing_the_stack() {
+    let deep = |open: &str, close: &str| {
+        let depth = 100_000;
+        format!(
+            r#"x = {}"a"{} & "b""#,
+            open.repeat(depth),
+            close.repeat(depth)
+        )
+    };
+    let shapes = [
+        deep("(", ")"),
+        deep("-", ""),
+        deep("Not ", ""),
+        deep("f(", ")"),
+        deep("a.b(", ")"),
+        deep("UCase(", ")"),
+    ];
+    for (shape, text) in shapes.iter().enumerate() {
+        let read = facts(text);
+        assert!(read.too_deep, "shape {shape}");
+        assert!(read.strings.contains(&"b".to_string()), "shape {shape}");
+    }
+}
+
+/// The strings of the statement `text`, which must be read within [`LIMIT`].
+fn strings_in_time(text: &str) -> Vec<String> {
+    let started = Instant::now();
+    let read = strings(text);
+    let elapsed = started.elapsed();
+    assert!(elapsed < LIMIT, "took {elapsed:?}");
+    read
+}
+
+#[test]
+fn a_long_statement_is_read_in_linear_time() {
+    // 600,000 tokens, under the cap of the lexer, in two shapes: every join
+    // folds, or none does.
+    let folded = strings_in_time(&format!("x = {}\"a\"", "\"b\" & ".repeat(300_000)));
+    assert_eq!(
+        folded.iter().map(String::len).collect::<Vec<_>>(),
+        [300_001]
+    );
+    let apart = strings_in_time(&format!("x = {}\"a\"", "y & \"b\" & ".repeat(100_000)));
+    assert_eq!(apart.len(), 100_001);
 }

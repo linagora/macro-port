@@ -8,18 +8,23 @@
 //! unresolved: its operands are listed apart, and nothing is made of the
 //! result.
 //!
-//! The reader never fails and never recurses deeper than [`MAX_DEPTH`]: a
-//! statement that nests more is given up where it stands. Every token is
-//! read once, and a folded string is built by appending to the left operand,
-//! so the time is linear in the tokens whatever their shape.
+//! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
+//! where a statement nests more, the rest of it is read flat, its strings
+//! listed as they are, and the statement is flagged. Every token is read once
+//! and a folded string is built by appending to the left operand, so the time
+//! is linear in the tokens, but for the final sort of the strings. What a
+//! string function makes out of a string is paid for out of a [`Budget`] that
+//! the text of the statement sets, so that its memory and time are too.
 
-use super::fold::{Folding, Value, parse_number};
+use super::facts::Facts;
+use super::fold::{Budget, Folding, Value, parse_number};
 use super::lexer::{Keyword, Token, TokenKind};
 
-/// How deeply expressions may nest before the reader gives up on the rest of
-/// the statement. Each level costs a few stack frames, so the bound keeps the
-/// stack small whatever the text; code written by hand nests far less.
-const MAX_DEPTH: usize = 64;
+/// How many expressions may be open at once, in a group inside a group and so
+/// on, before the reader reads the rest of the statement flat. Each level
+/// costs a few stack frames, so the bound keeps the stack small whatever the
+/// text; code written by hand nests far less.
+pub const MAX_NESTING: usize = 64;
 
 /// Binding power at which the operand of `Not` is read: the comparisons and
 /// what binds tighter.
@@ -29,9 +34,9 @@ const NOT_POWER: u8 = 11;
 /// binds tighter than `*`, that is `^`.
 const SIGN_POWER: u8 = 23;
 
-/// The names that a function of the closed set may be qualified with:
-/// `VBA.Chr(65)`, `VBA.Strings.Chr$(65)`.
-const LIBRARIES: [&str; 3] = ["VBA", "Strings", "Interaction"];
+/// The names that a function of the closed set may be qualified with, each
+/// followed by a `.`: `VBA.Chr(65)`, `VBA.Strings.Chr$(65)`.
+const LIBRARIES: [&str; 2] = ["VBA", "Strings"];
 
 /// What an operand is worth.
 struct Node {
@@ -118,6 +123,10 @@ pub(super) struct Reader<'a> {
     pos: usize,
     /// How many expressions are open.
     depth: usize,
+    /// What is left to build out of strings.
+    budget: Budget,
+    /// Whether the rest of the statement was read flat, for it nests too deep.
+    too_deep: bool,
     /// The strings found, by the index of their first token.
     strings: Vec<(usize, String)>,
 }
@@ -130,22 +139,27 @@ impl<'a> Reader<'a> {
             tokens,
             pos: 0,
             depth: 0,
+            budget: Budget::for_text(text),
+            too_deep: false,
             strings: Vec::new(),
         }
     }
 
-    /// Reads the statement and gives the strings it holds, in source order.
-    pub(super) fn read(mut self) -> Vec<String> {
+    /// Reads the statement and gives the facts it holds, in source order.
+    pub(super) fn read(mut self) -> Facts {
         while let Some(kind) = self.kind() {
             if starts_operand(kind) {
-                let node = self.expression(0);
+                let node = self.expression_here();
                 self.finish(node);
             } else {
                 self.advance();
             }
         }
         self.strings.sort_by_key(|&(start, _)| start);
-        self.strings.into_iter().map(|(_, text)| text).collect()
+        Facts {
+            strings: self.strings.into_iter().map(|(_, text)| text).collect(),
+            too_deep: self.too_deep,
+        }
     }
 
     /// The kind of the next token.
@@ -165,9 +179,18 @@ impl<'a> Reader<'a> {
         self.pos = self.pos.saturating_add(1);
     }
 
-    /// Gives up on the rest of the statement.
-    fn give_up(&mut self) {
-        self.pos = self.tokens.len();
+    /// Reads the rest of the statement without its structure: the strings it
+    /// holds, one by one, as the source spells them.
+    fn read_flat(&mut self) {
+        self.too_deep = true;
+        while let Some(token) = self.tokens.get(self.pos).copied() {
+            if token.kind == TokenKind::String
+                && let Some(text) = token.string_value(self.text)
+            {
+                self.strings.push((self.pos, text));
+            }
+            self.advance();
+        }
     }
 
     /// Lists the string a node holds, if it holds one: its expression ends
@@ -190,12 +213,24 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// Reads the expression that a token accepted by [`starts_operand`] opens.
+    /// If it read nothing all the same, it moves past that token: the loops of
+    /// the reader cannot stand still, whatever the two come to disagree on.
+    fn expression_here(&mut self) -> Node {
+        let before = self.pos;
+        let node = self.expression(0);
+        if self.pos == before {
+            self.advance();
+        }
+        node
+    }
+
     /// Reads an expression whose binary operators bind at least as tight as
     /// `min_power`.
     fn expression(&mut self, min_power: u8) -> Node {
         let start = self.pos;
-        if self.depth >= MAX_DEPTH {
-            self.give_up();
+        if self.depth >= MAX_NESTING {
+            self.read_flat();
             return Node::unknown(start);
         }
         self.depth = self.depth.saturating_add(1);
@@ -321,10 +356,13 @@ impl<'a> Reader<'a> {
             } else {
                 None
             };
-            if !matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang)) {
+            let Some(separator @ (TokenKind::Dot | TokenKind::Bang)) = self.kind() else {
                 return self.last_element(start, at, arguments, library);
-            }
-            library = library && arguments.is_none() && self.is_library(at);
+            };
+            library = library
+                && separator == TokenKind::Dot
+                && arguments.is_none()
+                && self.is_library(at);
             self.finish_all(arguments.unwrap_or_default());
             self.advance();
         }
@@ -365,7 +403,7 @@ impl<'a> Reader<'a> {
     /// it folds, or nothing.
     fn fold(&mut self, start: usize, function: Folding, arguments: Vec<Option<Node>>) -> Node {
         if let [Some(argument)] = arguments.as_slice()
-            && let Some(text) = function.apply(&argument.value)
+            && let Some(text) = function.apply(&argument.value, &mut self.budget)
         {
             return Node {
                 value: Value::Text(text),
@@ -410,7 +448,7 @@ impl<'a> Reader<'a> {
                 break;
             }
             if starts_operand(kind) {
-                let node = self.expression(0);
+                let node = self.expression_here();
                 if first.is_none() {
                     first = Some(node);
                 } else {
