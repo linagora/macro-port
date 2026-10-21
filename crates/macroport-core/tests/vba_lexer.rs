@@ -465,6 +465,37 @@ fn a_hash_right_after_a_name_is_its_type_character() {
 }
 
 #[test]
+fn a_hash_before_a_file_number_and_a_separator_opens_no_date() {
+    check(&[
+        (
+            "Write #1, 1, 2#",
+            "Identifier[Write] Hash[#] Number[1] Comma[,] Number[1] Comma[,] Number[2#]",
+        ),
+        (
+            "Print #1, 5 - 3#",
+            "Identifier[Print] Hash[#] Number[1] Comma[,] Number[5] Minus[-] Number[3#]",
+        ),
+        (
+            "Print # 1; x",
+            "Identifier[Print] Hash[#] Number[1] Semicolon[;] Identifier[x]",
+        ),
+        (
+            "Print #fn ; x",
+            "Identifier[Print] Hash[#] Identifier[fn] Semicolon[;] Identifier[x]",
+        ),
+        (
+            "Write #1, #1/2/2000#, 5",
+            "Identifier[Write] Hash[#] Number[1] Comma[,] Date[#1/2/2000#] Comma[,] Number[5]",
+        ),
+        // The shape of a file number wins over what could be a date.
+        (
+            "#Jan, 2000#",
+            "Hash[#] Identifier[Jan] Comma[,] Number[2000#]",
+        ),
+    ]);
+}
+
+#[test]
 fn a_dot_before_a_digit_starts_a_number_and_before_a_name_reaches_a_member() {
     check(&[
         ("x = .5", "Identifier[x] Equals[=] Number[.5]"),

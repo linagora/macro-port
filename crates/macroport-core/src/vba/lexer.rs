@@ -338,7 +338,11 @@ impl<'a> Lexer<'a> {
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
             '#' => {
-                date_literal_len(rest).map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
+                // `#1, ` is a file number, not the start of a date.
+                let date = (!opens_file_number(rest))
+                    .then(|| date_literal_len(rest))
+                    .flatten();
+                date.map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
             }
             ',' => (TokenKind::Comma, 1),
             ';' => (TokenKind::Semicolon, 1),
@@ -451,6 +455,24 @@ fn type_character_len(tail: &str) -> usize {
         _ => TYPE_CHARACTERS.contains(&c),
     };
     usize::from(is_type_character)
+}
+
+/// Whether the `#` that starts `rest` opens a file number: a number or a name
+/// and then a `,` or a `;`, as in `Print #1, x` and `Input #fn; x`. A date
+/// goes on with something else, as `#Jan 1, 2000#` and `#1/2/2000#` do.
+fn opens_file_number(rest: &str) -> bool {
+    let after_hash = rest
+        .strip_prefix('#')
+        .unwrap_or_default()
+        .trim_start_matches(is_space);
+    let end = after_hash
+        .find(|c: char| !is_ident_char(c))
+        .unwrap_or(after_hash.len());
+    let after_number = after_hash.get(end..).unwrap_or_default();
+    end > 0
+        && after_number
+            .trim_start_matches(is_space)
+            .starts_with([',', ';'])
 }
 
 /// Bytes of the hexadecimal or octal number that starts `rest`, which starts
