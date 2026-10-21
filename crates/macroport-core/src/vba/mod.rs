@@ -14,6 +14,7 @@ mod lines;
 mod metrics;
 mod parse;
 mod scan;
+mod udf;
 
 use crate::report::Status;
 use crate::rules::ModuleType;
@@ -32,6 +33,7 @@ pub use parse::{
     Declaration, DeclarationKind, Directive, MAX_RECOVERIES, OptionKind, ParsedModule, Procedure,
     Recovery, RecoveryKind, parse,
 };
+pub use udf::is_udf_candidate;
 
 /// The source of one module: what the extraction layer, or a text file,
 /// hands to the front end.
