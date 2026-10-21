@@ -176,8 +176,9 @@ impl<'r> Front<'r> {
     ///
     /// [`analyse`]: Self::analyse
     fn keep(&mut self, module: &mut ModuleReport, analysed: Option<Result<Analysis, VbaError>>) {
-        let read = analysed.map(|analysis| analysis.and_then(|read| self.fill(module, &read)));
-        let adapted = match read {
+        let filled =
+            analysed.map(|result| result.and_then(|analysis| self.fill(module, &analysis)));
+        let adapted = match filled {
             Some(Ok(adapted)) => adapted,
             Some(Err(error)) => {
                 (self.failures).push(Failure::from(error).in_module(&module.name));

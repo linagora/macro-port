@@ -120,7 +120,7 @@ const FACTS_PER_TOKEN: usize =
 
 /// How many times the text of a statement may be copied in its line: as its
 /// raw text, as its code, and as the name of a member, of a call and of a chain.
-const COPIES: usize = 5;
+const TEXT_COPIES: usize = 5;
 
 /// The most that a copy of the object of a `With` block takes in a chain. The
 /// reader keeps an object that weighs 4,096 at the most, where a name weighs
@@ -130,28 +130,29 @@ const COPIES: usize = 5;
 const OBJECT_BYTES: usize = 5_120;
 
 /// How many times the text of a statement may be copied in its line by the
-/// copies of the object of a `With` block. The reader lets a statement copy
-/// four times its text in weight (see [`vba::Facts::chains`]), and a weight is
-/// a quarter less than the bytes it stands for, at the most (see
-/// [`OBJECT_BYTES`]): so five.
-const WITH_COPIES: usize = 5;
+/// copies of the object of a `With` block, besides [`TEXT_COPIES`]. The reader
+/// lets a statement copy four times its text in weight (see
+/// [`vba::Facts::chains`]), and a weight is a quarter less than the bytes it
+/// stands for, at the most (see [`OBJECT_BYTES`]): so five, which is a
+/// coincidence with [`TEXT_COPIES`], not the same bound.
+const WITH_TEXT_COPIES: usize = 5;
 
 /// What the copies of the object of a `With` block may add to a statement,
-/// besides [`WITH_COPIES`] times its text: what the statements before it left
-/// unspent, which the reader caps at 16,384, and the 128 that it earns whatever
-/// its text is, a quarter more for the bytes they stand for. 24 KiB covers the
-/// 20,640.
+/// besides [`WITH_TEXT_COPIES`] times its text: what the statements before it
+/// left unspent, which the reader caps at 16,384, and the 128 that it earns
+/// whatever its text is, a quarter more for the bytes they stand for. 24 KiB
+/// covers the 20,640.
 const WITH_ALLOWANCE: usize = 24 * 1024;
 
-/// What the object of a `With` block may add to the line of a statement of
-/// `text` and `tokens`. The reader copies the object into the chain that a dot
-/// or a bang starts, so a statement has as many copies as it has dots and
-/// bangs at the most, within what the reader lets it copy.
-fn with_copies(text: &str, tokens: &[Token]) -> usize {
+/// The bytes that the object of a `With` block may add to the line of a
+/// statement of `text` and `tokens`. The reader copies the object into the
+/// chain that a dot or a bang starts, so a statement has as many copies as it
+/// has dots and bangs at the most, within what the reader lets it copy.
+fn with_object_bytes(text: &str, tokens: &[Token]) -> usize {
     let dots = (tokens.iter())
         .filter(|token| matches!(token.kind, TokenKind::Dot | TokenKind::Bang))
         .count();
-    let allowed = (text.len().saturating_mul(WITH_COPIES)).saturating_add(WITH_ALLOWANCE);
+    let allowed = (text.len().saturating_mul(WITH_TEXT_COPIES)).saturating_add(WITH_ALLOWANCE);
     dots.saturating_mul(OBJECT_BYTES).min(allowed)
 }
 
@@ -160,9 +161,9 @@ fn with_copies(text: &str, tokens: &[Token]) -> usize {
 /// is refused without being read.
 fn ceiling(text: &str, tokens: &[Token]) -> usize {
     size_of::<CodeLine>()
-        .saturating_add(text.len().saturating_mul(COPIES))
+        .saturating_add(text.len().saturating_mul(TEXT_COPIES))
         .saturating_add(tokens.len().saturating_mul(FACTS_PER_TOKEN))
-        .saturating_add(with_copies(text, tokens))
+        .saturating_add(with_object_bytes(text, tokens))
 }
 
 /// What `line` takes in memory, near enough: the line itself, its texts, and
@@ -217,9 +218,10 @@ pub(super) struct Adapted {
 }
 
 impl Adapted {
-    /// A module that was not read: no source, or too many lines to read. It is
-    /// listed all the same, so that the modules of the engine are those of the
-    /// report, in the same order.
+    /// A module that was not read, whatever the cause: no source, too many lines
+    /// or procedures, or more code than the room of the file holds. It is listed
+    /// all the same, so that the modules of the engine are those of the report,
+    /// in the same order.
     pub(super) fn unread(name: &str, module_type: ModuleType) -> Self {
         Self {
             input: module_input(name, module_type),
@@ -351,8 +353,8 @@ fn read_module(
     })
 }
 
-/// The lines of `range`. None when the range leaves the lines, which the parser
-/// does not give.
+/// The lines of `range`. No line when the range leaves the lines, which the
+/// parser does not give.
 fn slice<'a>(lines: &'a [LogicalLine], range: &Range<usize>) -> &'a [LogicalLine] {
     lines.get(range.clone()).unwrap_or_default()
 }
@@ -957,8 +959,8 @@ mod tests {
 
     #[test]
     fn a_statement_is_refused_when_it_may_not_fit_though_it_would() {
-        // A thousand numbers have no fact: the line takes 8 kB. They are 2,000
-        // tokens, which could have been names, so the line may take 340 kB.
+        // A thousand numbers have no fact: the line takes 8 kB. They are 2,001
+        // tokens, which could have been names, so the line may take 292 kB.
         let numbers = vec!["1"; 1_000].join(" + ");
         let text = format!("Sub Run()\n    x = {numbers}\nEnd Sub\n");
 
@@ -1041,7 +1043,7 @@ mod tests {
         // The copies take more than the text and the tokens of the statement
         // allow, and the ceiling has room for them.
         let without =
-            size_of::<CodeLine>() + COPIES * last.raw.len() + tokens.len() * FACTS_PER_TOKEN;
+            size_of::<CodeLine>() + TEXT_COPIES * last.raw.len() + tokens.len() * FACTS_PER_TOKEN;
         assert!(weight > without, "{weight} <= {without}");
         let ceiling = ceiling(&last.raw, &tokens);
         assert!(weight <= ceiling, "{weight} > {ceiling}");
@@ -1049,16 +1051,16 @@ mod tests {
 
     #[test]
     fn the_object_of_a_block_is_copied_at_a_dot_or_a_bang_only() {
-        let copies = |text: &str| with_copies(text, &tokenize(text));
+        let added = |text: &str| with_object_bytes(text, &tokenize(text));
 
-        assert_eq!(copies("x = Chr(65) & \"x\""), 0);
-        assert_eq!(copies(".A = 1"), OBJECT_BYTES);
-        assert_eq!(copies("!A = 1"), OBJECT_BYTES);
+        assert_eq!(added("x = Chr(65) & \"x\""), 0);
+        assert_eq!(added(".A = 1"), OBJECT_BYTES);
+        assert_eq!(added("!A = 1"), OBJECT_BYTES);
         // A long text with a single dot, a long string say, is copied into once.
         let long = format!("x = \"{}\" & .A", "a".repeat(1 << 20));
-        assert_eq!(copies(&long), OBJECT_BYTES);
+        assert_eq!(added(&long), OBJECT_BYTES);
         // And a text full of dots is copied into as much as the reader allows.
         let many = ".A ".repeat(10_000);
-        assert_eq!(copies(&many), WITH_COPIES * many.len() + WITH_ALLOWANCE);
+        assert_eq!(added(&many), WITH_TEXT_COPIES * many.len() + WITH_ALLOWANCE);
     }
 }

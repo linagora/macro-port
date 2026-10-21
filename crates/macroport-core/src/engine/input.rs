@@ -143,8 +143,9 @@ pub struct CodeLine {
     pub line: u32,
     /// The statement as written, comment and string literals intact, its
     /// continuation markers removed and its physical lines joined by one
-    /// space. Read by `regex` with `text: raw`, and quoted by the hits found
-    /// in the statement.
+    /// space. The comment comes back after an apostrophe, whatever marked it:
+    /// the parser does not keep whether `Rem` did. Read by `regex` with `text:
+    /// raw`, and quoted by the hits found in the statement.
     pub raw: String,
     /// `raw` for `regex` with `text: code`: each string literal replaced by
     /// `""` and the comment removed. The empty literal stays, so that
