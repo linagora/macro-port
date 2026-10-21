@@ -144,6 +144,12 @@ impl Procedure {
     pub fn is_recovered(&self) -> bool {
         !self.recoveries.is_empty()
     }
+
+    /// Whether the other modules can call the procedure: it is `Public`, or
+    /// the header says no visibility, which means the same.
+    pub fn is_public(&self) -> bool {
+        matches!(self.visibility, Visibility::Public | Visibility::Default)
+    }
 }
 
 /// What the parser makes of a module.
