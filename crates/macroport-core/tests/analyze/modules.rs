@@ -374,8 +374,105 @@ fn the_fields_that_later_stages_fill_are_left_out_not_made_up() {
     assert_eq!(hello.traits, None);
     assert_eq!(hello.primary_family, "unclassified");
     assert!(hello.families.is_empty() && hello.signals.is_empty());
-    assert_eq!(module(&file).declarations, None);
     assert_eq!(file.traits, None);
+}
+
+/// A module that declares, outside any procedure, three `Declare` statements
+/// (two forms of one routine, under `#If VBA7`, and another), two `WithEvents`
+/// variables and both options. A `Declare` in a procedure is not a declaration.
+const DECLARING: &str = "\
+Option Explicit
+Option VBASupport 1
+#If VBA7 Then
+Private Declare PtrSafe Function GetTickCount Lib \"kernel32\" () As Long
+#Else
+Private Declare Function GetTickCount Lib \"kernel32\" () As Long
+#End If
+Public Declare PtrSafe Sub Sleep Lib \"kernel32\" (ByVal ms As Long)
+Private WithEvents App As Application
+Public WithEvents Button As MSForms.CommandButton
+Dim Total As Long
+
+Sub Run()
+    Declare Sub Inside Lib \"kernel32\" ()
+End Sub
+";
+
+fn declarations(module: &ModuleReport) -> (Option<u32>, Option<u32>, Option<bool>, Option<bool>) {
+    let declarations = module.declarations.as_ref().expect("the declarations");
+    (
+        declarations.declare_count,
+        declarations.with_events_count,
+        declarations.option_explicit,
+        declarations.option_vba_support,
+    )
+}
+
+#[test]
+fn a_module_reports_the_declarations_outside_its_procedures() {
+    let file = report_of(DECLARING);
+
+    let module = module(&file);
+    assert_eq!(
+        declarations(module),
+        (Some(3), Some(2), Some(true), Some(true))
+    );
+    // The metric of the module is the same count of `Declare` statements.
+    assert_eq!(module.metrics.declare_count, Some(3));
+}
+
+#[test]
+fn a_module_without_declarations_says_so_and_does_not_leave_them_out() {
+    let file = report_of("Sub Run()\nEnd Sub\n");
+
+    let module = module(&file);
+    assert_eq!(
+        declarations(module),
+        (Some(0), Some(0), Some(false), Some(false))
+    );
+    assert_eq!(module.metrics.declare_count, Some(0));
+}
+
+#[test]
+fn the_declare_count_of_a_file_sums_those_of_its_modules() {
+    let file = report_of_modules(vec![
+        source("Api", ModuleType::Standard, DECLARING),
+        source("Hello", ModuleType::Standard, HELLO),
+        source(
+            "Other",
+            ModuleType::Standard,
+            "Declare Sub Beep Lib \"user32\" ()\n",
+        ),
+    ]);
+
+    let counts: Vec<_> = (modules(&file).iter())
+        .map(|module| module.metrics.declare_count)
+        .collect();
+    assert_eq!(counts, [Some(3), Some(0), Some(1)]);
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.declare_count, Some(4));
+}
+
+#[test]
+fn a_module_that_was_not_read_has_no_declarations() {
+    let big = "a\n".repeat(MAX_LINES as usize + 1);
+
+    let file = report_of_modules(vec![
+        source("Big", ModuleType::Standard, &big),
+        source("Small", ModuleType::Standard, HELLO),
+    ]);
+
+    let [big, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert_eq!(
+        (&big.declarations, big.metrics.declare_count),
+        (&None, None)
+    );
+    assert_eq!(
+        declarations(small),
+        (Some(0), Some(0), Some(true), Some(false))
+    );
 }
 
 #[test]

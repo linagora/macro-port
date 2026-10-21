@@ -17,11 +17,13 @@
 //! status.
 //!
 //! Only what the parser shows is filled so far: the spans and the sizes of the
-//! procedures, and the trait that the recoveries of the parser give. The other
-//! fields are left out until the stages that measure them run, since a missing
-//! value is not a zero. The exceptions are three fields of a procedure that the
-//! schema requires and that only the rule engine can decide: until it runs,
-//! `primary_family` is `unclassified`, and `families` and `signals` are empty.
+//! procedures, the declarations of the modules (and the count of their `Declare`
+//! statements, a metric), and the trait that the recoveries of the parser give.
+//! The other fields are left out until the stages that measure them run, since a
+//! missing value is not a zero. The exceptions are three fields of a procedure
+//! that the schema requires and that only the rule engine can decide: until it
+//! runs, `primary_family` is `unclassified`, and `families` and `signals` are
+//! empty.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -29,11 +31,13 @@ mod text;
 
 use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
-    FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status, VbaProject,
+    Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
+    VbaProject,
 };
 use crate::rules::{ModuleType, RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    LogicalKind, LogicalLine, ParsedModule, Procedure, SourceLines, VbaError, parse, split_lines,
+    Declaration, DeclarationKind, LogicalKind, LogicalLine, OptionKind, ParsedModule, Procedure,
+    SourceLines, VbaError, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -142,18 +146,21 @@ impl Front {
     }
 
     /// Puts what `analysis` shows of a module into its report: the sizes of the
-    /// module and its procedures with their spans.
+    /// module and its procedures with their spans, and its declarations.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
         let lines = &analysis.lines;
         module.procedures = (analysis.module.procedures.iter())
             .map(|procedure| procedure_report(procedure, lines, &self.recovery_traits))
             .collect();
+        let declarations = declarations_report(&analysis.module.declarations);
         module.metrics = Metrics {
             loc: lines.physical_lines,
             logical_loc: logical_lines(&lines.logical),
             procedures: Some(count(module.procedures.len())),
+            declare_count: declarations.declare_count,
             ..Metrics::default()
         };
+        module.declarations = Some(declarations);
         self.recovered |= analysis.module.is_recovered();
     }
 
@@ -257,6 +264,31 @@ fn procedure_report(
     }
 }
 
+/// What the declarations outside the procedures of a module say: how many
+/// `Declare` statements and `WithEvents` variables, and whether `Option
+/// Explicit` and `Option VBASupport` are set. A routine that `#If VBA7` declares
+/// in two forms counts twice, as its statements do. The conditional
+/// compilation is not evaluated.
+fn declarations_report(declarations: &[Declaration]) -> Declarations {
+    let (mut declares, mut with_events) = (0u32, 0u32);
+    let (mut explicit, mut vba_support) = (false, false);
+    for declaration in declarations {
+        match &declaration.kind {
+            DeclarationKind::Declare { .. } => declares = declares.saturating_add(1),
+            DeclarationKind::WithEvents { .. } => with_events = with_events.saturating_add(1),
+            DeclarationKind::Option(OptionKind::Explicit) => explicit = true,
+            DeclarationKind::Option(OptionKind::VbaSupport) => vba_support = true,
+            _ => {}
+        }
+    }
+    Declarations {
+        declare_count: Some(declares),
+        with_events_count: Some(with_events),
+        option_explicit: Some(explicit),
+        option_vba_support: Some(vba_support),
+    }
+}
+
 /// The metrics of a procedure.
 fn procedure_metrics(procedure: &Procedure, lines: &SourceLines) -> Metrics {
     let code = (lines.logical.get(procedure.lines.clone())).unwrap_or_default();
@@ -282,15 +314,17 @@ fn count(len: usize) -> u32 {
 /// The metrics of a file: the sizes of its modules summed.
 fn file_metrics(project: &VbaProject) -> Metrics {
     let mut metrics = Metrics::default();
-    let (mut procedures, mut forms) = (0u32, 0u32);
+    let (mut procedures, mut forms, mut declares) = (0u32, 0u32, 0u32);
     for module in &project.modules {
         metrics.loc = metrics.loc.saturating_add(module.metrics.loc);
         metrics.logical_loc = (metrics.logical_loc).saturating_add(module.metrics.logical_loc);
         procedures = procedures.saturating_add(count(module.procedures.len()));
         forms = forms.saturating_add(u32::from(module.module_type == ModuleType::Form));
+        declares = declares.saturating_add(module.metrics.declare_count.unwrap_or(0));
     }
     metrics.procedures = Some(procedures);
     metrics.forms = Some(forms);
+    metrics.declare_count = Some(declares);
     metrics
 }
 
