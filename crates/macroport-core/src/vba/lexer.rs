@@ -444,7 +444,8 @@ fn starts_operand(c: char) -> bool {
 /// name or a number: 0 or 1. `$`, `%` and `@` always are one. The others are
 /// not when what follows takes them for something else: `!` before a name
 /// reaches a member (`rs!Name`), `&` before an operand joins strings (`a&b`),
-/// and `#` before a digit opens a file number (`Print#1`).
+/// and `#` before a digit or a name opens a file number (`Print#1`,
+/// `Print#fn`).
 fn type_character_len(tail: &str) -> usize {
     let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
@@ -453,7 +454,7 @@ fn type_character_len(tail: &str) -> usize {
     let is_type_character = match c {
         '!' => !next.is_some_and(|n| is_ident_start(n) || n == '[' || n == '_'),
         '&' => !next.is_some_and(starts_operand),
-        '#' => !next.is_some_and(|n| n.is_ascii_digit()),
+        '#' => !next.is_some_and(|n| n.is_ascii_digit() || is_ident_start(n)),
         _ => TYPE_CHARACTERS.contains(&c),
     };
     usize::from(is_type_character)

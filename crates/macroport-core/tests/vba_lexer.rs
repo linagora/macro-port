@@ -429,6 +429,10 @@ fn a_hash_before_a_file_number_or_a_directive_is_no_date() {
             "Identifier[Close] Hash[#] Identifier[fileNumber]",
         ),
         (
+            "Print#fn, x",
+            "Identifier[Print] Hash[#] Identifier[fn] Comma[,] Identifier[x]",
+        ),
+        (
             "Print #1, #1/1/2000#",
             "Identifier[Print] Hash[#] Number[1] Comma[,] Date[#1/1/2000#]",
         ),
