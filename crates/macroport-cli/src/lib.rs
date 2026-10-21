@@ -8,5 +8,6 @@ pub mod args;
 pub mod clock;
 pub mod i18n;
 pub mod render;
+pub mod reports;
 pub mod scan;
 mod wire;

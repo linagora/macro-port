@@ -63,6 +63,17 @@ fn read_report(out: &Path) -> Report {
     serde_json::from_str(&report_json(out)).expect("report.json is a report")
 }
 
+/// The names of the files in `out`, in order.
+fn written(out: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(out)
+        .expect("the output directory exists")
+        .map(|entry| entry.expect("an entry").file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
 #[test]
 fn scan_writes_the_report_of_the_files_under_a_directory() {
     let out = scratch("scan_writes").join("reports/nested");
@@ -72,6 +83,8 @@ fn scan_writes_the_report_of_the_files_under_a_directory() {
         "corpus/families/01-mise-en-forme/",
         "-o",
         as_arg(&out),
+        "--format",
+        "json",
     ]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
@@ -91,12 +104,9 @@ fn scan_writes_the_report_of_the_files_under_a_directory() {
     );
     assert_eq!(report.tool.build, Some(Build::Cli));
     assert!(!report.redacted);
-    // Only the report is written: no other file, no temporary file.
-    let written: Vec<_> = fs::read_dir(&out)
-        .expect("the output directory exists")
-        .map(|entry| entry.expect("an entry").file_name())
-        .collect();
-    assert_eq!(written, ["report.json"]);
+    // Only the report that was asked for is written: no other file, no
+    // temporary file.
+    assert_eq!(written(&out), ["report.json"]);
 }
 
 #[test]
@@ -153,7 +163,7 @@ fn a_deterministic_scan_gives_the_same_bytes_whatever_the_number_of_jobs() {
     let base = scratch("scan_deterministic");
     // The text samples, and the malformed files: every kind of outcome.
     let inputs = ["corpus/families", "corpus/fixtures/malformed"];
-    let mut reports = Vec::new();
+    let mut runs = Vec::new();
 
     for (n, jobs) in ["1", "2", "4", "8", "8"].into_iter().enumerate() {
         let out = base.join(format!("run-{n}"));
@@ -165,13 +175,22 @@ fn a_deterministic_scan_gives_the_same_bytes_whatever_the_number_of_jobs() {
             matches!(output.status.code(), Some(0 | 1)),
             "{jobs} jobs: {output:?}"
         );
-        reports.push(report_json(&out));
+        // Every report that is written, not only the JSON one.
+        let files: Vec<(String, Vec<u8>)> = written(&out)
+            .into_iter()
+            .map(|name| {
+                let bytes = fs::read(out.join(&name)).expect("a report can be read");
+                (name, bytes)
+            })
+            .collect();
+        runs.push(files);
     }
 
-    for pair in reports.windows(2) {
+    for pair in runs.windows(2) {
         assert!(pair[0] == pair[1], "two runs differ");
     }
-    let value: Value = serde_json::from_str(&reports[0]).expect("report.json is JSON");
+    let json = report_json(&base.join("run-0"));
+    let value: Value = serde_json::from_str(&json).expect("report.json is JSON");
     assert_eq!(value["generated_at"], EPOCH);
     assert!(value["scan"].get("duration_ms").is_none());
 }
@@ -365,4 +384,148 @@ fn a_console_that_is_gone_does_not_stop_the_scan() {
 
     assert_eq!(status.code(), Some(0));
     assert_eq!(read_report(&dir.join("out")).files.len(), 30);
+}
+
+/// Every file that `scan` writes when it is asked for every format.
+const EVERY_REPORT: [&str; 5] = [
+    "files.csv",
+    "procedures.csv",
+    "report.html",
+    "report.json",
+    "signals.csv",
+];
+
+/// The UTF-8 byte order mark that makes Excel read a CSV file as UTF-8.
+const BYTE_ORDER_MARK: &[u8] = b"\xEF\xBB\xBF";
+
+#[test]
+fn scan_writes_every_report_when_no_format_is_given() {
+    let dir = scratch("scan_every_format");
+    put(&dir, "m.bas", MODULE);
+
+    let output = run_in(&dir, &["scan", "m.bas", "-o", "out"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let out = dir.join("out");
+    assert_eq!(written(&out), EVERY_REPORT);
+    read_report(&out);
+    let html = fs::read_to_string(out.join("report.html")).expect("report.html is UTF-8");
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("<html lang=\"en\">"));
+    for (name, header) in [
+        ("files.csv", "path,container,status,"),
+        ("procedures.csv", "path,module,procedure,"),
+        ("signals.csv", "path,module,procedure,signal_id,"),
+    ] {
+        let csv = fs::read(out.join(name)).expect("a CSV report can be read");
+        assert!(csv.starts_with(BYTE_ORDER_MARK), "{name}");
+        let text = String::from_utf8_lossy(&csv[BYTE_ORDER_MARK.len()..]).into_owned();
+        assert!(text.starts_with(header), "{name}: {text}");
+    }
+}
+
+#[test]
+fn scan_writes_only_the_formats_it_is_asked_for() {
+    let dir = scratch("scan_formats");
+    put(&dir, "m.bas", MODULE);
+    let cases: [(&str, &[&str]); 5] = [
+        ("json", &["report.json"]),
+        ("html", &["report.html"]),
+        ("csv", &["files.csv", "procedures.csv", "signals.csv"]),
+        (
+            "csv,json",
+            &["files.csv", "procedures.csv", "report.json", "signals.csv"],
+        ),
+        // A format that is named twice is written once.
+        ("html,html", &["report.html"]),
+    ];
+
+    for (n, (format, expected)) in cases.into_iter().enumerate() {
+        let out = format!("out-{n}");
+
+        let output = run_in(&dir, &["scan", "m.bas", "-o", &out, "--format", format]);
+
+        assert_eq!(output.status.code(), Some(0), "{format}: {output:?}");
+        assert_eq!(written(&dir.join(&out)), expected, "{format}");
+    }
+}
+
+#[test]
+fn the_html_report_follows_the_language() {
+    let dir = scratch("scan_html_lang");
+    put(&dir, "m.bas", MODULE);
+
+    let output = run_in(
+        &dir,
+        &[
+            "scan", "m.bas", "-o", "out", "--format", "html", "--lang", "fr",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let html = fs::read_to_string(dir.join("out/report.html")).expect("report.html is UTF-8");
+    assert!(html.contains("<html lang=\"fr\">"));
+}
+
+#[test]
+fn scan_exits_with_2_on_an_unknown_format_and_writes_nothing() {
+    let dir = scratch("scan_unknown_format");
+    put(&dir, "m.bas", MODULE);
+
+    let output = run_in(
+        &dir,
+        &["scan", "m.bas", "-o", "out", "--format", "json,xml"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(!dir.join("out").exists());
+}
+
+#[test]
+fn the_corpus_is_scanned_into_every_report() {
+    let out = scratch("scan_corpus").join("out");
+
+    let output = run(&[
+        "scan",
+        "corpus/",
+        "-o",
+        as_arg(&out),
+        "--format",
+        "json,html,csv",
+    ]);
+
+    // SPEC M4 and A6: 0, or 1 when some of the files failed.
+    let report = read_report(&out);
+    let expected_code = i32::from(report.scan.files_failed > 0);
+    assert_eq!(output.status.code(), Some(expected_code), "{output:?}");
+    assert_eq!(written(&out), EVERY_REPORT);
+    let expected = corpus::files("", &EXTENSIONS).len();
+    assert_eq!(usize::try_from(report.scan.files_total), Ok(expected));
+    // A row for each file, and the header: no cell of these files has a line break.
+    let csv = fs::read_to_string(out.join("files.csv")).expect("files.csv is UTF-8");
+    assert_eq!(
+        csv.lines().count(),
+        usize::try_from(report.scan.files_total).expect("a small count") + 1
+    );
+}
+
+/// A6 takes the malformed fixtures to end the scan with code 1. Until
+/// `analyze()` reads the containers (ticket #36), it reports each file as
+/// unsupported, none as corrupted, so the scan ends with 0.
+#[test]
+#[ignore = "needs analyze() to read the containers (ticket #36)"]
+fn the_malformed_fixtures_end_the_scan_of_the_corpus_with_code_1() {
+    let out = scratch("scan_corpus_malformed").join("out");
+
+    let output = run(&[
+        "scan",
+        "corpus/",
+        "-o",
+        as_arg(&out),
+        "--format",
+        "json,html,csv",
+    ]);
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(read_report(&out).scan.files_failed > 0);
 }

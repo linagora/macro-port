@@ -38,6 +38,22 @@ impl From<LangArg> for Lang {
     }
 }
 
+/// A kind of report that `scan` writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Format {
+    /// `report.json`, the fleet report that the schema describes.
+    Json,
+    /// `report.html`, one page that holds its data and its style.
+    Html,
+    /// `files.csv`, `procedures.csv` and `signals.csv`, for a spreadsheet.
+    Csv,
+}
+
+impl Format {
+    /// Every format, the default of `--format`.
+    pub const ALL: [Self; 3] = [Self::Json, Self::Html, Self::Csv];
+}
+
 /// How a command analyses the files it is given.
 #[derive(Debug, Clone, Args)]
 pub struct AnalysisArgs {
