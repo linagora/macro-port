@@ -49,23 +49,15 @@ pub enum Format {
     Csv,
 }
 
-/// A kind of report that `file` prints: one document, so no CSV.
+/// A kind of report that `file` prints on stdout: one document, so no CSV,
+/// which is three files.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
-pub enum FileFormat {
+pub enum PrintFormat {
     /// The report that the schema describes, for the one file.
     #[default]
     Json,
     /// One page that holds its data and its style.
     Html,
-}
-
-impl From<FileFormat> for Format {
-    fn from(format: FileFormat) -> Self {
-        match format {
-            FileFormat::Json => Self::Json,
-            FileFormat::Html => Self::Html,
-        }
-    }
 }
 
 /// How a command analyses the files it is given.
@@ -111,20 +103,29 @@ impl AnalysisArgs {
 
 /// A path that exists and is a file or a directory.
 pub fn existing_path(value: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(value);
-    match fs::metadata(&path) {
-        Ok(metadata) if metadata.is_file() || metadata.is_dir() => Ok(path),
-        Ok(_) => Err("neither a file nor a directory".to_owned()),
-        Err(error) => Err(error.to_string()),
-    }
+    existing(
+        value,
+        |metadata| metadata.is_file() || metadata.is_dir(),
+        "neither a file nor a directory",
+    )
 }
 
 /// A path that exists and is a file.
 pub fn existing_file(value: &str) -> Result<PathBuf, String> {
+    existing(value, fs::Metadata::is_file, "not a file")
+}
+
+/// `value` as a path that exists and that `accepts`, else why not: the error of
+/// the system, or `otherwise`.
+fn existing(
+    value: &str,
+    accepts: fn(&fs::Metadata) -> bool,
+    otherwise: &str,
+) -> Result<PathBuf, String> {
     let path = PathBuf::from(value);
     match fs::metadata(&path) {
-        Ok(metadata) if metadata.is_file() => Ok(path),
-        Ok(_) => Err("not a file".to_owned()),
+        Ok(metadata) if accepts(&metadata) => Ok(path),
+        Ok(_) => Err(otherwise.to_owned()),
         Err(error) => Err(error.to_string()),
     }
 }
