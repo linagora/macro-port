@@ -242,7 +242,33 @@ fn stops_at_the_chunk_that_crosses_the_limit() {
     }
     let error = decompress(&container, 1000).unwrap_err();
     assert_eq!(error.code, "ovba.decompress.too_large");
+    // The 14th chunk crosses the limit, and has been decompressed.
+    assert_eq!(error.produced, 14 * 73);
     assert_eq!(decompress(&container, 7300).unwrap().len(), 7300);
+}
+
+#[test]
+fn an_error_says_how_many_bytes_were_decompressed_before_it() {
+    // Two chunks of 73 bytes, then a chunk header without a signature.
+    let mut container = vec![0x01];
+    container.extend(hex("03 B0 02 61 45 00").repeat(2));
+    container.extend([0x00, 0x00]);
+    let error = decompress(&container, usize::MAX).unwrap_err();
+    assert_eq!(error.code, "ovba.decompress.bad_chunk");
+    assert_eq!(error.produced, 2 * 73);
+
+    // Nothing was decompressed before an empty input, a wrong signature byte
+    // and a chunk header cut short.
+    let nothing: [&[u8]; 3] = [&[], &[0x02], &[0x01, 0x19]];
+    for input in nothing {
+        assert_eq!(decompress(input, usize::MAX).unwrap_err().produced, 0);
+    }
+
+    // The bytes of the chunk that breaks count too: a literal and a copy of 4096
+    // bytes, which is one too many for a chunk.
+    let error = decompress(&hex("01 03 B0 02 61 FD 0F"), usize::MAX).unwrap_err();
+    assert_eq!(error.code, "ovba.decompress.bad_chunk");
+    assert_eq!(error.produced, 4097);
 }
 
 #[test]
