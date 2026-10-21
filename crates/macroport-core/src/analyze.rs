@@ -350,6 +350,9 @@ impl Reading {
             traits: None,
             orientation: Orientation,
             workbook_encrypted: self.workbook_encrypted,
+            // The only note of the SPEC, `encrypted_default_password_possible`, takes a
+            // check of the password of an encrypted package that Lot 1 does not make
+            // (see `CfbFile::is_encrypted_package`).
             notes: None,
         };
         Extraction {

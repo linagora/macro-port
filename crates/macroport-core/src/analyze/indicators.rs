@@ -21,9 +21,8 @@ pub(super) const SUSPICIOUS_ARCHIVE: &str = "sec.suspicious-archive";
 pub(super) const SOURCE_MISSING: &str = "sec.source-missing";
 
 /// The signals of the indicators among `raised`, in the order of the rules and
-/// once each. An indicator that the rules do not list is ignored, which is how
-/// a rules file switches it off. They are signals of the file: no module, no
-/// evidence.
+/// once each. An indicator that the rules do not list has no severity, so it
+/// makes no signal. They are signals of the file: no module, no evidence.
 pub(super) fn signals(rules: &RuleSet, raised: &[&str]) -> Vec<Signal> {
     (rules.security.container_indicators.iter())
         .filter(|indicator| raised.contains(&indicator.id.as_str()))

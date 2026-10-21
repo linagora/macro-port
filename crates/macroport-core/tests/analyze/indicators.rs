@@ -98,7 +98,7 @@ fn the_files_that_cannot_be_read_for_another_reason_raise_nothing() {
 }
 
 #[test]
-fn the_rules_give_the_severity_of_a_signal_and_can_switch_it_off() {
+fn the_rules_give_the_severity_of_a_signal_and_an_unlisted_indicator_makes_none() {
     let bytes = corpus::read("fixtures/generated/xlm-01-macrosheet.xlsm");
     let mut rules = RULES.clone();
     for indicator in &mut rules.security.container_indicators {
@@ -114,7 +114,7 @@ fn the_rules_give_the_severity_of_a_signal_and_can_switch_it_off() {
     rules.security.container_indicators.clear();
     let silent = extraction_with(&bytes, "a.xlsm", &Options::new(&rules));
 
-    // The extraction still raises the indicator, and the rules make no signal of it.
+    // The extraction still raises the indicator, and the rules give it no severity.
     assert_eq!(silent.indicators, ["sec.xlm-macrosheet"]);
     assert_eq!(
         (&silent.file.signals, silent.file.max_severity),
