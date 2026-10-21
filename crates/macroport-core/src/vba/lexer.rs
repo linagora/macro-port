@@ -199,7 +199,7 @@ pub struct Token {
     pub end: usize,
 }
 
-/// The type-declaration characters of identifiers.
+/// The type-declaration characters that end an identifier or a number.
 const TYPE_CHARACTERS: [char; 6] = ['$', '%', '&', '!', '#', '@'];
 
 impl Token {
@@ -436,11 +436,10 @@ fn type_character_len(tail: &str) -> usize {
         return 0;
     };
     let is_type_character = match c {
-        '$' | '%' | '@' => true,
         '!' => !next.is_some_and(|n| is_ident_start(n) || n == '[' || n == '_'),
         '&' => !next.is_some_and(starts_operand),
         '#' => !next.is_some_and(|n| n.is_ascii_digit()),
-        _ => false,
+        _ => TYPE_CHARACTERS.contains(&c),
     };
     usize::from(is_type_character)
 }
