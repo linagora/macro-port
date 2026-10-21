@@ -2,36 +2,34 @@
 //! The lexer on hostile text (CLAUDE.md: every input is hostile). The tokens
 //! of a text are capped, whatever its length, and the work grows with the
 //! length and no more: a lookahead that found nothing must not be made again
-//! at the next character. Linear time shows on the clock only, so the limit is
-//! set far above what a single pass takes and far below what a reading of the
-//! rest of the text at every character would take on these sizes. Random text
-//! made of the characters that mean the most keeps its cut too.
-
-// clippy.toml keeps the clock out of the core, not out of its tests.
-#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+//! at the next character. Linear time shows on the clock only, and a limit in
+//! seconds fails on a loaded machine before a slow algorithm does: each check
+//! cuts a text and one a quarter of its length, and compares the two times
+//! (`macroport_testkit::linear`). Random text made of the characters that mean
+//! the most keeps its cut too.
 
 mod vba_lexer_common;
 
-use std::time::{Duration, Instant};
-
 use macroport_core::vba::{MAX_TOKENS, TokenKind, tokenize};
+use macroport_testkit::linear::assert_linear_time;
 use vba_lexer_common::tiling_problem;
 
-/// The length of the hostile texts, unless a test says otherwise.
+/// The length of the hostile texts, in bytes.
 const SIZE: usize = 1 << 18;
 
-/// What cutting one text may take.
-const LIMIT: Duration = Duration::from_secs(5);
+/// Cuts the text that `make` gives for `size` bytes, and the one it gives for a
+/// quarter of `size`, and fails if cutting the first takes much more than four
+/// times as long as cutting the second. Checks that the tokens of the first
+/// tile it.
+fn assert_cut_in_linear_time(what: &str, size: usize, make: impl Fn(usize) -> String) {
+    let tokens = assert_linear_time(what, size, &make, |text| tokenize(text));
+    assert_eq!(tiling_problem(&make(size), &tokens), None, "{what}");
+}
 
-/// Cuts `text`, fails if that takes longer than [`LIMIT`] and checks that the
-/// tokens tile the text.
-fn assert_cut_in_time(text: &str) {
-    let started = Instant::now();
-    let tokens = tokenize(text);
-    let elapsed = started.elapsed();
-    let head: String = text.chars().take(40).collect();
-    assert!(elapsed < LIMIT, "{head:?} took {elapsed:?}");
-    assert_eq!(tiling_problem(text, &tokens), None, "{head:?}");
+/// `fragment` repeated until the text is `size` bytes long, and once more.
+fn repeated(fragment: &str, size: usize) -> String {
+    let copies = size.checked_div(fragment.len()).unwrap_or(1);
+    fragment.repeat(copies.saturating_add(1))
 }
 
 #[test]
@@ -68,12 +66,14 @@ fn a_text_of_exactly_the_limit_is_cut_whole() {
 }
 
 /// Each `[` looks for a `]` in the rest of the text: without the rule that a
-/// search that fails is not made again, 2 MB of them take about a minute.
+/// search that fails is not made again, the time grows with the square of the
+/// length.
 #[test]
 fn opening_brackets_that_nothing_closes_are_cut_in_linear_time() {
     for fragment in ["[", "[a", "[ ", "[[a"] {
-        let copies = (2usize << 20).checked_div(fragment.len()).unwrap_or(1);
-        assert_cut_in_time(&fragment.repeat(copies));
+        assert_cut_in_linear_time(&format!("{fragment:?}"), SIZE, |size| {
+            repeated(fragment, size)
+        });
     }
 }
 
@@ -169,35 +169,38 @@ fn a_repeated_fragment_is_cut_in_linear_time() {
         ";",
     ];
     for fragment in fragments {
-        let copies = SIZE.checked_div(fragment.len()).unwrap_or(1);
-        assert_cut_in_time(&fragment.repeat(copies.saturating_add(1)));
+        assert_cut_in_linear_time(&format!("{fragment:?}"), SIZE, |size| {
+            repeated(fragment, size)
+        });
     }
 }
 
 #[test]
 fn one_very_long_token_is_cut_in_linear_time() {
-    let long =
-        |before: &str, middle: &str, after: &str| format!("{before}{}{after}", middle.repeat(SIZE));
-    let texts = [
-        long("", "a", ""),
-        long("", "1", ""),
-        long("&H", "F", "g"),
-        long("&H", "F", ""),
-        long("&O", "7", "9"),
-        long("\"", "a", ""),
-        long("\"", "a", "\""),
-        long("[", "a", ""),
-        long("[", "a", "]"),
-        long("'", "a", ""),
-        long("If", " ", "x"),
-        long("1.", "5", "e"),
-        long("#", "1", ""),
-        long("#", " ", "x"),
-        long("#", " ", ""),
-        long("x", "#", ""),
+    // What stands before and after the long run of the middle character.
+    let cases = [
+        ("", "a", ""),
+        ("", "1", ""),
+        ("&H", "F", "g"),
+        ("&H", "F", ""),
+        ("&O", "7", "9"),
+        ("\"", "a", ""),
+        ("\"", "a", "\""),
+        ("[", "a", ""),
+        ("[", "a", "]"),
+        ("'", "a", ""),
+        ("If", " ", "x"),
+        ("1.", "5", "e"),
+        ("#", "1", ""),
+        ("#", " ", "x"),
+        ("#", " ", ""),
+        ("x", "#", ""),
     ];
-    for text in &texts {
-        assert_cut_in_time(text);
+    for (before, middle, after) in cases {
+        let what = format!("{before:?} {middle:?} {after:?}");
+        assert_cut_in_linear_time(&what, SIZE, |size| {
+            format!("{before}{}{after}", middle.repeat(size))
+        });
     }
 }
 
@@ -205,7 +208,9 @@ fn one_very_long_token_is_cut_in_linear_time() {
 fn many_keywords_and_hashes_each_followed_by_long_whitespace_are_cut_in_linear_time() {
     for word in ["If", "#"] {
         let piece = format!("{word}{}", " ".repeat(1_000));
-        assert_cut_in_time(&piece.repeat(SIZE.checked_div(piece.len()).unwrap_or(1)));
+        assert_cut_in_linear_time(&format!("{word:?} and spaces"), SIZE, |size| {
+            piece.repeat(size.checked_div(piece.len()).unwrap_or(1))
+        });
     }
 }
 
