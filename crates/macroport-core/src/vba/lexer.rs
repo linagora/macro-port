@@ -118,9 +118,11 @@ fn keyword(word: &str) -> Option<Keyword> {
 /// What a token is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
-    /// A name: `Foo`, `Chr$` with its type character, or `[Sheet 1]`.
+    /// A name: `Foo`, `Chr$` with its type character, or `[Sheet 1]`. A word
+    /// spelled like a keyword is a name after `.` or `!` (`.End`) and before
+    /// `:=` (`Type:=8`).
     Identifier,
-    /// A word that gives the structure of the code.
+    /// A word that gives the structure of the code, in any letter case.
     Keyword(Keyword),
     /// A string literal, quotes included. It runs to the end of the text when
     /// the closing quote is missing, which VBA does not accept:
@@ -140,7 +142,8 @@ pub enum TokenKind {
     Comma,
     /// `;`
     Semicolon,
-    /// `:`, which only a lone colon outside the statement separators leaves.
+    /// `:`. The line splitter cuts the logical lines at the statement
+    /// separators, so a colon only shows in a text that was not cut.
     Colon,
     /// `:=`, which follows the name of a named argument.
     ColonEquals,
@@ -181,7 +184,7 @@ pub enum TokenKind {
     /// [`Token::comment_text`] gives what it says. The parser skips the
     /// token.
     Comment,
-    /// Any other character.
+    /// Any other character, or a `[` that no `]` follows.
     Unknown,
 }
 
@@ -423,10 +426,10 @@ fn starts_operand(c: char) -> bool {
 }
 
 /// Bytes of the type character that opens `tail`, the text that follows a
-/// name or a number: 0 or 1. `$`, `%` and `@` always are one. `!`, `&` and
-/// `#` are when what follows could not be an operand or a file number:
-/// `rs!Name` reaches a member, `a&b` joins strings and `Print#1` opens a file
-/// number.
+/// name or a number: 0 or 1. `$`, `%` and `@` always are one. The others are
+/// not when what follows takes them for something else: `!` before a name
+/// reaches a member (`rs!Name`), `&` before an operand joins strings (`a&b`),
+/// and `#` before a digit opens a file number (`Print#1`).
 fn type_character_len(tail: &str) -> usize {
     let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
