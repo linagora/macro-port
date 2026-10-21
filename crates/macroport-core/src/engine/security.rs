@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The security signals of a file (SPEC M3): where the signals of
-//! `security.yaml` match, and the container indicators that extraction
-//! raised.
+//! `security.yaml` match, the chains that they form in the file, and the
+//! container indicators that extraction raised.
 //!
 //! [`evaluate`] runs the matchers over a [`ProjectInput`] and returns the
 //! signals placed where the report carries them, as [`FileSignals`]: those of
 //! a procedure go to `ProcedureReport::signals`, those of a module to
-//! `ModuleReport::signals`, and those of the file (container indicators and
-//! project scope) to `FileReport::signals`. The `max_severity` of the report
-//! is [`FileSignals::max_severity`].
+//! `ModuleReport::signals`, and those of the file (container indicators,
+//! project scope and chains) to `FileReport::signals`. The `max_severity` of
+//! the report is [`FileSignals::max_severity`].
 //!
 //! Two inputs come from outside the engine. The families of the procedures,
 //! which `requires_family` reads and the family scoring decides, come as
@@ -18,8 +18,12 @@
 //! layer raised, such as `sec.vbaproject-in-xlsx`, and the rules give their
 //! severity.
 
-use std::collections::BTreeMap;
+mod chains;
 
+use std::collections::BTreeMap;
+use std::mem;
+
+use self::chains::chain_signals;
 use super::eval::Evaluator;
 use super::hit::Hit;
 use super::input::{ModuleInput, ProcedureInput, ProjectInput};
@@ -53,9 +57,10 @@ pub struct FileSignals {
     /// One entry for each module of the project, in the same order.
     pub modules: Vec<ModuleSignals>,
     /// The signals of the file: the container indicators, then the signals of
-    /// project scope. The lines of the evidence of a project-scope signal are
-    /// those of its `module`, so there is one signal for each module that has
-    /// hits.
+    /// project scope, then the chains. The lines of the evidence of a
+    /// project-scope signal are those of its `module`, so there is one signal
+    /// for each module that has hits. A chain has no module and cites the first
+    /// line of each signal that makes it hold.
     pub file: Vec<Signal>,
 }
 
@@ -106,6 +111,10 @@ pub struct ModuleSignals {
 /// its procedures does, and a signal of module or project scope is raised for
 /// the modules that have it. At project scope, a hit that belongs to no module
 /// (a reference) needs a procedure of the project to have the family.
+///
+/// A chain holds when every one of its terms does, a term being a signal that
+/// is raised anywhere in the file or a list of terms of which one holds. A
+/// signal that `requires_family` removes does not count.
 pub fn evaluate(
     project: &ProjectInput,
     rules: &Security,
@@ -130,9 +139,16 @@ pub fn evaluate(
                 .collect(),
         });
     }
-    let mut file = indicator_signals(&rules.container_indicators, container_indicators);
-    file.extend(run.project_signals());
-    FileSignals { modules, file }
+    let mut found = FileSignals {
+        modules,
+        file: run.project_signals(),
+    };
+    // A chain names signals only (the rules loader checks it), so the container
+    // indicators join the file after the chains are read.
+    let chains = chain_signals(&rules.chains, &found);
+    let indicators = indicator_signals(&rules.container_indicators, container_indicators);
+    found.file = [indicators, mem::take(&mut found.file), chains].concat();
+    found
 }
 
 /// What the evaluation of a project reads.

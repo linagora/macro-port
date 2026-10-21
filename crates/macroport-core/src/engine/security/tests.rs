@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Tests of the signals of each scope, `requires_family`, the container
-//! indicators and `max_severity`, over rules written for each test.
+//! indicators and `max_severity`, over rules written for each test. The
+//! chains and the samples of the corpus have their own modules, which read the
+//! helpers of this one.
+
+mod chains;
+mod samples;
 
 use super::{MAX_EVIDENCE_PER_SIGNAL, ProcedureFamilies, evaluate};
 use crate::engine::testing::{calls, line, module, procedure, project, project_of, references};
@@ -113,6 +118,20 @@ fn signal_citing(
         procedure: procedure.map(str::to_owned),
         evidence: Some(evidence.iter().map(cite).collect()),
         ..bare(id, Medium)
+    }
+}
+
+/// A chain that holds, of high severity as the chains of these tests are. It
+/// cites the first line of these signals, with no snippet.
+fn chain_signal(id: &str, cited: &[(&str, u32)]) -> Signal {
+    let item = |&(rule_id, line): &(&str, u32)| Evidence {
+        rule_id: rule_id.to_owned(),
+        line,
+        snippet: None,
+    };
+    Signal {
+        evidence: Some(cited.iter().map(item).collect()),
+        ..bare(id, High)
     }
 }
 
