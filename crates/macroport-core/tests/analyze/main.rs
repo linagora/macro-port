@@ -14,6 +14,7 @@
 mod failures;
 mod file_report;
 mod fixtures;
+mod judgments;
 mod modules;
 mod robustness;
 mod support;

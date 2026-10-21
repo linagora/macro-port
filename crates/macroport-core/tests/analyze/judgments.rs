@@ -1,0 +1,233 @@
+// SPDX-License-Identifier: Apache-2.0
+//! What the rule engine decides about the modules of a file, as the report
+//! gives it (SPEC M3): the families, the signals, the traits and the level of
+//! the procedures, of the modules and of the file, and the metrics that the
+//! rules read. The modules come as text, through `analyze_modules`, or from a
+//! workbook, through `analyze`.
+
+use macroport_core::analyze::{Options, analyze, analyze_modules};
+use macroport_core::report::{FileReport, Level, ModuleReport, ProcedureReport};
+use macroport_core::rules::{ModuleType, Severity};
+use macroport_core::vba::{MAX_LINES, ModuleSource};
+use macroport_testkit::corpus;
+
+use crate::support::{RULES, report_problems_of};
+
+const HELLO: &str = "Option Explicit\n\nSub Hello()\n    MsgBox \"hi\"\nEnd Sub\n";
+
+/// A procedure of five logical lines, of which one is a decision.
+const BRANCHING: &str =
+    "Sub Branching()\n    If x Then\n        y = 1\n    End If\n    z = 2\nEnd Sub\n";
+
+fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
+    ModuleSource {
+        name: name.to_owned(),
+        module_type,
+        text: text.to_owned(),
+    }
+}
+
+/// The report of `modules` as a text file, once checked against the schema.
+fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
+    let file = analyze_modules(modules, "Book.bas", &Options::new(&RULES));
+    assert_eq!(report_problems_of(&file), Vec::<String>::new());
+    file
+}
+
+/// The report of `text` as the only module of a file.
+fn report_of(text: &str) -> FileReport {
+    report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
+}
+
+fn modules(file: &FileReport) -> &[ModuleReport] {
+    &file.vba_project.as_ref().expect("a VBA project").modules
+}
+
+/// The first procedure of the first module of a file.
+fn first(file: &FileReport) -> &ProcedureReport {
+    let module = modules(file).first().expect("a module");
+    module.procedures.first().expect("a procedure")
+}
+
+/// The ids of the signals of a procedure.
+fn signal_ids(procedure: &ProcedureReport) -> Vec<&str> {
+    let signals = procedure.signals.iter();
+    signals.map(|signal| signal.signal_id.as_str()).collect()
+}
+
+/// The ids of a list of traits, none if the report does not give one.
+fn trait_ids(traits: &Option<Vec<String>>) -> Option<Vec<&str>> {
+    let ids = traits.as_ref()?;
+    Some(ids.iter().map(String::as_str).collect())
+}
+
+#[test]
+fn a_procedure_that_nothing_flags_is_judged_all_the_same() {
+    let file = report_of(HELLO);
+
+    let hello = first(&file);
+    assert_eq!(hello.primary_family, "unclassified");
+    assert_eq!(hello.secondary_families, Some(Vec::new()));
+    assert!(hello.families.is_empty());
+    assert!(hello.signals.is_empty());
+    // Three logical lines and nothing external.
+    assert_eq!(trait_ids(&hello.traits), Some(vec!["trivial"]));
+    assert_eq!(modules(&file)[0].signals, Some(Vec::new()));
+    assert_eq!(file.signals, Some(Vec::new()));
+    assert_eq!(file.max_severity, None);
+    assert_eq!(file.complexity_level, Some(Level::Low));
+    assert_eq!(file.primary_family.as_deref(), Some("unclassified"));
+}
+
+#[test]
+fn the_auto_exec_procedure_raises_its_signal_and_gives_the_file_its_severity() {
+    let file = report_of("Sub Auto_Open()\n    x = 1\n    y = 2\n    z = 3\nEnd Sub\n");
+
+    let auto_open = first(&file);
+    assert_eq!(signal_ids(auto_open), ["sec.auto-exec"]);
+    let evidence = auto_open.signals[0].evidence.iter().flatten();
+    assert_eq!(evidence.map(|item| item.line).collect::<Vec<_>>(), [1]);
+    assert_eq!(file.max_severity, Some(Severity::Medium));
+    // The signal belongs to the procedure: the file lists its own only.
+    assert_eq!(file.signals, Some(Vec::new()));
+    assert_eq!(trait_ids(&auto_open.traits), Some(Vec::new()));
+}
+
+#[test]
+fn the_event_handler_of_a_document_module_is_an_auto_exec_procedure() {
+    let handler = "Private Sub Workbook_Open()\n    x = 1\nEnd Sub\n";
+
+    let document = report_of_modules(vec![source("ThisWorkbook", ModuleType::Document, handler)]);
+    let standard = report_of(handler);
+
+    assert_eq!(signal_ids(first(&document)), ["sec.auto-exec"]);
+    assert!(signal_ids(first(&standard)).is_empty());
+}
+
+#[test]
+fn a_procedure_is_judged_on_its_own_measures() {
+    let file = report_of(&format!("{BRANCHING}\n{HELLO}"));
+
+    let procedures = &modules(&file)[0].procedures;
+    // Five logical lines, and one that is not: only the second is trivial.
+    assert_eq!(trait_ids(&procedures[0].traits), Some(Vec::new()));
+    assert_eq!(trait_ids(&procedures[1].traits), Some(vec!["trivial"]));
+    assert_eq!(procedures[0].metrics.external_dependencies, Some(0));
+    assert_eq!(procedures[1].metrics.external_dependencies, Some(0));
+}
+
+#[test]
+fn the_aggregates_of_modules_and_file_are_the_highest_and_the_sum_of_their_procedures() {
+    let nested = "Sub Nested()\n    For i = 1 To 3\n        If x Then\n            y = 1\n        End If\n    \
+                  Next\nEnd Sub\n";
+    let file = report_of_modules(vec![
+        source("A", ModuleType::Standard, BRANCHING),
+        source("B", ModuleType::Standard, nested),
+        source("C", ModuleType::Standard, "Option Explicit\n"),
+    ]);
+
+    // One decision in the first procedure, two in the second.
+    let measured: Vec<_> = modules(&file)
+        .iter()
+        .map(|m| {
+            let m = &m.metrics;
+            (m.cyclomatic, m.cyclomatic_total, m.max_nesting)
+        })
+        .collect();
+    assert_eq!(
+        measured,
+        [
+            (Some(2), Some(2), Some(1)),
+            (Some(3), Some(3), Some(2)),
+            (Some(0), Some(0), Some(0))
+        ]
+    );
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.procedures, Some(2));
+    assert_eq!(metrics.cyclomatic, Some(3));
+    assert_eq!(metrics.cyclomatic_total, Some(5));
+    assert_eq!(metrics.max_nesting, Some(2));
+}
+
+#[test]
+fn a_declare_statement_is_a_dependency_and_makes_the_file_high() {
+    let declare = "Private Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
+    let file = report_of(&format!("{declare}{HELLO}"));
+
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.declare_count, Some(1));
+    assert_eq!(metrics.external_dependencies, Some(1));
+    assert_eq!(file.complexity_level, Some(Level::High));
+    // The procedure calls none of the routines that the module declares.
+    assert_eq!(first(&file).metrics.external_dependencies, Some(0));
+}
+
+#[test]
+fn a_form_makes_the_file_medium() {
+    let file = report_of_modules(vec![source("Form1", ModuleType::Form, HELLO)]);
+
+    assert_eq!(file.metrics.as_ref().map(|m| m.forms), Some(Some(1)));
+    assert_eq!(file.complexity_level, Some(Level::Medium));
+}
+
+#[test]
+fn the_modules_after_one_that_was_not_read_get_their_own_findings() {
+    let big = "a\n".repeat(MAX_LINES as usize + 1);
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, "Sub Auto_Open()\nEnd Sub\n"),
+        source("Big", ModuleType::Standard, &big),
+        source("Last", ModuleType::Standard, BRANCHING),
+    ]);
+
+    let modules = modules(&file);
+    // The module that was not read is not judged, and does not shift the others.
+    assert_eq!(signal_ids(&modules[0].procedures[0]), ["sec.auto-exec"]);
+    assert_eq!(modules[0].signals, Some(Vec::new()));
+    assert_eq!(modules[1].signals, None);
+    assert!(modules[1].procedures.is_empty());
+    assert_eq!(modules[1].declarations, None);
+    assert_eq!(modules[2].signals, Some(Vec::new()));
+    let last = &modules[2].procedures[0];
+    assert!(signal_ids(last).is_empty());
+    assert_eq!(trait_ids(&last.traits), Some(Vec::new()));
+    assert_eq!(last.metrics.cyclomatic, Some(2));
+    // The file is judged on what was read.
+    assert_eq!(file.max_severity, Some(Severity::Medium));
+    assert!(file.complexity_level.is_some());
+}
+
+#[test]
+fn a_file_where_no_module_was_read_is_not_judged() {
+    let big = "a\n".repeat(MAX_LINES as usize + 1);
+
+    let file = report_of_modules(vec![source("Big", ModuleType::Standard, &big)]);
+
+    assert_eq!(file.complexity_level, None);
+    assert_eq!(file.primary_family, None);
+    assert_eq!(file.families, None);
+    assert_eq!(file.signals, None);
+    assert_eq!(file.traits, None);
+    assert_eq!(file.max_severity, None);
+}
+
+#[test]
+fn a_workbook_is_judged_like_a_text() {
+    let bytes = corpus::read("fixtures/generated/14-01-auto-open-shell.xlsm");
+
+    let file = analyze(&bytes, "14-01.xlsm", &Options::new(&RULES));
+
+    assert_eq!(report_problems_of(&file), Vec::<String>::new());
+    let procedures = modules(&file).iter().flat_map(|module| &module.procedures);
+    let auto_exec: Vec<_> = procedures
+        .filter(|procedure| signal_ids(procedure).contains(&"sec.auto-exec"))
+        .map(|procedure| procedure.name.as_str())
+        .collect();
+    assert_eq!(auto_exec.len(), 1, "{auto_exec:?}");
+    // The chain with the launch of a program is high once the calls are read.
+    assert!(matches!(
+        file.max_severity,
+        Some(Severity::Medium | Severity::High)
+    ));
+    assert!(file.complexity_level.is_some());
+    assert!(file.primary_family.is_some());
+}

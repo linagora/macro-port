@@ -61,10 +61,16 @@ fn module(file: &FileReport) -> &ModuleReport {
     modules.first().expect("one module")
 }
 
-/// The names of the procedures of `module`, with whether each has a trait.
+/// Whether `traits` has the trait `compile_error_suspected`.
+fn suspected(traits: &Option<Vec<String>>) -> bool {
+    (traits.iter().flatten()).any(|id| id == "compile_error_suspected")
+}
+
+/// The names of the procedures of `module`, with whether each is suspected of
+/// not compiling.
 fn names(module: &ModuleReport) -> Vec<(&str, bool)> {
     (module.procedures.iter())
-        .map(|procedure| (procedure.name.as_str(), procedure.traits.is_some()))
+        .map(|procedure| (procedure.name.as_str(), suspected(&procedure.traits)))
         .collect()
 }
 
@@ -291,9 +297,8 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
 
         assert_eq!(file.status, Status::Ok, "{text:?}");
         let first = &module(&file).procedures[0];
-        let traits = expected.then(|| vec!["compile_error_suspected".to_owned()]);
-        assert_eq!(first.traits, traits, "{text:?}");
-        assert_eq!(file.traits, traits, "{text:?}");
+        assert_eq!(suspected(&first.traits), expected, "{text:?}");
+        assert_eq!(suspected(&file.traits), expected, "{text:?}");
     }
 }
 
@@ -302,10 +307,7 @@ fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
     assert_eq!(names(module(&file)), [("Fine", false), ("Later", false)]);
-    assert_eq!(
-        file.traits,
-        Some(vec!["compile_error_suspected".to_owned()])
-    );
+    assert!(suspected(&file.traits));
 }
 
 #[test]
@@ -330,25 +332,23 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
 
     let file = analyze_modules(modules, "Module1.bas", &Options::new(&rules));
 
-    let expected = Some(vec!["does_not_parse".to_owned()]);
-    assert_eq!(module(&file).procedures[0].traits, expected);
-    assert_eq!(file.traits, expected);
+    let has =
+        |traits: &Option<Vec<String>>| (traits.iter().flatten()).any(|t| t == "does_not_parse");
+    assert!(has(&module(&file).procedures[0].traits));
+    assert!(has(&file.traits));
+    assert!(!suspected(&file.traits));
 }
 
 #[test]
-fn the_fields_that_later_stages_fill_are_left_out_not_made_up() {
+fn the_fields_that_no_stage_fills_yet_are_left_out_not_made_up() {
     let file = report_of(HELLO);
 
     let hello = &module(&file).procedures[0];
     assert_eq!(hello.is_entry_point, None);
+    assert_eq!(hello.is_event_handler, None);
     assert_eq!(hello.possibly_unused, None);
     assert_eq!(hello.calls, None);
     assert_eq!(hello.apis, None);
-    assert_eq!(hello.traits, None);
-    assert_eq!(hello.primary_family, "unclassified");
-    assert!(hello.families.is_empty() && hello.signals.is_empty());
-    assert_eq!(module(&file).declarations, None);
-    assert_eq!(file.traits, None);
 }
 
 #[test]

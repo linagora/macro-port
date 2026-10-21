@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The modules of a file, from their source to their report (SPEC M2).
+//! The modules of a file, from their source to their report (SPEC M2 and M3).
 //!
 //! The front end reads each module on its own, from its text alone. [`Analysis`]
 //! holds what it makes of one: the lines, and the procedures that the parser
-//! finds in them. [`Front`] puts that into the report of the module, and
-//! completes the report of the file once every module is read. Two doors lead
-//! here:
+//! finds in them. [`Front`] puts that into the report of the module, keeps what
+//! the rule engine reads of it, and once every module is read, runs the engine
+//! on the project and completes the report of the file. Two doors lead here:
 //!
 //! - [`finish`] reads the modules that extraction found in a workbook;
 //! - [`analyze_modules`] reads modules that the caller hands over as text.
@@ -17,29 +17,36 @@
 //! sheets or when the encryption of the workbook hides its sheets, and
 //! `no_macros` when none of these holds, the project being described all the
 //! same. A module that cannot be read keeps the report of a module that no stage
-//! measured, and its failure gives the file its status.
+//! measured, and its failure gives the file its status. The rule engine runs as
+//! soon as one module is read, so that what can be read of a file is judged
+//! whatever else went wrong with it.
 //!
-//! Only what the parser shows is filled so far: the spans and the sizes of the
-//! procedures, and the trait that the recoveries of the parser give. The other
-//! fields are left out until the stages that measure them run, since a missing
-//! value is not a zero.
+//! The container indicators that extraction raises are not passed to the engine
+//! yet, and the members, chains, calls and ProgIDs of the statements are not
+//! read, nor are the entry points and the call graph: what depends on them is
+//! left out, since a missing value is not a zero (see [`input`](super::input)).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
 use sha2::{Digest, Sha256};
 
+use super::apply::apply;
+use super::input::{Adapted, Measured, adapt};
+use super::metrics::{count, file_metrics, module_metrics, project_metrics};
 use super::{Extraction, Failure, Options, Project, Reading, hex, readable_status, sha256_hex};
+use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
-    Container, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status, VbaProject,
+    Container, Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport,
+    Status, VbaProject,
 };
-use crate::rules::{ModuleType, RuleSet, StructuralPredicate, TraitRule};
+use crate::rules::{ModuleType, RuleSet};
 use crate::vba::{
-    LogicalKind, LogicalLine, ModuleSource, ParsedModule, Procedure, SourceLines, VbaError, parse,
-    split_lines,
+    DeclarationKind, ModuleSource, OptionKind, ParsedModule, Procedure, SourceLines, VbaError,
+    parse, split_lines,
 };
 
-/// The family of a procedure that no rule has scored: the rule engine (M3)
-/// classifies the procedures, so until it runs none is.
+/// The family of a procedure before the rule engine has scored it, and of the
+/// procedures of a module that it did not run on.
 const UNCLASSIFIED: &str = "unclassified";
 
 /// The most lines that the modules of one file may total, once read.
@@ -65,7 +72,7 @@ pub(super) struct Analysis {
 
 impl Analysis {
     /// Reads `text`. Fails only on a text of too many lines.
-    fn of(text: &str) -> Result<Self, VbaError> {
+    pub(super) fn of(text: &str) -> Result<Self, VbaError> {
         let lines = split_lines(text)?;
         let module = parse(&lines);
         Ok(Self { lines, module })
@@ -85,37 +92,45 @@ impl From<VbaError> for Failure {
 }
 
 /// The front end at work on the modules of one file.
-struct Front {
+struct Front<'r> {
+    /// The rules that the engine applies once the modules are read.
+    rules: &'r RuleSet,
     /// The lines that the modules may still take.
     budget: u32,
-    /// The ids of the traits that the rules give to the predicate
-    /// `parse_recovered`. The parser decides that one, so the procedures and
-    /// the file that have it can be marked before the rule engine runs.
-    recovery_traits: Vec<String>,
-    /// Whether the parser stepped over something in a module read so far.
-    recovered: bool,
+    /// What the rule engine reads of each module met so far, one entry for each,
+    /// in order: the modules of the engine are those of the report.
+    inputs: Vec<ModuleInput>,
+    /// What was measured of each of them, in the same order.
+    measured: Vec<Measured>,
     /// Why modules were not read, in the order they were met.
     failures: Vec<Failure>,
 }
 
-impl Front {
-    fn new(rules: &RuleSet) -> Self {
+impl<'r> Front<'r> {
+    fn new(rules: &'r RuleSet) -> Self {
         Self {
+            rules,
             budget: MAX_FILE_LINES,
-            recovery_traits: recovery_traits(rules),
-            recovered: false,
+            inputs: Vec::new(),
+            measured: Vec::new(),
             failures: Vec::new(),
         }
     }
 
-    /// Reads `text`, the source of `module`, into its report. A module that
-    /// cannot be read keeps the report that extraction gave it, and its failure
-    /// is kept for the file.
-    fn read(&mut self, module: &mut ModuleReport, text: &str) {
-        match self.analyse(text) {
-            Ok(analysis) => self.fill(module, &analysis),
-            Err(error) => (self.failures).push(Failure::from(error).in_module(&module.name)),
-        }
+    /// Reads `text`, the source of `module`, into its report: none for a module
+    /// whose source could not be extracted. A module that cannot be read keeps
+    /// the report that extraction gave it, and its failure is kept for the file.
+    fn read(&mut self, module: &mut ModuleReport, text: Option<&str>) {
+        let adapted = match text.map(|text| self.analyse(text)) {
+            Some(Ok(analysis)) => Self::fill(module, &analysis),
+            Some(Err(error)) => {
+                (self.failures).push(Failure::from(error).in_module(&module.name));
+                Adapted::unread(&module.name, module.module_type)
+            }
+            None => Adapted::unread(&module.name, module.module_type),
+        };
+        self.inputs.push(adapted.input);
+        self.measured.push(adapted.measured);
     }
 
     /// Reads the next module. One that crosses the budget is read whole, and the
@@ -133,25 +148,27 @@ impl Front {
         Ok(analysis)
     }
 
-    /// Puts what `analysis` shows of a module into its report: the sizes of the
-    /// module and its procedures with their spans.
-    fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
-        let lines = &analysis.lines;
-        module.procedures = (analysis.module.procedures.iter())
-            .map(|procedure| procedure_report(procedure, lines, &self.recovery_traits))
+    /// Puts what `analysis` shows of a module into its report: its sizes, its
+    /// declarations, and its procedures with their spans and their sizes. What
+    /// the rule engine decides is left for [`seal`](Self::seal).
+    fn fill(module: &mut ModuleReport, analysis: &Analysis) -> Adapted {
+        let adapted = adapt(&module.name, module.module_type, analysis);
+        let metrics = &adapted.measured.procedures;
+        module.procedures = (analysis.module.procedures.iter().zip(metrics))
+            .map(|(procedure, metrics)| procedure_report(procedure, metrics))
             .collect();
-        module.metrics = Metrics {
-            loc: lines.physical_lines,
-            logical_loc: logical_lines(&lines.logical),
-            procedures: Some(count(module.procedures.len())),
-            ..Metrics::default()
-        };
-        self.recovered |= analysis.module.is_recovered();
+        module.metrics = module_metrics(&analysis.lines, metrics);
+        module.declarations = Some(declarations(&analysis.module));
+        adapted
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file sum those of its modules, the errors of the front end join those
-    /// of the extraction, and the status follows from the procedures.
+    /// the file sum those of its modules, the rule engine decides the families,
+    /// the signals, the traits and the level, the errors of the front end join
+    /// those of the extraction, and the status follows from the procedures.
+    ///
+    /// The engine runs when a module was read, whatever the status of the file:
+    /// a file of which some modules could not be read is judged on the others.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
@@ -159,11 +176,29 @@ impl Front {
     /// has macro sheets or a workbook whose encryption hides them, and
     /// `no_macros` if not.
     fn seal(self, file: &mut FileReport) {
-        if let Some(project) = &file.vba_project {
-            file.metrics = Some(file_metrics(project));
+        let Self {
+            rules,
+            inputs,
+            measured,
+            failures,
+            ..
+        } = self;
+        if let Some(report) = &file.vba_project {
+            let references = report.references.clone().unwrap_or_default();
+            let project = ProjectInput {
+                references,
+                modules: inputs,
+            };
+            let metrics = project_metrics(&project, &measured, file_metrics(report));
+            file.metrics = Some(metrics.file.clone());
+            if measured.iter().any(|module| module.read) {
+                // The indicators of the container are not passed yet.
+                let decided = findings::run(&project, rules, &metrics, &[]);
+                apply(file, decided, metrics, &measured);
+            }
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
-            file.status = match self.failures.first() {
+            file.status = match failures.first() {
                 Some(first) => first.status,
                 None => {
                     let procedures = (file.vba_project.iter())
@@ -173,11 +208,8 @@ impl Front {
                 }
             };
         }
-        if self.recovered && !self.recovery_traits.is_empty() {
-            file.traits = Some(self.recovery_traits);
-        }
         let errors = file.errors.get_or_insert_with(Vec::new);
-        errors.extend(self.failures.into_iter().map(|failure| failure.error));
+        errors.extend(failures.into_iter().map(|failure| failure.error));
     }
 }
 
@@ -187,10 +219,9 @@ pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileRepor
     let Extraction { mut file, sources } = extraction;
     let mut front = Front::new(options.rules);
     if let Some(project) = file.vba_project.as_mut() {
-        for (module, source) in project.modules.iter_mut().zip(&sources) {
-            if let Some(text) = source {
-                front.read(module, text);
-            }
+        for (at, module) in project.modules.iter_mut().enumerate() {
+            let text = sources.get(at).and_then(|source| source.as_deref());
+            front.read(module, text);
         }
     }
     front.seal(&mut file);
@@ -292,27 +323,10 @@ fn text_module(name: &str, module_type: ModuleType, text: &str) -> ModuleReport 
     }
 }
 
-/// The ids of the traits that the rules give to the predicate `parse_recovered`.
-fn recovery_traits(rules: &RuleSet) -> Vec<String> {
-    let recovered = |rule: &TraitRule| {
-        matches!(
-            rule,
-            TraitRule::Structural(StructuralPredicate::ParseRecovered)
-        )
-    };
-    (rules.complexity.traits.iter())
-        .filter(|candidate| recovered(&candidate.rule))
-        .map(|candidate| candidate.id.clone())
-        .collect()
-}
-
-/// The report of a procedure, as far as the structure of the module shows it.
-fn procedure_report(
-    procedure: &Procedure,
-    lines: &SourceLines,
-    recovery_traits: &[String],
-) -> ProcedureReport {
-    let recovered = procedure.is_recovered() && !recovery_traits.is_empty();
+/// The report of a procedure, as far as the structure of the module shows it,
+/// given its `metrics`. The fields that the rule engine decides hold what a
+/// procedure that no rule has scored has, until [`apply`] writes the findings.
+fn procedure_report(procedure: &Procedure, metrics: &Metrics) -> ProcedureReport {
     ProcedureReport {
         name: procedure.name.clone(),
         kind: procedure.kind,
@@ -322,52 +336,37 @@ fn procedure_report(
         possibly_unused: None,
         start_line: procedure.start_line,
         end_line: procedure.end_line,
-        metrics: procedure_metrics(procedure, lines),
+        metrics: metrics.clone(),
         calls: None,
         apis: None,
         primary_family: UNCLASSIFIED.to_owned(),
         secondary_families: None,
         families: Vec::new(),
         signals: Vec::new(),
-        traits: recovered.then(|| recovery_traits.to_vec()),
+        traits: None,
         orientation: Orientation,
     }
 }
 
-/// The metrics of a procedure.
-fn procedure_metrics(procedure: &Procedure, lines: &SourceLines) -> Metrics {
-    let code = (lines.logical.get(procedure.lines.clone())).unwrap_or_default();
-    Metrics {
-        loc: (procedure.end_line.saturating_sub(procedure.start_line)).saturating_add(1),
-        logical_loc: logical_lines(code),
-        parameters: Some(count(procedure.parameter_count)),
-        ..Metrics::default()
+/// The declarations section of the report of a module.
+fn declarations(module: &ParsedModule) -> Declarations {
+    let (mut declares, mut with_events) = (0usize, 0usize);
+    let (mut explicit, mut vba_support) = (false, false);
+    for declaration in &module.declarations {
+        match declaration.kind {
+            DeclarationKind::Declare { .. } => declares = declares.saturating_add(1),
+            DeclarationKind::WithEvents { .. } => with_events = with_events.saturating_add(1),
+            DeclarationKind::Option(OptionKind::Explicit) => explicit = true,
+            DeclarationKind::Option(OptionKind::VbaSupport) => vba_support = true,
+            _ => {}
+        }
     }
-}
-
-/// The number of logical lines that are not comment-only.
-fn logical_lines(lines: &[LogicalLine]) -> u32 {
-    let code = (lines.iter()).filter(|line| line.kind != LogicalKind::CommentOnly);
-    count(code.count())
-}
-
-fn count(len: usize) -> u32 {
-    u32::try_from(len).unwrap_or(u32::MAX)
-}
-
-/// The metrics of a file: the sizes of its modules summed.
-fn file_metrics(project: &VbaProject) -> Metrics {
-    let mut metrics = Metrics::default();
-    let (mut procedures, mut forms) = (0u32, 0u32);
-    for module in &project.modules {
-        metrics.loc = metrics.loc.saturating_add(module.metrics.loc);
-        metrics.logical_loc = (metrics.logical_loc).saturating_add(module.metrics.logical_loc);
-        procedures = procedures.saturating_add(count(module.procedures.len()));
-        forms = forms.saturating_add(u32::from(module.module_type == ModuleType::Form));
+    Declarations {
+        declare_count: Some(count(declares)),
+        with_events_count: Some(count(with_events)),
+        option_explicit: Some(explicit),
+        option_vba_support: Some(vba_support),
     }
-    metrics.procedures = Some(procedures);
-    metrics.forms = Some(forms);
-    metrics
 }
 
 #[cfg(test)]
@@ -375,14 +374,14 @@ mod tests {
     use super::*;
     use crate::rules::RulesSources;
 
-    fn front() -> Front {
-        let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
-        Front::new(&rules)
+    fn rules() -> RuleSet {
+        RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
     }
 
     #[test]
     fn the_lines_of_a_file_are_read_within_a_budget() {
-        let mut front = front();
+        let rules = rules();
+        let mut front = Front::new(&rules);
         front.budget = 10;
         let module = "a\n".repeat(6);
 

@@ -4,10 +4,11 @@
 //! Extraction (SPEC M1) says what kind of file it is, whether it can be read,
 //! and what the modules of its VBA project are, with their source. The front
 //! end (SPEC M2, the `modules` submodule) then reads the source of each module
-//! into procedures and sizes, and the stages after it (M3) fill what is left
-//! empty. [`extract`] runs the extraction alone and also hands back the source
-//! of each module, which the report does not carry. [`analyze_modules`] starts
-//! at the front end, with modules that the caller already has as text.
+//! into procedures and metrics, and the rule engine (M3) scores the project:
+//! the families, the security signals, the traits and the complexity level.
+//! [`extract`] runs the extraction alone and also hands back the source of each
+//! module, which the report does not carry. [`analyze_modules`] starts at the
+//! front end, with modules that the caller already has as text.
 //!
 //! A ZIP archive is read as an OOXML package, and a compound file as a BIFF8
 //! workbook (`.xls`) unless it is an encrypted package, which is not opened.
@@ -41,7 +42,10 @@
 //!
 //! The message of an error about a module starts with `module <name>:`.
 
+mod apply;
 mod detect;
+mod input;
+mod metrics;
 mod modules;
 mod project;
 
@@ -71,9 +75,8 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 /// What the caller decides about an analysis.
 #[derive(Debug, Clone, Copy)]
 pub struct Options<'a> {
-    /// The rules. The front end takes from them the traits that the parser
-    /// decides (`compile_error_suspected`), and the container indicators that
-    /// extraction will raise take their severity from them.
+    /// The rules that the engine applies to the modules once they are read:
+    /// the families, the security signals, the traits and the levels.
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and

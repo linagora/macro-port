@@ -31,3 +31,4 @@ pub use input::{
     ProjectInput,
 };
 pub use matchers::{is_auto_exec, is_event_handler};
+pub(crate) use names::comparable_key;
