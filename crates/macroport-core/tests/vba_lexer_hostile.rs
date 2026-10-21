@@ -25,7 +25,7 @@ const LIMIT: Duration = Duration::from_secs(5);
 
 /// Cuts `text`, fails if that takes longer than [`LIMIT`] and checks that the
 /// tokens tile the text.
-fn cut(text: &str) {
+fn assert_cut_in_time(text: &str) {
     let started = Instant::now();
     let tokens = tokenize(text);
     let elapsed = started.elapsed();
@@ -73,7 +73,7 @@ fn a_text_of_exactly_the_limit_is_cut_whole() {
 fn opening_brackets_that_nothing_closes_are_cut_in_linear_time() {
     for fragment in ["[", "[a", "[ ", "[[a"] {
         let copies = (2usize << 20).checked_div(fragment.len()).unwrap_or(1);
-        cut(&fragment.repeat(copies));
+        assert_cut_in_time(&fragment.repeat(copies));
     }
 }
 
@@ -170,7 +170,7 @@ fn a_repeated_fragment_is_cut_in_linear_time() {
     ];
     for fragment in fragments {
         let copies = SIZE.checked_div(fragment.len()).unwrap_or(1);
-        cut(&fragment.repeat(copies.saturating_add(1)));
+        assert_cut_in_time(&fragment.repeat(copies.saturating_add(1)));
     }
 }
 
@@ -197,7 +197,7 @@ fn one_very_long_token_is_cut_in_linear_time() {
         long("x", "#", ""),
     ];
     for text in &texts {
-        cut(text);
+        assert_cut_in_time(text);
     }
 }
 
@@ -205,7 +205,7 @@ fn one_very_long_token_is_cut_in_linear_time() {
 fn many_keywords_and_hashes_each_followed_by_long_whitespace_are_cut_in_linear_time() {
     for word in ["If", "#"] {
         let piece = format!("{word}{}", " ".repeat(1_000));
-        cut(&piece.repeat(SIZE.checked_div(piece.len()).unwrap_or(1)));
+        assert_cut_in_time(&piece.repeat(SIZE.checked_div(piece.len()).unwrap_or(1)));
     }
 }
 
@@ -312,6 +312,7 @@ fn starts_like(kind: TokenKind, text: &str) -> bool {
 #[test]
 fn random_text_of_the_characters_that_matter_keeps_its_cut() {
     let mut random = Random(0x9e37_79b9_7f4a_7c15);
+    let mut seen: Vec<TokenKind> = Vec::new();
     for _ in 0..5_000 {
         let pieces = random.below(40);
         let text: String = (0..pieces)
@@ -330,6 +331,27 @@ fn random_text_of_the_characters_that_matter_keeps_its_cut() {
             if token.kind == TokenKind::Comment {
                 assert_eq!(token.end, text.len(), "{text:?}");
             }
+            if !seen.contains(&token.kind) {
+                seen.push(token.kind);
+            }
         }
     }
+    // The checks above prove something only if the pieces reach the kinds
+    // they look at.
+    for kind in [
+        TokenKind::Identifier,
+        TokenKind::String,
+        TokenKind::Number,
+        TokenKind::Date,
+        TokenKind::Hash,
+        TokenKind::Comment,
+        TokenKind::Unknown,
+    ] {
+        assert!(seen.contains(&kind), "{kind:?} never came up");
+    }
+    assert!(
+        seen.iter()
+            .any(|kind| matches!(kind, TokenKind::Keyword(_))),
+        "no keyword came up"
+    );
 }
