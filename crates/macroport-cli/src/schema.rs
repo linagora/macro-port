@@ -14,7 +14,7 @@ pub const REPORT_SCHEMA: &str = include_str!("../../../schema/report.schema.json
 
 /// Runs `macro-port schema`: prints the schema on stdout.
 pub fn run() -> ExitCode {
-    command::run(Lang::En, None, |_rules, messages| {
+    command::with_rules(Lang::En, None, |_rules, messages| {
         write_on_stdout(REPORT_SCHEMA.as_bytes()).map_err(|error| {
             messages.text_with("cli-error-print", &[("reason", &error.to_string())])
         })?;

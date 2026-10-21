@@ -15,6 +15,18 @@ cli-error-write = cannot write the file { $path }: { $reason }
 cli-error-print = cannot print on the standard output: { $reason }
 cli-panic = internal error at
 
+## Rules
+##
+## The problems themselves come from the validators and the core, in English;
+## these are the words around them.
+
+cli-rules-file-ok = { $file }: ok
+cli-error-rules-read = cannot read { $path }: { $reason }
+cli-error-rules-schema = the embedded schema of { $file } is invalid: { $reason }
+cli-rules-problem = 1 problem found
+cli-rules-problems = { $count } problems found
+cli-rules-not-checked = (regexes, ids and references are not checked yet)
+
 ## Progress and summary
 
 cli-progress = Files analysed:

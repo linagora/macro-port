@@ -11,10 +11,10 @@ use std::process::Command;
 use macroport_core::report::{Build, Report, Status};
 use macroport_testkit::report_problems;
 use serde_json::Value;
-use support::{as_arg, fixture_rules, put, run_in, scratch, shipped_rules_with_version, text};
-
-/// A module with a procedure, small enough to be analysed at once.
-const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
+use support::{
+    MODULE, as_arg, put, run_in, scratch, shipped_rules_with_version, text, use_fixture,
+    valid_rules,
+};
 
 /// The version of rules that no release ships.
 const OTHER_VERSION: &str = "9.9.9";
@@ -152,7 +152,8 @@ fn file_uses_the_rules_of_the_directory() {
 fn file_stops_with_3_on_rules_that_do_not_pass_the_check() {
     let dir = scratch("file_rules_invalid");
     put(&dir, "m.bas", MODULE);
-    let rules = fixture_rules(&dir, "invalid-regex");
+    let rules = valid_rules(&dir);
+    use_fixture(&rules, "families", "invalid-regex");
 
     let output = run_in(&dir, &["file", "m.bas", "--rules", as_arg(&rules)]);
 

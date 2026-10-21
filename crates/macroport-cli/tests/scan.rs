@@ -10,16 +10,15 @@ use std::path::Path;
 use std::process::Command;
 
 use macroport_cli::scan::EXTENSIONS;
-use macroport_core::report::{Build, Report, Status};
-use macroport_testkit::{corpus, report_problems};
+use macroport_core::report::{Build, Status};
+use macroport_testkit::corpus;
 use serde_json::Value;
-use support::{as_arg, put, repo_root, run, run_in, scratch, text};
+use support::{
+    MODULE, as_arg, put, read_report, repo_root, report_json, run, run_in, scratch, text,
+};
 
 /// The `generated_at` of a deterministic report (SPEC M4).
 const EPOCH: &str = "1970-01-01T00:00:00Z";
-
-/// A module with a procedure, small enough to be analysed at once.
-const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
 
 /// Every file that `scan` writes when it is asked for every format.
 const EVERY_REPORT: [&str; 5] = [
@@ -50,20 +49,6 @@ const CSV_COLUMNS: [(&str, &str); 3] = [
         "path,module,procedure,signal_id,severity,line",
     ),
 ];
-
-/// The text of the `report.json` in `out`, once it has passed the schema: every
-/// JSON that the tests read is validated (ACCEPTANCE A3).
-fn report_json(out: &Path) -> String {
-    let path = out.join("report.json");
-    let json = fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
-    assert_eq!(report_problems(&json), Vec::<String>::new());
-    json
-}
-
-fn read_report(out: &Path) -> Report {
-    serde_json::from_str(&report_json(out)).expect("report.json is a report")
-}
 
 /// The names of the files in `out`, in order.
 fn written(out: &Path) -> Vec<String> {
