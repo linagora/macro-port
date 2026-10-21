@@ -208,16 +208,23 @@ pub struct CallSite {
 /// `auto_exec`, `event_handler` and `long_hex_or_base64_literal` itself.
 ///
 /// A predicate that holds once for the procedure is a `bool`, and its hit
-/// cites the declaration. A predicate that holds at several places lists the
-/// line of each; none means it does not hold.
+/// cites the declaration. A predicate that holds at statements gives the
+/// position of each in `ProcedureInput::lines`, which tells apart the
+/// statements that share a physical line, as in `a = 1: b = Chr(1) & Chr(2) &
+/// Chr(3)`. A position outside `lines` cites nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParserPredicates {
     /// `udf_candidate` holds.
     pub udf_candidate: bool,
-    /// `chr_obfuscation`: the line of each obfuscated expression.
-    pub chr_obfuscation: Vec<u32>,
-    /// `nested_loop_compare`: the line of each comparison in a nested loop.
-    pub nested_loop_compare: Vec<u32>,
+    /// `chr_obfuscation`: the position of each statement that holds an
+    /// obfuscated expression.
+    pub chr_obfuscation: Vec<usize>,
+    /// `nested_loop_compare`: the position of each comparison made in a loop
+    /// nested in another one. The predicate gives one hit for the procedure, at
+    /// the last of them, as in the prototype that calibrated the weights of the
+    /// rules: a hit for each comparison would count up to
+    /// `max_hits_per_procedure` times.
+    pub nested_loop_compare: Vec<usize>,
     /// `possibly_unused` holds: not an entry point and never referenced.
     pub possibly_unused: bool,
     /// `parse_recovered` holds: the parser recovered from unbalanced blocks
