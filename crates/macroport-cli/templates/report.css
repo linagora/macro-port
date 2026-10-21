@@ -42,7 +42,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
 main > section, .distributions { margin: 1.5rem 0; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem 1.5rem; }
 .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .75rem; }
-.totals > div, .distributions > section, details.file {
+.totals > div, .distributions > section, details {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -68,10 +68,11 @@ input, button {
 }
 input { flex: 1 1 14rem; }
 button { cursor: pointer; }
-details.file { margin-bottom: .5rem; }
-details.file > summary { padding: .6rem 1rem; cursor: pointer; }
-details.file > .facts { padding: .75rem 1rem 1rem; border-top: 1px solid var(--border); }
-.path { margin-right: .25rem; font-weight: 600; overflow-wrap: anywhere; }
+details { margin-bottom: .5rem; }
+.module, .procedure { margin: 0 1rem .5rem; }
+details > summary { padding: .6rem 1rem; cursor: pointer; }
+details > .facts { padding: .75rem 1rem 1rem; border-top: 1px solid var(--border); }
+.path, .name { margin-right: .25rem; font-weight: 600; overflow-wrap: anywhere; }
 .chip {
   display: inline-block;
   padding: 0 .5rem;
@@ -81,7 +82,7 @@ details.file > .facts { padding: .75rem 1rem 1rem; border-top: 1px solid var(--b
   white-space: nowrap;
 }
 .hint { opacity: .7; }
-h3 { margin: .75rem 1rem .25rem; font-size: .95rem; }
+h3, h4 { margin: .75rem 1rem .25rem; font-size: .95rem; }
 .families, .signals { margin: 0 1rem 1rem; }
 .families > li, .signals > li { margin-bottom: .4rem; }
 .evidence { margin: .15rem 0 0 1rem; color: var(--muted); font-size: .85rem; }
