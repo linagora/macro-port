@@ -5,10 +5,21 @@
 #![allow(clippy::expect_used)]
 
 use macroport_core::report::Status;
-use macroport_core::vba::{LogicalKind, LogicalLine, MAX_LINES, SourceLines, split_lines};
+use macroport_core::vba::{
+    LogicalKind, LogicalLine, MAX_LINES, SkipKind, SourceLines, split_lines,
+};
 
 fn lines(source: &str) -> SourceLines {
     split_lines(source).expect("a text within the limit")
+}
+
+/// The skipped runs as `(first, last, kind)`.
+fn skipped(source: &str) -> Vec<(u32, u32, SkipKind)> {
+    lines(source)
+        .skipped
+        .iter()
+        .map(|run| (run.first, run.last, run.kind))
+        .collect()
 }
 
 /// One string per logical line: its physical lines (`3`, or `3-4` when it
@@ -85,6 +96,10 @@ fn blank_lines_count_but_hold_nothing_and_the_others_are_trimmed() {
 #[test]
 fn a_byte_order_mark_is_not_part_of_the_first_line() {
     assert_eq!(shape("\u{feff}x = 1"), ["1 x = 1"]);
+    assert_eq!(
+        skipped("\u{feff}version 1.0 class\nbegin\nend\nOption Explicit"),
+        [(1, 3, SkipKind::ExportHeader)]
+    );
 }
 
 // Continuations
@@ -188,5 +203,341 @@ fn a_comment_ending_with_a_continuation_mark_continues_on_the_next_line() {
     assert_eq!(
         shape("x = 1 ' a _\n' b _\nc\ny = 2"),
         ["1-3 x = 1 // a ' b c", "4 y = 2"]
+    );
+}
+
+// Corpus header
+
+fn provenance(keys: &str) -> String {
+    keys.split(' ').map(|key| format!("' {key}: x\n")).collect()
+}
+
+#[test]
+fn the_corpus_header_is_skipped_and_still_counted() {
+    let keys = provenance("Source Author License Retrieved Family Synthetic");
+    let text = format!("{keys}'\nOption Explicit\n");
+    assert_eq!(skipped(&text), [(1, 7, SkipKind::CorpusHeader)]);
+    assert_eq!(shape(&text), ["8 Option Explicit"]);
+    assert_eq!(lines(&text).physical_lines, 8);
+}
+
+#[test]
+fn the_corpus_header_needs_its_closing_quote_line() {
+    let text = format!("{}Option Explicit\n", provenance("Source Author"));
+    assert!(skipped(&text).is_empty());
+    assert_eq!(
+        shape(&text),
+        [
+            "1 comment  // Source: x",
+            "2 comment  // Author: x",
+            "3 Option Explicit"
+        ]
+    );
+    assert!(skipped("'\nOption Explicit\n").is_empty());
+    // The closing line is a single quote and nothing else.
+    for closing in [" '", "' ", "''", "' x"] {
+        let text = format!("' Source: x\n{closing}\nOption Explicit\n");
+        assert!(skipped(&text).is_empty(), "{closing:?}");
+    }
+    // A text that ends inside the provenance lines has no header.
+    assert!(skipped("' Source: x\n").is_empty());
+    assert!(skipped("' Source: x\n' Author: y").is_empty());
+}
+
+#[test]
+fn the_corpus_header_only_matches_its_own_keys_at_the_top() {
+    assert!(skipped("' Source: x\n' Note: y\n'\nOption Explicit\n").is_empty());
+    assert!(skipped("' source: x\n'\nOption Explicit\n").is_empty());
+    assert!(skipped("' Sourcex: x\n'\nOption Explicit\n").is_empty());
+    assert!(skipped("'Source: x\n'\nOption Explicit\n").is_empty());
+    let later = format!("Option Explicit\n{}'\n", provenance("Source"));
+    assert!(skipped(&later).is_empty());
+}
+
+// Export headers
+
+#[test]
+fn a_class_export_header_is_skipped() {
+    let lf = "VERSION 1.0 CLASS\nBEGIN\n  MultiUse = -1  'True\nEND\n\
+              Attribute VB_Name = \"Class1\"\nAttribute VB_Base = \"0{FCFB3D2A}\"\n\
+              Option Explicit\n";
+    // Excel ends the lines of its exports with CR LF.
+    let crlf = lf.replace('\n', "\r\n");
+    for text in [lf, crlf.as_str()] {
+        assert_eq!(
+            skipped(text),
+            [(1, 4, SkipKind::ExportHeader), (5, 6, SkipKind::Attribute)]
+        );
+        assert_eq!(shape(text), ["7 Option Explicit"]);
+        let split = lines(text);
+        assert_eq!(split.physical_lines, 7);
+        let base = split.attribute("vb_base").expect("VB_Base");
+        assert_eq!((base.line, base.value.as_str()), (6, "\"0{FCFB3D2A}\""));
+    }
+}
+
+#[test]
+fn a_form_designer_block_is_skipped_with_its_nested_blocks() {
+    let text = "VERSION 5.00\n\
+                Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} UserForm1\n\
+                \x20  Caption         =   \"Form\"\n\
+                \x20  Begin MSForms.CommandButton Button1\n\
+                \x20     Caption         =   \"OK\"\n\
+                \x20  End\n\
+                End\n\
+                Attribute VB_Name = \"UserForm1\"\n\
+                Private Sub Button1_Click()\n\
+                End Sub\n";
+    assert_eq!(
+        skipped(text),
+        [(1, 7, SkipKind::ExportHeader), (8, 8, SkipKind::Attribute)]
+    );
+    assert_eq!(shape(text), ["9 Private Sub Button1_Click()", "10 End Sub"]);
+}
+
+#[test]
+fn a_begin_block_that_never_closes_hides_nothing_but_its_first_line() {
+    assert_eq!(
+        skipped("BEGIN\nx = 1\ny = 2\n"),
+        [(1, 1, SkipKind::ExportHeader)]
+    );
+    assert_eq!(shape("BEGIN\nx = 1\ny = 2\n"), ["2 x = 1", "3 y = 2"]);
+    let nested = "Begin A\nBegin B\nEnd\nx = 1\n";
+    assert_eq!(skipped(nested), [(1, 1, SkipKind::ExportHeader)]);
+    assert_eq!(shape(nested), ["2 Begin B", "3 End", "4 x = 1"]);
+}
+
+#[test]
+fn begin_and_version_are_only_headers_before_the_first_code() {
+    let text = "Option Explicit\nVERSION 5.00\nBegin A\nEnd\nBegin = 1\n";
+    assert!(skipped(text).is_empty());
+    assert_eq!(shape(text).len(), 5);
+    assert!(skipped("Begin = 1\nEnd\n").is_empty());
+    // Blank lines and comments come before the header without ending its zone.
+    assert_eq!(
+        skipped("' note\n\nVERSION 1.0 CLASS\nBEGIN\nEND\n"),
+        [(3, 5, SkipKind::ExportHeader)]
+    );
+}
+
+#[test]
+fn a_version_or_begin_line_with_more_on_it_is_code() {
+    for text in [
+        "VERSION 5.00: Shell \"x\"",
+        "VERSION 5",
+        "VERSION 1.0.0",
+        "VERSION .5",
+        "VERSION 1.0 CLASS 2",
+        "VERSION 1.0 FOO",
+        "Begin: x = 1\nEnd",
+        "Begin(1)\nEnd",
+        "Begin Sub Foo()\nEnd",
+        "Begin Shell \"calc\"\nEnd",
+        "Begin A B C\nEnd",
+    ] {
+        let split = lines(text);
+        assert!(split.skipped.is_empty(), "{text:?}");
+        let first = split.logical.first().map(|line| line.line);
+        assert_eq!(first, Some(1), "{text:?}");
+    }
+}
+
+#[test]
+fn a_begin_line_opens_a_block_with_a_type_and_a_name_at_most() {
+    for text in [
+        "BEGIN\nEND",
+        "begin\nend",
+        "Begin A\nEnd",
+        "Begin MSForms.CommandButton Button1\nEnd",
+        "Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} Formulaire_Employés  'c\nEnd",
+    ] {
+        assert_eq!(skipped(text), [(1, 2, SkipKind::ExportHeader)], "{text:?}");
+    }
+}
+
+#[test]
+fn only_designer_lines_can_sit_in_a_begin_block() {
+    // A statement shows that the block is not one: it never closes, so only
+    // its first line is skipped, and the `End` after the statement is code.
+    let text = "Begin A\nSub Auto_Open()\nShell \"calc\"\nEnd\nEnd Sub\n";
+    assert_eq!(skipped(text), [(1, 1, SkipKind::ExportHeader)]);
+    assert_eq!(
+        shape(text),
+        [
+            "2 Sub Auto_Open()",
+            "3 Shell \"calc\"",
+            "4 End",
+            "5 End Sub"
+        ]
+    );
+    // `End Sub` does not close a block, and a property called `Ending` neither.
+    assert_eq!(
+        skipped("Begin A\nEnd Sub\nEnd\n"),
+        [(1, 1, SkipKind::ExportHeader)]
+    );
+    let properties = "Begin A\nEnding = 1\n\n  Name = \"x\"  'c\nEnd\n";
+    assert_eq!(skipped(properties), [(1, 5, SkipKind::ExportHeader)]);
+    // The properties of a VB6 designer and comments belong to the block too.
+    let vb6 =
+        "Begin A\n BeginProperty Font\n  Name = \"Arial\"\n EndProperty\n ' note\n Left = 1\nEnd\n";
+    assert_eq!(skipped(vb6), [(1, 7, SkipKind::ExportHeader)]);
+}
+
+#[test]
+fn the_lines_of_a_begin_block_count_against_the_limit() {
+    let block = |inside: u32| format!("Begin A\n{}End\n", "x = 1\n".repeat(inside as usize));
+    assert_eq!(lines(&block(MAX_LINES - 2)).physical_lines, MAX_LINES);
+    let error = split_lines(&block(MAX_LINES - 1)).expect_err("a line too many");
+    assert_eq!(error.code, "vba.too_many_lines");
+}
+
+#[test]
+fn a_reference_to_a_control_library_is_part_of_the_export_header() {
+    let text = "VERSION 5.00\n\
+                Object = \"{831FDD16-0C5C-11D2-A9FC-0000F8754DA1}#2.2#0\"; \"MSCOMCTL.OCX\"\n\
+                Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} F\n\
+                \x20  Caption = \"F\"\n\
+                End\n\
+                Attribute VB_Name = \"F\"\n\
+                Option Explicit\n";
+    assert_eq!(
+        skipped(text),
+        [(1, 5, SkipKind::ExportHeader), (6, 6, SkipKind::Attribute)]
+    );
+    assert_eq!(shape(text), ["7 Option Explicit"]);
+}
+
+#[test]
+fn an_object_line_is_a_header_only_before_the_first_code_and_with_two_strings() {
+    for text in [
+        "Option Explicit\nObject = \"x\"; \"y\"\n",
+        "Object = \"x\"\n",
+        "Object = \"x\"; \"y\"; \"z\"\n",
+        "Object = \"x\"; Shell \"y\"\n",
+        "Object = \"x\"; \"y\": z = 1\n",
+        "Object = \"x\"; \"y\" z\n",
+        "Object = 1; 2\n",
+        "Objects = \"x\"; \"y\"\n",
+    ] {
+        assert!(skipped(text).is_empty(), "{text:?}");
+    }
+}
+
+// Attributes
+
+#[test]
+fn attribute_lines_are_skipped_wherever_a_statement_starts() {
+    let text = "Attribute VB_Name = \"M\"\nSub A()\n\
+                Attribute A.VB_Description = \"d\"\nEnd Sub\n\
+                Public X As Long\nAttribute X.VB_VarDescription = \"v\"\n";
+    assert_eq!(
+        skipped(text),
+        [
+            (1, 1, SkipKind::Attribute),
+            (3, 3, SkipKind::Attribute),
+            (6, 6, SkipKind::Attribute)
+        ]
+    );
+    assert_eq!(
+        shape(text),
+        ["2 Sub A()", "4 End Sub", "5 Public X As Long"]
+    );
+    let names: Vec<_> = lines(text)
+        .attributes
+        .iter()
+        .map(|attribute| (attribute.line, attribute.name.clone()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            (1, "VB_Name".to_owned()),
+            (3, "A.VB_Description".to_owned()),
+            (6, "X.VB_VarDescription".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn an_attribute_name_may_have_several_parts_and_the_value_is_not_interpreted() {
+    let split = lines("  attribute Foo.VB_ProcData.VB_Invoke_Func  =  \"T\\n14\"  \n");
+    let attribute = split.attributes.first().expect("an attribute");
+    assert_eq!(attribute.name, "Foo.VB_ProcData.VB_Invoke_Func");
+    assert_eq!(attribute.value, "\"T\\n14\"");
+}
+
+#[test]
+fn what_is_not_an_attribute_line_stays_code() {
+    for text in [
+        "Attribute VB_Name",
+        "Attribute = 1",
+        "Attributes X = 1",
+        "AttributeX = 1",
+        "' Attribute y = 2",
+    ] {
+        let split = lines(text);
+        assert!(split.attributes.is_empty(), "{text:?}");
+        assert_eq!(split.logical.len(), 1, "{text:?}");
+    }
+}
+
+#[test]
+fn the_value_of_an_attribute_is_a_list_of_literals_that_ends_before_a_comment() {
+    for (text, value) in [
+        ("Attribute VB_Name = \"M\"", "\"M\""),
+        ("Attribute VB_Exposed = False", "False"),
+        ("Attribute VB_UserMemId = -4", "-4"),
+        ("Attribute VB_Flags = &H10", "&H10"),
+        (
+            "Attribute VB_Ext_KEY = \"Top\" ,  \"Yes\"",
+            "\"Top\" ,  \"Yes\"",
+        ),
+        (
+            "Attribute VB_Description = \"say \"\"hi\"\", a:b\"",
+            "\"say \"\"hi\"\", a:b\"",
+        ),
+        ("Attribute X = 1 ' a: b", "1"),
+    ] {
+        let split = lines(text);
+        let attribute = split.attributes.first().expect("an attribute");
+        assert_eq!(attribute.value, value, "{text:?}");
+    }
+}
+
+#[test]
+fn an_attribute_line_that_holds_more_than_literals_stays_code() {
+    for text in [
+        "Attribute VB_Name =",
+        "Attribute VB_Name == \"M\"",
+        "Attribute VB_Name = Shell(\"calc\")",
+        "Attribute VB_Name = \"M\": Shell \"calc\"",
+        "Attribute VB_Name = \"M\" Shell \"calc\"",
+        "Attribute VB_Name = \"M\",",
+        "Attribute VB_Name = \"M\" _",
+        "Attribute VB_Name = \"M",
+        "Attribute VB_Name = [M]",
+        "Attribute VB_Name = M",
+    ] {
+        let split = lines(text);
+        assert!(split.attributes.is_empty(), "{text:?}");
+        assert!(split.skipped.is_empty(), "{text:?}");
+        let first = split.logical.first().map(|line| line.line);
+        assert_eq!(first, Some(1), "{text:?}");
+    }
+}
+
+#[test]
+fn attribute_finds_the_first_of_a_repeated_name_in_any_letter_case() {
+    let split = lines("Attribute VB_Name = \"A\"\nAttribute vb_name = \"B\"\n");
+    assert_eq!(split.attributes.len(), 2);
+    let found = split.attribute("VB_NAME").map(|a| a.value.as_str());
+    assert_eq!(found, Some("\"A\""));
+    assert!(split.attribute("VB_Base").is_none());
+}
+
+#[test]
+fn skipped_runs_of_the_same_kind_merge_when_they_touch() {
+    assert_eq!(
+        skipped("Attribute A = 1\nAttribute B = 2\n\nAttribute C = 3\n"),
+        [(1, 2, SkipKind::Attribute), (4, 4, SkipKind::Attribute)]
     );
 }

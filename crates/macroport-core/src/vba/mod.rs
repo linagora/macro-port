@@ -10,7 +10,10 @@ mod scan;
 use crate::report::Status;
 use crate::rules::ModuleType;
 
-pub use lines::{Comment, LogicalKind, LogicalLine, MAX_LINES, SourceLines, split_lines};
+pub use lines::{
+    Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
+    split_lines,
+};
 
 /// The source of one module: what the extraction layer, or a text file,
 /// hands to the front end.
