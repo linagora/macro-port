@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use macroport_core::redact::{Redaction, remove_snippets};
 use macroport_core::report::Report;
+use macroport_testkit::report_problems;
 use serde_json::{Value, json};
 
 const EXAMPLE: &str = include_str!("../../../schema/examples/report.example.json");
@@ -36,7 +37,10 @@ const HELPER: &str = "3c86544d78e5ce2e";
 
 /// The example report with the strings that a redaction has to hide: the paths
 /// of a client, an error that quotes one, the name of the project, a call to
-/// another procedure and a signal of the module.
+/// another procedure, the APIs that a procedure uses (two of them rooted at a
+/// name of the project, one in another case) and the evidence of the file, of
+/// a module and of a procedure, with the module and the procedure that name
+/// the signals of the file.
 fn sample() -> Report {
     let mut value: Value = serde_json::from_str(EXAMPLE).expect("the example is JSON");
     let module = "/files/0/vba_project/modules/0";
@@ -51,6 +55,32 @@ fn sample() -> Report {
             }]),
         ),
         ("/files/0/vba_project/name", json!("AcmeBudget")),
+        (
+            "/files/0/families",
+            json!([{
+                "family": "09-events",
+                "score": 3,
+                "evidence": [{
+                    "rule_id": "evt.auto-macros",
+                    "line": 4,
+                    "snippet": "Sub Auto_Open()"
+                }]
+            }]),
+        ),
+        (
+            "/files/0/signals",
+            json!([{
+                "signal_id": "sec.chain.autoexec-execution",
+                "severity": "high",
+                "module": "M_14_01",
+                "procedure": "Auto_Open",
+                "evidence": [{
+                    "rule_id": "sec.auto-exec",
+                    "line": 4,
+                    "snippet": "Sub Auto_Open()"
+                }]
+            }]),
+        ),
         (
             &format!("{module}/signals"),
             json!([{
@@ -68,14 +98,27 @@ fn sample() -> Report {
             &format!("{module}/procedures/0/calls"),
             json!(["Helper", "M_14_01.Helper"]),
         ),
+        (
+            &format!("{module}/procedures/0/apis"),
+            json!([
+                { "name": "Shell", "count": 1 },
+                { "name": "m_14_01.Range.Value", "count": 2 },
+                { "name": "Auto_Open", "count": 1 },
+                { "name": "Range.Value", "count": 3 },
+            ]),
+        ),
     ] {
         *value.pointer_mut(pointer).expect(pointer) = new;
     }
     serde_json::from_value(value).expect("the sample is a report")
 }
 
+/// `report` as JSON, once it has passed the schema: a redacted report is still
+/// a report (ACCEPTANCE A3).
 fn to_value(report: &Report) -> Value {
-    serde_json::to_value(report).expect("a report is JSON")
+    let json = report.to_json().expect("a report serialises");
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+    serde_json::from_str(&json).expect("a report is JSON")
 }
 
 /// The sample, redacted under `KEY`, as JSON.
@@ -106,6 +149,31 @@ fn without_snippets(mut value: Value) -> Value {
 /// Replaces the value at `pointer` of `value`, which has to exist.
 fn replace(value: &mut Value, pointer: &str, new: Value) {
     *value.pointer_mut(pointer).expect(pointer) = new;
+}
+
+/// Where the sample lists the APIs of its first procedure.
+const FIRST_APIS: &str = "/files/0/vba_project/modules/0/procedures/0/apis";
+
+/// The sample with `names` as the APIs of its first procedure, each used once.
+fn sample_with_apis(names: &[&str]) -> Report {
+    let mut value = to_value(&sample());
+    let apis: Vec<Value> = names
+        .iter()
+        .map(|name| json!({ "name": name, "count": 1 }))
+        .collect();
+    replace(&mut value, FIRST_APIS, json!(apis));
+    serde_json::from_value(value).expect("the sample is a report")
+}
+
+/// The names of the APIs of the first procedure of `report`.
+fn api_names(report: &Report) -> Vec<String> {
+    to_value(report)
+        .pointer(FIRST_APIS)
+        .and_then(Value::as_array)
+        .expect("the procedure has APIs")
+        .iter()
+        .filter_map(|api| api.get("name")?.as_str().map(str::to_owned))
+        .collect()
 }
 
 #[test]
@@ -147,7 +215,8 @@ fn identifiers_are_hashed_in_every_place_that_names_the_project() {
 
     // As without identifiers, and the names, in lowercase as VBA reads them:
     // the module and its stream, the procedure, the module and the procedure
-    // of the signals, and the calls, a qualified name part by part.
+    // of the signals at the three levels, the calls (a qualified name part by
+    // part) and the APIs whose first part the project defines.
     let mut expected = without_snippets(to_value(&sample()));
     let module = "/files/0/vba_project/modules/0";
     for (pointer, new) in [
@@ -156,6 +225,8 @@ fn identifiers_are_hashed_in_every_place_that_names_the_project() {
         ("/files/0/path", json!(format!("{PATH}.xlsm"))),
         ("/files/0/errors/0/message", json!("[redacted]")),
         ("/files/0/vba_project/name", json!(PROJECT)),
+        ("/files/0/signals/0/module", json!(MODULE)),
+        ("/files/0/signals/0/procedure", json!(PROCEDURE)),
         (&format!("{module}/name"), json!(MODULE)),
         (&format!("{module}/stream_name"), json!(MODULE)),
         (&format!("{module}/signals/0/module"), json!(MODULE)),
@@ -163,6 +234,15 @@ fn identifiers_are_hashed_in_every_place_that_names_the_project() {
         (
             &format!("{module}/procedures/0/calls"),
             json!([HELPER, format!("{MODULE}.{HELPER}")]),
+        ),
+        (
+            &format!("{module}/procedures/0/apis"),
+            json!([
+                { "name": "Shell", "count": 1 },
+                { "name": format!("{MODULE}.Range.Value"), "count": 2 },
+                { "name": PROCEDURE, "count": 1 },
+                { "name": "Range.Value", "count": 3 },
+            ]),
         ),
         (
             &format!("{module}/procedures/0/signals/0/module"),
@@ -192,11 +272,12 @@ fn what_comes_from_outside_the_project_stays_even_with_identifiers() {
     let after = redacted(true);
     let procedure = "/files/0/vba_project/modules/0/procedures/0";
 
-    // The references, the APIs that a procedure uses, the identifiers of the
-    // rules and the hashes of the contents.
+    // The references, the APIs of the object model and of the libraries, the
+    // identifiers of the rules and the hashes of the contents.
     for pointer in [
         "/files/0/vba_project/references",
-        &format!("{procedure}/apis"),
+        &format!("{procedure}/apis/0"),
+        &format!("{procedure}/apis/3"),
         &format!("{procedure}/signals/0/signal_id"),
         &format!("{procedure}/signals/0/evidence/0/rule_id"),
         "/files/0/sha256",
@@ -241,6 +322,43 @@ fn identifiers_are_hashed_without_regard_to_case() {
         after.pointer(&format!("{module}/procedures/0/name")),
         Some(&json!(PROCEDURE))
     );
+}
+
+#[test]
+fn an_api_is_hashed_by_its_first_part_and_only_when_the_project_defines_it() {
+    // (the name in the report, the name once the identifiers are hashed)
+    let cases = [
+        // The project defines the first part, whatever its case: it is hashed,
+        // and the rest of the chain, which is the object model's, stays.
+        ("M_14_01.Range.Value", format!("{MODULE}.Range.Value")),
+        ("m_14_01.range", format!("{MODULE}.range")),
+        ("Auto_Open", PROCEDURE.to_owned()),
+        ("AUTO_OPEN.Run", format!("{PROCEDURE}.Run")),
+        // It does not: the name is the object model's or a library's.
+        ("Range.Value", "Range.Value".to_owned()),
+        ("Shell", "Shell".to_owned()),
+        (
+            "CreateObject:Scripting.Dictionary",
+            "CreateObject:Scripting.Dictionary".to_owned(),
+        ),
+        // A name that only starts with a defined one, or that holds one after
+        // its first part, is not rooted at it.
+        ("M_14_01x.Value", "M_14_01x.Value".to_owned()),
+        ("Application.M_14_01", "Application.M_14_01".to_owned()),
+    ];
+    let clear: Vec<&str> = cases.iter().map(|(clear, _)| *clear).collect();
+    let hashed: Vec<String> = cases.iter().map(|(_, hashed)| hashed.clone()).collect();
+
+    let mut with = sample_with_apis(&clear);
+    Redaction::new(KEY, true).expect("a key").apply(&mut with);
+    assert_eq!(api_names(&with), hashed);
+
+    // Without the identifiers the names of the APIs are as they were.
+    let mut without = sample_with_apis(&clear);
+    Redaction::new(KEY, false)
+        .expect("a key")
+        .apply(&mut without);
+    assert_eq!(api_names(&without), clear);
 }
 
 #[test]
@@ -398,7 +516,7 @@ fn a_key_of_any_length_works_and_is_not_shown() {
     let redaction = Redaction::new(b"hunter2-the-key", true).expect("a key");
     let shown = format!("{redaction:?}");
 
-    assert!(shown.contains("identifiers: true"), "{shown}");
+    assert_eq!(shown, "Redaction { identifiers: true, .. }");
     assert!(!shown.contains("hunter2"), "{shown}");
 }
 
@@ -424,7 +542,7 @@ const FREE_TEXT: [(&str, &str); 22] = [
     ("procedure.calls[]", "hashed with the identifiers, by part"),
     (
         "procedure.apis[].name",
-        "kept: the vocabulary of the report",
+        "kept, but a first part that the project defines is hashed with the identifiers",
     ),
     ("procedure.traits[]", "kept: ids of the rules"),
     ("signal.signal_id", "kept: ids of the rules"),

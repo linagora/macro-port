@@ -10,23 +10,26 @@
 //! The core draws no key: the caller injects it, and one key always gives one
 //! report.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
-use crate::report::{FamilyScore, FileReport, ModuleReport, Report, Signal, VbaProject};
+use crate::report::{Evidence, FileReport, ModuleReport, Report, Signal, VbaProject};
 
 /// The text that takes the place of the message of every error.
-const MESSAGE: &str = "[redacted]";
+const REDACTED_MESSAGE: &str = "[redacted]";
 
 /// The bytes of a hash that are written: 8, which make 16 hexadecimal digits.
 const HASH_BYTES: usize = 8;
 
-/// The extensions that stay in a redacted path: those of the files that a scan
-/// considers (SPEC M4), whatever their case. Any other text after the last dot
-/// could come from a directory name, which is what redaction hides.
-const KEPT_EXTENSIONS: [&str; 12] = [
+/// The extensions that stay in a redacted path, in lowercase: those of the
+/// files that a scan considers (SPEC M4), whatever their case. Any other text
+/// after the last dot could come from a directory name, which is what
+/// redaction hides. The walk of the CLI keeps its own list of the same files;
+/// a test of the CLI checks that the two are equal.
+pub const KEPT_EXTENSIONS: [&str; 12] = [
     "xlsm", "xltm", "xlam", "xlsb", "xls", "xlt", "xla", "xlsx", "xltx", "bas", "cls", "frm",
 ];
 
@@ -83,14 +86,16 @@ impl Redaction {
     /// - with identifiers, so are the names of the modules and procedures, and
     ///   every other name of the project that the report holds: the stream of
     ///   a module, the procedures that a procedure calls, the module and the
-    ///   procedure of a signal. A name is folded to lowercase first, since VBA
+    ///   procedure of a signal, and the first part of the name of an API when
+    ///   the project defines it (`Sheet1.Range.Value` in a project with a
+    ///   module `Sheet1`). A name is folded to lowercase first, since VBA
     ///   ignores case; in the calls, a name with dots is hashed part by part,
     ///   so that `Module1.Run` stays linked to the module and the procedure.
     ///
-    /// Everything else stays: the references, the names of the APIs and the
-    /// hashes of the contents, the metrics, families, signals and statuses.
-    /// The files are sorted again, since the order of the paths would give
-    /// away the order of the clear ones.
+    /// Everything else stays: the references, the rest of the names of the
+    /// APIs and the hashes of the contents, the metrics, families, signals and
+    /// statuses. The files are sorted again, since the order of the paths
+    /// would give away the order of the clear ones.
     pub fn apply(&self, report: &mut Report) {
         report.redacted = true;
         for root in report.scan.roots.iter_mut().flatten() {
@@ -105,7 +110,7 @@ impl Redaction {
     fn redact_file(&self, file: &mut FileReport) {
         file.path = self.path(&file.path);
         for error in file.errors.iter_mut().flatten() {
-            error.message = MESSAGE.to_owned();
+            error.message = REDACTED_MESSAGE.to_owned();
         }
         remove_snippets_of(file);
         if let Some(project) = file.vba_project.as_mut() {
@@ -123,13 +128,16 @@ impl Redaction {
             *name = self.hash(name);
         }
         if self.identifiers {
+            let defined = defined_names(project);
             for module in &mut project.modules {
-                self.redact_module(module);
+                self.redact_module(module, &defined);
             }
         }
     }
 
-    fn redact_module(&self, module: &mut ModuleReport) {
+    /// Hashes the names in `module`; `defined` holds the names that its project
+    /// defines, as they were before.
+    fn redact_module(&self, module: &mut ModuleReport, defined: &BTreeSet<String>) {
         module.name = self.identifier(&module.name);
         if let Some(stream_name) = module.stream_name.as_mut() {
             *stream_name = self.identifier(stream_name);
@@ -141,6 +149,9 @@ impl Redaction {
             procedure.name = self.identifier(&procedure.name);
             for call in procedure.calls.iter_mut().flatten() {
                 *call = self.qualified(call);
+            }
+            for api in procedure.apis.iter_mut().flatten() {
+                api.name = self.rooted(&api.name, defined);
             }
             for signal in &mut procedure.signals {
                 self.redact_signal(signal);
@@ -179,6 +190,26 @@ impl Redaction {
         parts.join(".")
     }
 
+    /// The name of an API, with its first part hashed if the project defines
+    /// it: `Sheet1.Range.Value` becomes `<hash>.Range.Value` in a project with
+    /// a module `Sheet1`. The rest of the chain belongs to the object model
+    /// and stays, and so does a name whose first part is not the project's.
+    fn rooted(&self, name: &str, defined: &BTreeSet<String>) -> String {
+        let (root, rest) = match name.split_once('.') {
+            Some((root, rest)) => (root, Some(rest)),
+            None => (name, None),
+        };
+        if !defined.contains(&root.to_lowercase()) {
+            return name.to_owned();
+        }
+        let mut hashed = self.identifier(root);
+        if let Some(rest) = rest {
+            hashed.push('.');
+            hashed.push_str(rest);
+        }
+        hashed
+    }
+
     /// The first 16 hexadecimal digits of the HMAC-SHA256 of `text`.
     fn hash(&self, text: &str) -> String {
         let mut mac = self.mac.clone();
@@ -207,35 +238,48 @@ pub fn remove_snippets(report: &mut Report) {
 /// Removes the snippet of every piece of evidence of `file`: those of its
 /// families and signals, and those of its modules and procedures.
 fn remove_snippets_of(file: &mut FileReport) {
-    clear_scores(file.families.iter_mut().flatten());
-    clear_signals(file.signals.iter_mut().flatten());
+    clear_snippets((file.families.iter_mut().flatten()).map(|score| &mut score.evidence));
+    clear_snippets((file.signals.iter_mut().flatten()).map(|signal| &mut signal.evidence));
     let modules = file
         .vba_project
         .iter_mut()
         .flat_map(|project| &mut project.modules);
     for module in modules {
-        clear_signals(module.signals.iter_mut().flatten());
+        clear_snippets((module.signals.iter_mut().flatten()).map(|signal| &mut signal.evidence));
         for procedure in &mut module.procedures {
-            clear_scores(&mut procedure.families);
-            clear_signals(&mut procedure.signals);
+            clear_snippets(
+                procedure
+                    .families
+                    .iter_mut()
+                    .map(|score| &mut score.evidence),
+            );
+            clear_snippets(
+                procedure
+                    .signals
+                    .iter_mut()
+                    .map(|signal| &mut signal.evidence),
+            );
         }
     }
 }
 
-fn clear_scores<'a>(scores: impl IntoIterator<Item = &'a mut FamilyScore>) {
-    for score in scores {
-        for evidence in score.evidence.iter_mut().flatten() {
-            evidence.snippet = None;
-        }
+/// Removes the snippet of each piece of evidence in `lists`.
+fn clear_snippets<'a>(lists: impl IntoIterator<Item = &'a mut Option<Vec<Evidence>>>) {
+    for evidence in lists.into_iter().flatten().flatten() {
+        evidence.snippet = None;
     }
 }
 
-fn clear_signals<'a>(signals: impl IntoIterator<Item = &'a mut Signal>) {
-    for signal in signals {
-        for evidence in signal.evidence.iter_mut().flatten() {
-            evidence.snippet = None;
-        }
+/// The names that the project defines and that the report holds, folded to
+/// lowercase as VBA reads them: its modules, their streams and its procedures.
+fn defined_names(project: &VbaProject) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for module in &project.modules {
+        names.insert(module.name.to_lowercase());
+        names.extend(module.stream_name.iter().map(|name| name.to_lowercase()));
+        names.extend((module.procedures.iter()).map(|procedure| procedure.name.to_lowercase()));
     }
+    names
 }
 
 /// The extension of the last name of `path` when it stays in a redacted path.
