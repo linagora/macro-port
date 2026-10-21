@@ -3,7 +3,9 @@
 //! expressions of the closed set replaced by their value, and nothing else
 //! evaluated. The cases are statements of one logical line.
 
-use macroport_core::vba::{StatementReader, tokenize};
+#![allow(clippy::expect_used)]
+
+use macroport_core::vba::{StatementReader, split_lines, tokenize};
 
 /// The strings of the statement `text`.
 fn strings(text: &str) -> Vec<String> {
@@ -44,7 +46,8 @@ fn literals_joined_with_and_or_plus_are_folded_into_one_string() {
 
 #[test]
 fn an_expression_outside_the_closed_set_stays_unresolved() {
-    // Each of these leaves every literal apart, and folds nothing around them.
+    // Each of these folds only what the closed set covers, and leaves the
+    // other literals apart.
     check(&[
         (r#"x = "a" & y & "b""#, &["a", "b"]),
         (r#"x = "a" & Left("bcd", 2)"#, &["a", "bcd"]),
@@ -65,6 +68,32 @@ fn an_expression_outside_the_closed_set_stays_unresolved() {
         (r#"x = Not "a" & "b""#, &["ab"]),
         (r#"x = -"a" & "b""#, &["a", "b"]),
     ]);
+}
+
+#[test]
+fn the_operators_group_as_in_vba() {
+    check(&[
+        // `+` binds tighter than `&`, and `*` tighter than both.
+        (r#"x = "a" & "b" + y"#, &["a", "b"]),
+        (r#"x = "a" + "b" & y"#, &["ab"]),
+        (r#"x = "a" & "b" * 2"#, &["a", "b"]),
+        // The operators group from the left: nothing joins to what comes
+        // after an operand that is not known.
+        (
+            r#"x = s & "WScr" & "ipt.Sh" & "ell""#,
+            &["WScr", "ipt.Sh", "ell"],
+        ),
+    ]);
+}
+
+#[test]
+fn a_line_that_is_not_code_holds_no_string() {
+    let mut reader = StatementReader::new();
+    let lines = split_lines("' x = \"a\"\nDone:\nx = \"b\"\n")
+        .expect("lines")
+        .logical;
+    let read: Vec<_> = lines.iter().map(|line| reader.read(line).strings).collect();
+    assert_eq!(read, [vec![], vec![], vec!["b".to_string()]]);
 }
 
 #[test]

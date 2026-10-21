@@ -9,9 +9,9 @@
 //! result.
 //!
 //! The reader never fails and never recurses deeper than [`MAX_DEPTH`]: a
-//! statement that nests more is given up where it stands. Every token is
-//! read once, and a folded string is built by appending to the left operand,
-//! so the time is linear in the tokens whatever their shape.
+//! statement that nests more is given up where it stands. Every token is read
+//! once and a folded string is built by appending to the left operand, so the
+//! time is linear in the tokens, but for the final sort of the strings.
 
 use super::fold::Value;
 use super::lexer::{Keyword, Token, TokenKind};

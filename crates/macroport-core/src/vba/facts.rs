@@ -10,7 +10,9 @@ use super::expr::Reader;
 use super::lexer::{Token, tokenize};
 use super::{LogicalKind, LogicalLine};
 
-/// What a statement holds.
+/// What a statement holds. The facts are small in proportion to the
+/// statement, but a caller that keeps those of many statements bounds the
+/// total, as it bounds the lines themselves.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facts {
     /// The strings of the statement, in source order, with the doubled quotes
