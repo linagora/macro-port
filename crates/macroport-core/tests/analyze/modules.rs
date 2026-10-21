@@ -279,6 +279,30 @@ fn a_module_with_too_many_lines_is_too_large_and_the_others_are_still_read() {
 }
 
 #[test]
+fn a_module_with_too_many_procedures_is_too_large_and_the_others_are_still_read() {
+    // Each `Sub` line ends the procedure before it, so a line is a procedure.
+    let many = "Sub A\n".repeat(50_001);
+
+    let file = report_of_modules(vec![
+        source("Many", ModuleType::Standard, &many),
+        source("Small", ModuleType::Standard, HELLO),
+    ]);
+
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_many_procedures".to_owned(),
+        message: "module Many: the modules of the file have more than 50000 procedures".to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let [many, small] = modules(&file) else {
+        panic!("two modules expected");
+    };
+    assert_eq!(many.procedures.len(), 0);
+    assert_eq!(small.procedures.len(), 1);
+}
+
+#[test]
 fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected() {
     for (text, expected) in [
         ("Sub Broken()\n    x = 1\n", true),

@@ -46,6 +46,13 @@ const UNCLASSIFIED: &str = "unclassified";
 /// are not read.
 const MAX_FILE_LINES: u32 = 1_000_000;
 
+/// The most procedures that the modules of one file may report in all. A
+/// procedure can take a single line, so the line budget alone would let a
+/// hostile file turn a million lines into a million procedure reports. Real
+/// projects are not expected to come near this. A module that would take the
+/// file past it is not reported.
+const MAX_FILE_PROCEDURES: u32 = 50_000;
+
 /// What the front end makes of the text of one module.
 pub(super) struct Analysis {
     /// Its physical lines, the lines that are not code, and its logical lines.
@@ -73,6 +80,8 @@ impl Analysis {
 struct Front {
     /// The lines that the modules may still take.
     budget: u32,
+    /// The procedures that the modules may still report.
+    procedures_left: u32,
     /// The ids of the traits that the rules give to the predicate
     /// `parse_recovered`. The parser decides that one, so the procedures and
     /// the file that have it can be marked before the rule engine runs.
@@ -87,6 +96,7 @@ impl Front {
     fn new(rules: &RuleSet) -> Self {
         Self {
             budget: MAX_FILE_LINES,
+            procedures_left: MAX_FILE_PROCEDURES,
             recovery_traits: recovery_traits(rules),
             recovered: false,
             failures: Vec::new(),
@@ -103,8 +113,9 @@ impl Front {
         }
     }
 
-    /// Reads the next module. One that crosses the budget is read whole, and the
-    /// ones after it are not read, but for the empty ones.
+    /// Reads the next module. One that crosses the budget of lines is read
+    /// whole, and the ones after it are not read, but for the empty ones. One
+    /// that has more procedures than the file may still report is not kept.
     fn analyse(&mut self, text: &str) -> Result<Analysis, VbaError> {
         if self.budget == 0 && !text.is_empty() {
             return Err(VbaError::new(
@@ -115,6 +126,15 @@ impl Front {
         }
         let analysis = Analysis::of(text)?;
         self.budget = self.budget.saturating_sub(analysis.weight());
+        let procedures = count(analysis.module.procedures.len());
+        if procedures > self.procedures_left {
+            return Err(VbaError::new(
+                Status::TooLarge,
+                "vba.too_many_procedures",
+                format!("the modules of the file have more than {MAX_FILE_PROCEDURES} procedures"),
+            ));
+        }
+        self.procedures_left = self.procedures_left.saturating_sub(procedures);
         Ok(analysis)
     }
 
@@ -286,6 +306,24 @@ mod tests {
             (Status::TooLarge, "vba.too_many_lines")
         );
         assert!(front.analyse("").is_ok());
+    }
+
+    #[test]
+    fn the_procedures_of_a_file_are_reported_within_a_budget() {
+        let mut front = front();
+        front.procedures_left = 3;
+        let two = "Sub A()\nEnd Sub\nSub B()\nEnd Sub\n";
+
+        assert!(front.analyse(two).is_ok());
+        // One procedure is left, and a module with more is refused, whole.
+        let error = front.analyse(two).err().expect("over the budget");
+        assert_eq!(
+            (error.status, error.code),
+            (Status::TooLarge, "vba.too_many_procedures")
+        );
+        assert!(front.analyse("Sub C()\nEnd Sub\n").is_ok());
+        assert!(front.analyse("Dim x As Long\n").is_ok());
+        assert!(front.analyse("Sub D()\nEnd Sub\n").is_err());
     }
 
     #[test]
