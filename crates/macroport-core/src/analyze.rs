@@ -88,7 +88,7 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 pub struct Options<'a> {
     /// The rules. Extraction reads the container indicators from them, with
     /// their severity, and the front end takes from them the traits that the
-    /// parser decides (`compile_error_suspected`).
+    /// parser and the metrics decide (`compile_error_suspected`).
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and

@@ -135,17 +135,13 @@ fn header(tokens: &[Token], text: &str) -> Option<Header> {
         },
         _ => return None,
     };
-    let name_at = at.saturating_add(keyword_tokens);
-    let name = tokens
-        .get(name_at)
-        .filter(|token| token.kind == TokenKind::Identifier)
-        .map(|token| token.name(text).to_owned())
-        .unwrap_or_default();
+    let name_index = at.saturating_add(keyword_tokens);
+    let name = name_at(tokens, name_index, text);
     let parameter_count = if name.is_empty() {
         0
     } else {
         tokens
-            .get(name_at.saturating_add(1)..)
+            .get(name_index.saturating_add(1)..)
             .map_or(0, parameter_count)
     };
     Some(Header {
@@ -192,16 +188,32 @@ fn parameter_count(after_name: &[Token]) -> usize {
 
 /// `End Sub`, `End Function` or `End Property`.
 fn procedure_end(tokens: &[Token]) -> Option<EndOf> {
-    let [end, what, ..] = tokens else {
-        return None;
-    };
-    if end.kind != TokenKind::Keyword(Keyword::End) {
-        return None;
-    }
-    match what.kind {
-        TokenKind::Keyword(Keyword::Sub) => Some(EndOf::Sub),
-        TokenKind::Keyword(Keyword::Function) => Some(EndOf::Function),
-        TokenKind::Keyword(Keyword::Property) => Some(EndOf::Property),
+    match end_word(tokens)? {
+        Keyword::Sub => Some(EndOf::Sub),
+        Keyword::Function => Some(EndOf::Function),
+        Keyword::Property => Some(EndOf::Property),
         _ => None,
     }
+}
+
+/// The keyword that the statement `tokens` names after a leading `End`, as
+/// `Sub` in `End Sub` or `Type` in `End Type`.
+pub(super) fn end_word(tokens: &[Token]) -> Option<Keyword> {
+    match tokens {
+        [end, word, ..] if end.kind == TokenKind::Keyword(Keyword::End) => match word.kind {
+            TokenKind::Keyword(word) => Some(word),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The name that the token at `at` spells, if it is a name; empty when there is
+/// none.
+pub(super) fn name_at(tokens: &[Token], at: usize, text: &str) -> String {
+    tokens
+        .get(at)
+        .filter(|token| token.kind == TokenKind::Identifier)
+        .map(|token| token.name(text).to_owned())
+        .unwrap_or_default()
 }
