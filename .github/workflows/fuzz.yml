@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: Apache-2.0
+# Fuzzing of the binary parsers (SPEC section 9, A2): every night, each target
+# of fuzz/ runs for one hour (3600 seconds) in a job of its own, on the nightly
+# toolchain that cargo-fuzz needs. The corpus a night ends with is where the
+# next one starts. A job that finds a crash fails and uploads the input as an
+# artifact; replay it with `cargo +nightly fuzz run <target> <crash file>`.
+# A pull request that changes fuzz/ runs the same jobs for 30 seconds, so that
+# a broken target or workflow shows before the merge. A change to the core's
+# API that breaks a target shows in the next nightly run.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds each target runs (a job times out after 90 minutes)
+        default: "3600"
+  pull_request:
+    paths:
+      - fuzz/**
+      - .github/workflows/fuzz.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # One hour, unless a pull request or a manual run says otherwise.
+  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '30' || inputs.seconds || '3600' }}
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # max_len is the largest input in bytes, above the largest seed:
+          # the zip bomb of the fixtures weighs 1 MB, the largest workbook
+          # 267 KB, and a stream of a VBA project far less.
+          - target: zip_entry
+            max_len: 1048576
+          - target: ooxml_xml
+            max_len: 65536
+          - target: cfb_streams
+            max_len: 524288
+          - target: biff_workbook
+            max_len: 65536
+          - target: dir_stream
+            max_len: 65536
+          - target: project_stream
+            max_len: 65536
+          - target: ovba_decompress
+            max_len: 65536
+          - target: module_source
+            max_len: 131072
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
+      - name: Restore the corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      # The seeds come from the fixtures, which are only read. --locked also
+      # fails the run when fuzz/Cargo.lock is stale.
+      - name: Write the seeds
+        run: >-
+          cargo +nightly run --locked --manifest-path fuzz/Cargo.toml --example seeds --
+          corpus/fixtures "$RUNNER_TEMP/seeds"
+      # The first corpus folder receives the new inputs and must exist.
+      # -malloc_limit_mb: no single allocation reaches the 256 MB that A2 gives
+      # a whole file. -timeout: an input that takes 30 seconds is a hang.
+      - name: Fuzz
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            fuzz/corpus/${{ matrix.target }} "$RUNNER_TEMP/seeds/${{ matrix.target }}" -- \
+            -max_total_time="$FUZZ_SECONDS" -max_len=${{ matrix.max_len }} \
+            -timeout=30 -malloc_limit_mb=256 -print_final_stats=1
+      - name: Save the corpus
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - name: Keep the crash
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 30
