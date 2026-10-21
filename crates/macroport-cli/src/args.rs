@@ -49,11 +49,6 @@ pub enum Format {
     Csv,
 }
 
-impl Format {
-    /// Every format, the default of `--format`.
-    pub const ALL: [Self; 3] = [Self::Json, Self::Html, Self::Csv];
-}
-
 /// A kind of report that `file` prints: one document, so no CSV.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum FileFormat {
