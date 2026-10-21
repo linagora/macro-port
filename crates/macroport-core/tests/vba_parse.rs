@@ -279,6 +279,60 @@ fn statements_that_look_like_headers_are_not_headers() {
 }
 
 #[test]
+fn two_forms_of_a_header_under_conditional_compilation_are_one_procedure() {
+    let text = "#If VBA7 Then\nPublic Sub S(h As LongPtr)\n#Else\nPublic Sub S(h As Long)\n\
+                #End If\n    x = 1\nEnd Sub\nSub T()\nEnd Sub\n";
+    let module = module_of(text);
+    // The procedure starts at its first form and holds the directives between.
+    assert_eq!(spans(&module), [("S", Sub, 2, 7), ("T", Sub, 8, 9)]);
+    let ranges: Vec<_> = module.procedures.iter().map(|p| p.lines.clone()).collect();
+    assert_eq!(ranges, [1..7, 7..9]);
+    assert!(!module.is_recovered());
+}
+
+#[test]
+fn an_elseif_leads_to_another_form_of_the_header_too() {
+    let text =
+        "#If A Then\nSub S(a)\n#ElseIf B Then\nSub S(a, b)\n#Else\nSub S()\n#End If\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(spans(&module), [("S", Sub, 2, 8)]);
+    // The name, the kind and the parameters are the ones of the first form.
+    assert_eq!(module.procedures[0].parameter_count, 1);
+    assert!(!module.is_recovered());
+}
+
+#[test]
+fn a_procedure_in_each_branch_of_conditional_compilation_is_two_procedures() {
+    let text = "#If Win64 Then\nSub P()\n    x = 64\nEnd Sub\n#Else\nSub P()\n    x = 32\nEnd Sub\n#End If\n";
+    let module = module_of(text);
+    assert_eq!(spans(&module), [("P", Sub, 2, 4), ("P", Sub, 6, 8)]);
+    assert!(!module.is_recovered());
+}
+
+#[test]
+fn conditional_compilation_inside_a_body_changes_nothing() {
+    let text = "Sub A()\n#If Win64 Then\n    x = 64\n#Else\n    x = 32\n#End If\nEnd Sub\nSub B()\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(spans(&module), [("A", Sub, 1, 7), ("B", Sub, 8, 9)]);
+    assert!(!module.is_recovered());
+}
+
+#[test]
+fn a_header_after_the_end_of_the_conditional_is_a_new_procedure() {
+    let module = module_of("#If A Then\nSub X()\n#End If\nSub Y()\nEnd Sub\n");
+    assert_eq!(spans(&module), [("X", Sub, 2, 3), ("Y", Sub, 4, 5)]);
+    let recovered: Vec<_> = module.procedures.iter().map(|p| p.is_recovered()).collect();
+    assert_eq!(recovered, [true, false]);
+}
+
+#[test]
+fn directives_that_nothing_opens_are_harmless() {
+    let module = module_of("#Else\n#End If\n#ElseIf x Then\nSub A()\nEnd Sub\n#End If\n");
+    assert_eq!(spans(&module), [("A", Sub, 4, 5)]);
+    assert!(!module.is_recovered());
+}
+
+#[test]
 fn the_recoveries_of_a_module_are_capped() {
     let module = module_of(&"End Sub\n".repeat(MAX_RECOVERIES * 3));
     assert!(module.procedures.is_empty());
