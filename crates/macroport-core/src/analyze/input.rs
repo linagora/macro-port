@@ -2,8 +2,8 @@
 //! The input of the rule engine, from what the front end makes of a module.
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
-//! that the engine reads ([`ModuleInput`]), and measures the procedures on the
-//! way. Four conventions matter to the engine:
+//! that the engine reads ([`ModuleInput`]), with what measuring the procedures
+//! showed ([`Analysis::measures`]). Four conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -40,7 +40,7 @@ use crate::report::{Metrics, Status};
 use crate::rules::ModuleType;
 use crate::vba::{
     self, ConstTable, DeclarationKind, LogicalKind, LogicalLine, Procedure, StatementReader, Token,
-    TokenKind, VbaError, measure_procedure, tokenize,
+    TokenKind, VbaError, tokenize,
 };
 
 /// The most bytes that the input of the rule engine may take for the modules of
@@ -254,8 +254,8 @@ fn read_module(
     };
 
     let mut input = module_input(name, module_type);
-    // Whether something in the module did not parse: a statement too deep to be
-    // read, or blocks that do not match.
+    // Whether a statement of the module is too deep to be read. The analysis
+    // knows what the parser and the measure found, not that.
     let mut suspect = false;
     for gap in &outside {
         let (code, deep) = converter.code_lines(slice(logical, gap))?;
@@ -264,17 +264,10 @@ fn read_module(
     }
     let mut procedures = Vec::with_capacity(parsed.procedures.len());
     let mut metrics = Vec::with_capacity(parsed.procedures.len());
-    for procedure in &parsed.procedures {
-        let body = slice(logical, &procedure.lines);
-        let measure = measure_procedure(
-            procedure.start_line,
-            procedure.end_line,
-            procedure.parameter_count,
-            body,
-        );
-        let (lines, deep) = converter.code_lines(body)?;
-        let suspected = deep || measure.unbalanced_blocks;
-        suspect |= suspected;
+    let found = parsed.procedures.iter().zip(&analysis.measures);
+    for (index, (procedure, measure)) in found.enumerate() {
+        let (lines, deep) = converter.code_lines(slice(logical, &procedure.lines))?;
+        suspect |= deep;
         procedures.push(ProcedureInput {
             name: procedure.name.clone(),
             kind: procedure.kind,
@@ -282,15 +275,15 @@ fn read_module(
             end_line: procedure.end_line,
             lines,
             predicates: ParserPredicates {
-                nested_loop_compare: measure.nested_loop_compare,
-                parse_recovered: procedure.is_recovered() || suspected,
+                nested_loop_compare: measure.nested_loop_compare.clone(),
+                parse_recovered: analysis.procedure_recovered(index) || deep,
                 ..ParserPredicates::default()
             },
         });
-        metrics.push(measure.metrics);
+        metrics.push(measure.metrics.clone());
     }
     input.procedures = procedures;
-    input.parse_recovered = parsed.is_recovered() || suspect;
+    input.parse_recovered = analysis.is_recovered() || suspect;
 
     let with_events =
         parsed
@@ -455,12 +448,10 @@ fn without_strings(text: &str, tokens: &[Token]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vba::{MAX_NESTING, parse, split_lines};
+    use crate::vba::MAX_NESTING;
 
     fn analysis(text: &str) -> Analysis {
-        let lines = split_lines(text).expect("a short module");
-        let module = parse(&lines);
-        Analysis { lines, module }
+        Analysis::of(text).expect("a short module")
     }
 
     fn adapted(text: &str) -> Adapted {

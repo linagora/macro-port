@@ -7,13 +7,16 @@
 //! that the parser's predicates give as well.
 
 use super::input::Measured;
-use crate::engine::findings::{Findings, ProjectMetrics};
+use crate::engine::findings::Findings;
 use crate::report::FileReport;
 
-/// Writes `findings` into `file`, and the metrics of the procedures that the
-/// engine read. `measured` has an entry for each module of the project of the
-/// file, as `findings` does: a module that the front end did not read keeps the
-/// report it had, since nothing was measured of it.
+/// Writes `findings` into `file`. `measured` has an entry for each module of the
+/// project of the file, as `findings` does: a module that the front end did not
+/// read keeps the report it had, since nothing was measured of it.
+///
+/// The metrics of the report are not touched: the front end gave them, and the
+/// engine read the same ones, but for the dependencies that the report leaves
+/// out.
 ///
 /// `judged` tells whether a module was read. A file where none was has only the
 /// signals of its container indicators, and the severity they give it: its
@@ -22,7 +25,6 @@ use crate::report::FileReport;
 pub(super) fn apply(
     file: &mut FileReport,
     findings: Findings,
-    metrics: ProjectMetrics,
     measured: &[Measured],
     judged: bool,
 ) {
@@ -31,17 +33,13 @@ pub(super) fn apply(
         file: decided,
     } = findings;
     if let Some(project) = file.vba_project.as_mut() {
-        let found = (project.modules.iter_mut().zip(modules))
-            .zip(metrics.procedures)
-            .zip(measured);
-        for (((module, found), procedure_metrics), measured) in found {
+        let found = (project.modules.iter_mut().zip(modules)).zip(measured);
+        for ((module, found), measured) in found {
             if !measured.read {
                 continue;
             }
             module.signals = Some(found.signals);
-            let found = (module.procedures.iter_mut().zip(found.procedures)).zip(procedure_metrics);
-            for ((procedure, decided), metrics) in found {
-                procedure.metrics = metrics;
+            for (procedure, decided) in module.procedures.iter_mut().zip(found.procedures) {
                 procedure.primary_family = decided.primary_family;
                 procedure.secondary_families = Some(decided.secondary_families);
                 procedure.families = decided.families;

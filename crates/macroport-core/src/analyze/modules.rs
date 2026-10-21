@@ -2,15 +2,15 @@
 //! The modules of a file, from their source to their report (SPEC M2 and M3).
 //!
 //! The front end reads each module on its own, from its text alone. [`Analysis`]
-//! holds what it makes of one: the lines, and the procedures that the parser
-//! finds in them. [`Front`] puts that into the report of the module, keeps what
-//! the rule engine reads of it, and once every module is read, runs the engine
-//! on the project and completes the report of the file. [`finish`] runs it on
-//! the modules of an extraction, those that were found in a workbook. The text
-//! modules have two doors of their own: [`analyze_modules`] (the `text`
-//! submodule) wraps modules that the caller has as text in a file, and
-//! `analyze_text` (the `text_file` submodule) reads a `.bas`, `.cls` or `.frm`
-//! file as the one module of a file.
+//! holds what it makes of one: the lines, the procedures that the parser finds
+//! in them, and what measuring each procedure shows. [`Front`] puts that into
+//! the report of the module, keeps what the rule engine reads of it, and once
+//! every module is read, runs the engine on the project and completes the report
+//! of the file. [`finish`] runs it on the modules of an extraction, those that
+//! were found in a workbook. The text modules have two doors of their own:
+//! [`analyze_modules`] (the `text` submodule) wraps modules that the caller has
+//! as text in a file, and `analyze_text` (the `text_file` submodule) reads a
+//! `.bas`, `.cls` or `.frm` file as the one module of a file.
 //!
 //! The file is `ok` when a module has a procedure or is suspected of having lost
 //! its source, when it has Excel 4.0 macro sheets or when the encryption of the
@@ -23,7 +23,10 @@
 //!
 //! The ProgIDs of the statements are not read yet, nor are the entry points and
 //! the call graph: what depends on them is left out, since a missing value is
-//! not a zero (see [`input`](super::input)).
+//! not a zero (see [`input`](super::input)). The external dependencies of the
+//! procedures and of the file are such a field: their count would fall short, so
+//! the report leaves it out, and the rule engine reads what is known of it, a
+//! value that the report leaves out counting as 0 for it.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -40,8 +43,8 @@ use crate::report::{
 };
 use crate::rules::RuleSet;
 use crate::vba::{
-    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, SourceLines, VbaError,
-    file_metrics, module_metrics, parse, split_lines,
+    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, ProcedureMeasure,
+    SourceLines, VbaError, file_metrics, measure_procedure, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -82,6 +85,9 @@ pub(super) struct Analysis {
     pub(super) lines: SourceLines,
     /// Its procedures, and where the parser stepped over something.
     pub(super) module: ParsedModule,
+    /// What measuring each procedure shows: one for each of the procedures of
+    /// `module`, in the same order.
+    pub(super) measures: Vec<ProcedureMeasure>,
 }
 
 impl Analysis {
@@ -89,7 +95,29 @@ impl Analysis {
     pub(super) fn of(text: &str) -> Result<Self, VbaError> {
         let lines = split_lines(text)?;
         let module = parse(&lines);
-        Ok(Self { lines, module })
+        let measures = (module.procedures.iter())
+            .map(|procedure| measure_parsed(procedure, &lines))
+            .collect();
+        Ok(Self {
+            lines,
+            module,
+            measures,
+        })
+    }
+
+    /// Whether the structural predicate `parse_recovered` holds for the
+    /// procedure at `index` (SPEC M2 item 6): the parser stepped over something
+    /// in it, or its blocks do not match.
+    pub(super) fn procedure_recovered(&self, index: usize) -> bool {
+        let parsed = (self.module.procedures.get(index)).is_some_and(Procedure::is_recovered);
+        parsed || (self.measures.get(index)).is_some_and(|measure| measure.unbalanced_blocks)
+    }
+
+    /// Whether `parse_recovered` holds for the module as a whole: for a
+    /// procedure, or for the code outside the procedures.
+    pub(super) fn is_recovered(&self) -> bool {
+        self.module.is_recovered()
+            || (self.measures.iter()).any(|measure| measure.unbalanced_blocks)
     }
 
     /// How many lines reading the module took: the greater of its physical and
@@ -186,36 +214,37 @@ impl<'r> Front<'r> {
         Ok(analysis)
     }
 
-    /// Puts what `analysis` shows of a module into its report: its sizes, its
-    /// declarations, and its procedures with their spans and their sizes. What
-    /// the rule engine decides is left for [`seal`](Self::seal). Fails, and
-    /// leaves the report alone, when what the engine reads of the module does
-    /// not fit in the room that is left.
+    /// Puts what `analysis` shows of a module into its report: its procedures
+    /// with their spans and metrics, the metrics of the module, and its
+    /// declarations. What the rule engine decides is left for
+    /// [`seal`](Self::seal). Fails, and leaves the report alone, when what the
+    /// engine reads of the module does not fit in the room that is left.
     fn fill(
         &mut self,
         module: &mut ModuleReport,
         analysis: &Analysis,
     ) -> Result<Adapted, VbaError> {
         let adapted = adapt(&module.name, module.module_type, analysis, &mut self.room)?;
-        let metrics = &adapted.measured.procedures;
-        module.procedures = (analysis.module.procedures.iter().zip(metrics))
-            .map(|(procedure, metrics)| procedure_report(procedure, metrics))
+        let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
+        module.procedures = found
+            .map(|(procedure, measure)| procedure_report(procedure, measure))
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
+        let procedure_metrics = analysis.measures.iter().map(|measure| &measure.metrics);
         module.metrics = Metrics {
             declare_count: declarations.declare_count,
-            ..module_metrics(&analysis.lines, metrics)
+            ..module_metrics(&analysis.lines, procedure_metrics)
         };
         module.declarations = Some(declarations);
         Ok(adapted)
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file sum those of its modules, the rule engine decides the families,
-    /// the signals, the traits and the level, the errors of the front end join
-    /// those of the extraction, and the status follows from the procedures.
-    /// `indicators` are the ids of the container indicators that extraction
-    /// raised: the engine makes their signals.
+    /// the file follow from those of its modules and of their procedures, the
+    /// rule engine decides the families, the signals, the traits and the level,
+    /// the errors of the front end join those of the extraction, and the status
+    /// follows from the procedures. `indicators` are the ids of the container
+    /// indicators that extraction raised: the engine makes their signals.
     ///
     /// The engine runs when a module was read, whatever the status of the file:
     /// a file of which some modules could not be read is judged on the others.
@@ -246,12 +275,18 @@ impl<'r> Front<'r> {
         let has_project = sizes.is_some();
         let metrics = project_metrics(&project, &measured, sizes.unwrap_or_default());
         if has_project {
-            file.metrics = Some(metrics.file.clone());
+            file.metrics = Some(Metrics {
+                // The ProgIDs that the statements pass to `CreateObject` and
+                // `GetObject` are not read yet, so the count would fall short.
+                // The engine reads it all the same, as a lower bound.
+                external_dependencies: None,
+                ..metrics.file.clone()
+            });
         }
         let judged = measured.iter().any(|module| module.read);
         if judged || !indicators.is_empty() {
             let decided = findings::run(&project, rules, &metrics, indicators);
-            apply(file, decided, metrics, &measured, judged);
+            apply(file, decided, &measured, judged);
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match failures.first() {
@@ -293,10 +328,22 @@ fn has_macros(module: &ModuleReport) -> bool {
     !module.procedures.is_empty() || module.source_missing_suspected == Some(true)
 }
 
-/// The report of a procedure, as far as the structure of the module shows it,
-/// given its `metrics`. The fields that the rule engine decides hold what a
-/// procedure that no rule has scored has, until [`apply`] writes the findings.
-fn procedure_report(procedure: &Procedure, metrics: &Metrics) -> ProcedureReport {
+/// What measuring a procedure that the parser found shows: its metrics, and
+/// whether its blocks match. `lines` are those of the module that holds it.
+fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasure {
+    let code = (lines.logical.get(procedure.lines.clone())).unwrap_or_default();
+    measure_procedure(
+        procedure.start_line,
+        procedure.end_line,
+        procedure.parameter_count,
+        code,
+    )
+}
+
+/// The report of a procedure, as far as its structure and its measure show it.
+/// The fields that the rule engine decides hold what a procedure that no rule
+/// has scored has, until [`apply`] writes the findings.
+fn procedure_report(procedure: &Procedure, measure: &ProcedureMeasure) -> ProcedureReport {
     ProcedureReport {
         name: procedure.name.clone(),
         kind: procedure.kind,
@@ -306,7 +353,7 @@ fn procedure_report(procedure: &Procedure, metrics: &Metrics) -> ProcedureReport
         possibly_unused: None,
         start_line: procedure.start_line,
         end_line: procedure.end_line,
-        metrics: metrics.clone(),
+        metrics: measure.metrics.clone(),
         calls: None,
         apis: None,
         primary_family: UNCLASSIFIED.to_owned(),
@@ -430,5 +477,43 @@ mod tests {
         assert_eq!(weight("a\nb\nc"), 3);
         assert_eq!(weight("a: b: c: d"), 4);
         assert_eq!(weight(""), 0);
+    }
+
+    #[test]
+    fn an_analysis_measures_each_procedure_in_order() {
+        let analysis =
+            Analysis::of("Sub A()\nEnd Sub\nSub B(x)\n    If x Then\n    End If\nEnd Sub\n")
+                .expect("a short module");
+
+        let cyclomatic: Vec<_> = (analysis.measures.iter())
+            .map(|measure| measure.metrics.cyclomatic)
+            .collect();
+        assert_eq!(analysis.measures.len(), analysis.module.procedures.len());
+        assert_eq!(cyclomatic, [Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn an_analysis_tells_which_procedures_did_not_parse_cleanly() {
+        let of = |text| Analysis::of(text).expect("a short module");
+
+        // The blocks of the first of three procedures do not match, and the
+        // parser recovers in the second, which has no end. There is no fourth.
+        let both = of("Sub A()\n    If x Then\nEnd Sub\nSub B()\nSub C()\nEnd Sub\n");
+        let recovered: Vec<_> = (0..4)
+            .map(|index| both.procedure_recovered(index))
+            .collect();
+        assert_eq!(recovered, [true, true, false, false]);
+        assert!(both.is_recovered());
+
+        // The blocks alone, and the code outside the procedures alone.
+        let blocks = of("Sub A()\n    Next\nEnd Sub\n");
+        assert!(!blocks.module.is_recovered());
+        assert!(blocks.procedure_recovered(0) && blocks.is_recovered());
+        let outside = of("Sub A()\nEnd Sub\nEnd Sub\n");
+        assert!(!outside.procedure_recovered(0));
+        assert!(outside.is_recovered());
+
+        let clean = of("Sub A()\n    If x Then\n    End If\nEnd Sub\n");
+        assert!(!clean.procedure_recovered(0) && !clean.is_recovered());
     }
 }

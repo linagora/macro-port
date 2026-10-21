@@ -44,6 +44,14 @@ pub fn codes(report: &FileReport) -> Vec<&str> {
     errors.map(|error| error.code.as_str()).collect()
 }
 
+/// Whether `traits` has the trait that the shipped rules give to what did not
+/// parse cleanly, the one tied to the predicate `parse_recovered`. The rule
+/// engine gives every trait of a procedure or a file, so the others come with
+/// it.
+pub fn suspected(traits: &Option<Vec<String>>) -> bool {
+    (traits.iter().flatten()).any(|id| id == "compile_error_suspected")
+}
+
 /// The signal `id` of `severity` that a container indicator makes: it is the
 /// file's, with no module and no evidence.
 pub fn file_signal(id: &str, severity: Severity) -> Signal {

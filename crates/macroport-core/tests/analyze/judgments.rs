@@ -104,8 +104,10 @@ fn a_procedure_is_judged_on_its_own_measures() {
     // Five logical lines, and one that is not: only the second is trivial.
     assert_eq!(trait_ids(&procedures[0].traits), Some(Vec::new()));
     assert_eq!(trait_ids(&procedures[1].traits), Some(vec!["trivial"]));
-    assert_eq!(procedures[0].metrics.external_dependencies, Some(0));
-    assert_eq!(procedures[1].metrics.external_dependencies, Some(0));
+    // The ProgIDs of the statements are not read yet, so the report leaves the
+    // count of the dependencies of a procedure out.
+    assert_eq!(procedures[0].metrics.external_dependencies, None);
+    assert_eq!(procedures[1].metrics.external_dependencies, None);
 }
 
 #[test]
@@ -142,16 +144,30 @@ fn the_aggregates_of_modules_and_file_are_the_highest_and_the_sum_of_their_proce
 }
 
 #[test]
-fn a_declare_statement_is_a_dependency_and_makes_the_file_high() {
+fn a_declare_statement_makes_the_file_high() {
     let declare = "Private Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
     let file = report_of(&format!("{declare}{HELLO}"));
 
     let metrics = file.metrics.as_ref().expect("the metrics of the file");
     assert_eq!(metrics.declare_count, Some(1));
-    assert_eq!(metrics.external_dependencies, Some(1));
+    // The report leaves the count of the dependencies out until the ProgIDs of
+    // the statements are read, but the level is decided all the same.
+    assert_eq!(metrics.external_dependencies, None);
     assert_eq!(file.complexity_level, Some(Level::High));
-    // The procedure calls none of the routines that the module declares.
-    assert_eq!(first(&file).metrics.external_dependencies, Some(0));
+}
+
+#[test]
+fn a_procedure_that_calls_a_declared_routine_has_a_dependency_and_is_not_trivial() {
+    let declare = "Private Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
+    let ticking = "Sub Tick()\n    x = GetTickCount()\nEnd Sub\n";
+    let file = report_of(&format!("{declare}{HELLO}{ticking}"));
+
+    let procedures = &modules(&file)[0].procedures;
+    // Three logical lines each, and the engine counts the routine that the
+    // second one calls, though the report leaves the count out.
+    assert_eq!(trait_ids(&procedures[0].traits), Some(vec!["trivial"]));
+    assert_eq!(trait_ids(&procedures[1].traits), Some(Vec::new()));
+    assert_eq!(procedures[1].metrics.external_dependencies, None);
 }
 
 #[test]
