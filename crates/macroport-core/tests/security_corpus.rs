@@ -7,14 +7,13 @@
 //! of the whole pipeline: front end, rule engine and report.
 //!
 //! Some of the signals wait for facts that the front end does not read yet
-//! (the chains, the ProgIDs and the obfuscated character codes of the
-//! statements). The test is a ratchet: `WAITING` lists
-//! the signals that are known not to fire, by the sample, and the test fails
-//! both when a signal is missing that is not listed and when a listed signal
-//! fires, so that the list only shrinks and ends empty. The other bullet of
-//! A5, the obfuscated ProgID of 14-02 resolved to `WScript.Shell`, needs the
-//! ProgIDs too: it is checked here through `sec.wscript-run` on that sample,
-//! which is in `WAITING` until then.
+//! (the ProgIDs and the obfuscated character codes of the statements). The
+//! test is a ratchet: `WAITING` lists the signals that are known not to fire,
+//! by the sample, and the test fails both when a signal is missing that is not
+//! listed and when a listed signal fires, so that the list only shrinks and
+//! ends empty. The other bullet of A5, the obfuscated ProgID of 14-02 resolved
+//! to `WScript.Shell`, needs the ProgIDs too: it is checked here through
+//! `sec.wscript-run` on that sample, which is in `WAITING` until then.
 
 // The helpers are test code: a panic in one is a failed test. `clippy.toml`
 // only exempts the bodies of `#[test]` functions. The file reads the corpus
@@ -47,8 +46,6 @@ const WAITING: &[(&str, &[&str])] = &[
     ),
     // The ProgIDs of `CreateObject`, and the chain of signals that one completes.
     ("14-03", &["sec.http", "sec.chain.download-write"]),
-    // The chain `Application.ExecuteExcel4Macro`.
-    ("14-06", &["sec.xlm"]),
 ];
 
 static RULES: LazyLock<RuleSet> = LazyLock::new(|| {

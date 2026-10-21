@@ -18,9 +18,9 @@
 //!   when it holds for one of its procedures, or when the parser recovered
 //!   outside any.
 //!
-//! What the front end does not read yet is left empty, not guessed: the chains
-//! and the ProgIDs of the statements, and the predicates `udf_candidate`,
-//! `chr_obfuscation` and `possibly_unused`.
+//! What the front end does not read yet is left empty, not guessed: the ProgIDs
+//! of the statements, and the predicates `udf_candidate`, `chr_obfuscation` and
+//! `possibly_unused`.
 
 use std::ops::Range;
 
@@ -223,16 +223,22 @@ impl Converter<'_> {
             };
             return (code, false);
         }
+        // The reader cuts the statement into tokens of its own, because it needs
+        // to know the continued lines for the chains: these tokens are gone
+        // when it reads.
         let tokens = tokenize(&line.text);
-        let facts = self.reader.read_tokens(&line.text, &tokens);
+        let text = without_strings(&line.text, &tokens);
+        drop(tokens);
+        let facts = self.reader.read(line);
         let code = CodeLine {
             line: line.line,
             raw,
-            code: without_strings(&line.text, &tokens),
+            code: text,
             comment,
             strings: facts.strings,
             members: facts.members.into_iter().map(member).collect(),
             calls: facts.calls.into_iter().map(call).collect(),
+            chains: facts.chains,
             ..CodeLine::default()
         };
         (code, facts.too_deep)
@@ -409,11 +415,22 @@ mod tests {
         let procedure = &adapted.input.procedures[0];
         assert_eq!(procedure.predicates, ParserPredicates::default());
         for line in &procedure.lines {
-            assert!(
-                line.chains.is_empty() && line.progids.is_empty(),
-                "{line:?}"
-            );
+            assert!(line.progids.is_empty(), "{line:?}");
         }
+    }
+
+    #[test]
+    fn the_chains_of_a_statement_are_those_the_reader_finds() {
+        let adapted = adapted(
+            "Sub Run()\n    ws.Cells(1, 1).Value = 2\n    x.Interior _\n        .Color = 1\n\
+             End Sub\n",
+        );
+
+        let lines = &adapted.input.procedures[0].lines;
+        assert_eq!(lines[1].chains, [["ws", "Cells", "Value"]]);
+        // A dot that opens a continued line goes on with the chain before it.
+        assert_eq!(lines[2].chains, [["x", "Interior", "Color"]]);
+        assert!(lines[0].chains.is_empty());
     }
 
     #[test]

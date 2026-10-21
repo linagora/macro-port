@@ -21,9 +21,9 @@
 //! be read of a file is judged whatever else went wrong with it, and when the
 //! extraction raised a container indicator, so that its signal is made.
 //!
-//! The chains and the ProgIDs of the statements are not read yet, nor are the
-//! entry points and the call graph: what depends on them is left out, since a
-//! missing value is not a zero (see [`input`](super::input)).
+//! The ProgIDs of the statements are not read yet, nor are the entry points and
+//! the call graph: what depends on them is left out, since a missing value is
+//! not a zero (see [`input`](super::input)).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
