@@ -309,3 +309,172 @@ fn a_token_maps_back_to_the_physical_line_it_came_from() {
     assert_eq!(line.text, "x = 1 + 2");
     assert_eq!(physical, [2, 2, 2, 2, 3]);
 }
+
+#[test]
+fn numbers_are_integers_floats_and_exponents() {
+    check(&[
+        ("42", "Number[42]"),
+        ("007", "Number[007]"),
+        ("3.14", "Number[3.14]"),
+        ("5.", "Number[5.]"),
+        (".5", "Number[.5]"),
+        ("1E5", "Number[1E5]"),
+        ("1.5e-3", "Number[1.5e-3]"),
+        ("2D+10", "Number[2D+10]"),
+        ("1d5", "Number[1d5]"),
+    ]);
+}
+
+#[test]
+fn an_exponent_needs_digits_and_a_number_may_touch_the_word_after_it() {
+    check(&[
+        ("1E", "Number[1] Identifier[E]"),
+        ("1E+", "Number[1] Identifier[E] Plus[+]"),
+        ("1Else", "Number[1] Keyword(Else)[Else]"),
+        (
+            "For i = 1To 3",
+            "Keyword(For)[For] Identifier[i] Equals[=] Number[1] Keyword(To)[To] Number[3]",
+        ),
+    ]);
+}
+
+#[test]
+fn a_number_takes_the_type_character_that_follows_it() {
+    check(&[
+        ("10%", "Number[10%]"),
+        ("10&", "Number[10&]"),
+        ("1.5!", "Number[1.5!]"),
+        ("1.5#", "Number[1.5#]"),
+        ("1.5@", "Number[1.5@]"),
+        ("-1&", "Minus[-] Number[1&]"),
+        (
+            "x = 2^3",
+            "Identifier[x] Equals[=] Number[2] Caret[^] Number[3]",
+        ),
+    ]);
+}
+
+#[test]
+fn an_ampersand_is_a_type_character_unless_an_operand_follows_it() {
+    check(&[
+        ("i&", "Identifier[i&]"),
+        (
+            "Dim i&, j&",
+            "Keyword(Dim)[Dim] Identifier[i&] Comma[,] Identifier[j&]",
+        ),
+        ("x& = 1&", "Identifier[x&] Equals[=] Number[1&]"),
+        ("a&b", "Identifier[a] Ampersand[&] Identifier[b]"),
+        (r#"a&"s""#, r#"Identifier[a] Ampersand[&] String["s"]"#),
+        (
+            "a&(b)",
+            "Identifier[a] Ampersand[&] LeftParen[(] Identifier[b] RightParen[)]",
+        ),
+        ("1&2", "Number[1] Ampersand[&] Number[2]"),
+        ("a & b", "Identifier[a] Ampersand[&] Identifier[b]"),
+    ]);
+}
+
+#[test]
+fn a_bang_reaches_a_member_unless_it_is_the_type_character_of_a_name() {
+    check(&[
+        ("rs!Name", "Identifier[rs] Bang[!] Identifier[Name]"),
+        (
+            "rs![Field Name]",
+            "Identifier[rs] Bang[!] Identifier[[Field Name]]",
+        ),
+        (
+            "rs.Fields!Name!Other",
+            "Identifier[rs] Dot[.] Identifier[Fields] Bang[!] Identifier[Name] Bang[!] Identifier[Other]",
+        ),
+        ("!Name", "Bang[!] Identifier[Name]"),
+        (
+            "Foo(1)!Bar",
+            "Identifier[Foo] LeftParen[(] Number[1] RightParen[)] Bang[!] Identifier[Bar]",
+        ),
+        ("x! = 1", "Identifier[x!] Equals[=] Number[1]"),
+        ("x!", "Identifier[x!]"),
+        (
+            "f(x!)",
+            "Identifier[f] LeftParen[(] Identifier[x!] RightParen[)]",
+        ),
+    ]);
+}
+
+#[test]
+fn a_hash_around_digits_is_a_date() {
+    for literal in [
+        "#1/2/2000#",
+        "#12/31/1999 11:59:59 PM#",
+        "#2000-01-02#",
+        "#Jan 1, 2000#",
+        "#1:30 PM#",
+        "#13:45:00#",
+    ] {
+        assert_eq!(show(literal), format!("Date[{literal}]"));
+    }
+    check(&[
+        (
+            "d = #1/2/2000# + 1",
+            "Identifier[d] Equals[=] Date[#1/2/2000#] Plus[+] Number[1]",
+        ),
+        (
+            "Foo(#1/2/2000#, #3/4/2000#)",
+            "Identifier[Foo] LeftParen[(] Date[#1/2/2000#] Comma[,] Date[#3/4/2000#] RightParen[)]",
+        ),
+    ]);
+}
+
+#[test]
+fn a_hash_before_a_file_number_or_a_directive_is_no_date() {
+    check(&[
+        (
+            "Print #1, x",
+            "Identifier[Print] Hash[#] Number[1] Comma[,] Identifier[x]",
+        ),
+        (
+            "Print#1, x",
+            "Identifier[Print] Hash[#] Number[1] Comma[,] Identifier[x]",
+        ),
+        (
+            "Open f For Output As #1",
+            "Identifier[Open] Identifier[f] Keyword(For)[For] Identifier[Output] Keyword(As)[As] Hash[#] Number[1]",
+        ),
+        (
+            "Close #fileNumber",
+            "Identifier[Close] Hash[#] Identifier[fileNumber]",
+        ),
+        (
+            "Print #1, #1/1/2000#",
+            "Identifier[Print] Hash[#] Number[1] Comma[,] Date[#1/1/2000#]",
+        ),
+        (
+            "#If DEBUG Then",
+            "Hash[#] Keyword(If)[If] Identifier[DEBUG] Keyword(Then)[Then]",
+        ),
+        (
+            "#Const A = 1",
+            "Hash[#] Keyword(Const)[Const] Identifier[A] Equals[=] Number[1]",
+        ),
+        ("#Else", "Hash[#] Keyword(Else)[Else]"),
+        ("#End If", "Hash[#] Keyword(End)[End] Keyword(If)[If]"),
+    ]);
+}
+
+#[test]
+fn a_hash_right_after_a_name_is_its_type_character() {
+    check(&[
+        ("x#", "Identifier[x#]"),
+        (
+            "x# = #1/2/2000#",
+            "Identifier[x#] Equals[=] Date[#1/2/2000#]",
+        ),
+        (
+            "Dim a#, b#",
+            "Keyword(Dim)[Dim] Identifier[a#] Comma[,] Identifier[b#]",
+        ),
+        (
+            "CDbl(x#)",
+            "Identifier[CDbl] LeftParen[(] Identifier[x#] RightParen[)]",
+        ),
+    ]);
+}
