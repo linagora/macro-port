@@ -81,12 +81,27 @@ pub struct Facts {
     /// block, and which statements get it depends on the ones read before. A
     /// name alone is no chain, and neither is a type after `As` or `New`.
     pub chains: Vec<Vec<String>>,
+    /// The ProgIDs that the statement passes to `CreateObject` and
+    /// `GetObject`, in the order of the calls, one per call: the class
+    /// argument as it folds (`CreateObject("WScr" & "ipt.Sh" & "ell")` gives
+    /// `WScript.Shell`). The class is the argument called `Class`
+    /// (`CreateObject(Class:="X.Y")`), else the first argument of
+    /// `CreateObject` and the second of `GetObject([path], [class])`, whose
+    /// path (a file, a moniker) is never listed; an argument called otherwise
+    /// is never taken for the class by its position. An argument that does not
+    /// fold gives none, and so does a call with no parentheses
+    /// (`CreateObject "X.Y"`). Only the functions of the library of VBA count,
+    /// alone or qualified by its names (`VBA.Interaction.CreateObject`), not
+    /// the method of another object (`app.CreateObject`). The string is not
+    /// checked for the shape of a ProgID, and it is listed among `strings` as
+    /// well.
+    pub progids: Vec<String>,
     /// The statement nests expressions deeper than [`MAX_NESTING`]. The reader
     /// read the rest of it flat from there: its strings are listed as the
     /// source spells them, with none folded, and its names as members and
     /// calls, a name that stands alone counting as a call whatever it is (a
-    /// label or a type name too), but no chain. A caller can count the
-    /// statement among those that did not parse.
+    /// label or a type name too), but no chain and no ProgID. A caller can
+    /// count the statement among those that did not parse.
     ///
     /// [`MAX_NESTING`]: super::MAX_NESTING
     pub too_deep: bool,
