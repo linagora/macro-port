@@ -213,6 +213,10 @@ fn hex(bytes: &[u8]) -> String {
 struct Failure {
     status: Status,
     error: FileError,
+    /// The bytes that a decompression had produced when it failed, and zero for
+    /// any other failure. The modules of a project are read within a budget,
+    /// and a read that fails after much output has spent it.
+    produced: usize,
 }
 
 impl Failure {
@@ -223,6 +227,7 @@ impl Failure {
                 code: code.to_owned(),
                 message: message.into(),
             },
+            produced: 0,
         }
     }
 
@@ -247,7 +252,10 @@ impl From<ContainerError> for Failure {
 
 impl From<OvbaError> for Failure {
     fn from(error: OvbaError) -> Self {
-        Self::new(error.status, error.code, error.message)
+        Self {
+            produced: error.produced,
+            ..Self::new(error.status, error.code, error.message)
+        }
     }
 }
 

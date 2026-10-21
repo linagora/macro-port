@@ -53,16 +53,26 @@ pub struct OvbaError {
     pub code: &'static str,
     /// What went wrong.
     pub message: String,
+    /// The bytes that [`decompress()`] had produced when it failed: work that
+    /// the failure threw away, and that a caller reading many streams charges
+    /// to its budget. Zero for an error that no decompression gave.
+    pub produced: usize,
 }
 
 impl OvbaError {
-    /// An error giving the file `status`.
+    /// An error giving the file `status`, with no bytes produced.
     pub fn new(status: Status, code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status,
             code,
             message: message.into(),
+            produced: 0,
         }
+    }
+
+    /// The same error, for a decompression that had produced `produced` bytes.
+    pub(crate) fn with_produced(self, produced: usize) -> Self {
+        Self { produced, ..self }
     }
 
     /// A stream whose structure is broken.

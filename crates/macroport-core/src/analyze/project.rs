@@ -12,9 +12,16 @@ use crate::report::{Metrics, ModuleReport, Status, VbaProject};
 /// The most bytes that the source of one module may decompress to.
 const MAX_MODULE_SOURCE: usize = 8 * 1024 * 1024;
 
-/// The most bytes that the sources of a project may total, once decoded. As
-/// decoding can triple a source, a module is read with a cap of a third of
-/// what is left, and none once less than three bytes are left.
+/// The most bytes that the modules of a project may take in all: the sources
+/// kept, once decoded, and the output of the reads that fail, which is thrown
+/// away but was decompressed. As decoding can triple a source, a module is read
+/// with a cap of a third of what is left, and none once less than three bytes
+/// are left. Charging the reads that fail bounds the output that a project
+/// decompresses as well as the memory it keeps: whatever the number of modules
+/// and the streams they name, that output is a small multiple of this limit.
+/// What a stream costs apart from its output is not charged: the copy that
+/// each module makes of it, and the scan of the chunks that give little or no
+/// output.
 ///
 /// SPEC M1 keeps the peak memory of a file under 256 MB. Reading a project
 /// adds the `vbaProject.bin` of a package and the stream being read (64 MB
@@ -153,10 +160,10 @@ fn oversized(stream: &[u8]) -> Option<Failure> {
     })
 }
 
-/// What the sources of a project may still take, and whether they are still
-/// read.
+/// What the modules of a project may still take (see [`MAX_PROJECT_SOURCE`]),
+/// and whether they are still read.
 struct Allowance {
-    /// The bytes that the sources may still take, once decoded.
+    /// The bytes that the modules may still take.
     left: usize,
     /// A module decompressed past its limit. The `dir` stream may name one
     /// stream for every module, so the modules after it are not read.
@@ -173,9 +180,10 @@ impl Allowance {
 
     /// Reads the next source with `fetch`, which is handed the most bytes that
     /// the source may decompress to: a third of what is left, as decoding can
-    /// triple a source, and at most [`MAX_MODULE_SOURCE`]. Nothing is read
-    /// once the project has taken its share, or after a module that was
-    /// suspicious.
+    /// triple a source, and at most [`MAX_MODULE_SOURCE`]. The read takes from
+    /// what is left the length of the source it gives or, if it fails, the
+    /// bytes it had decompressed. Nothing is read once the project has taken
+    /// its share, or after a module that was suspicious.
     fn read_next(
         &mut self,
         fetch: impl FnOnce(usize) -> Result<String, Failure>,
@@ -192,13 +200,16 @@ impl Allowance {
             return Err(Failure::new(
                 Status::SuspiciousArchive,
                 "ovba.decompress.too_large",
-                format!("the sources of the project take more than {MAX_PROJECT_SOURCE} bytes"),
+                format!("the modules of the project take more than {MAX_PROJECT_SOURCE} bytes"),
             ));
         }
         let source = fetch(max_source);
         match &source {
             Ok(source) => self.left = self.left.saturating_sub(source.len()),
-            Err(failure) => self.stopped |= failure.status == Status::SuspiciousArchive,
+            Err(failure) => {
+                self.left = self.left.saturating_sub(failure.produced);
+                self.stopped |= failure.status == Status::SuspiciousArchive;
+            }
         }
         source
     }
@@ -286,9 +297,18 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+    use crate::ovba::MAX_MODULES;
 
     fn failure(status: Status) -> Failure {
         Failure::new(status, "ovba.test", "a failure")
+    }
+
+    /// The failure of a read that had decompressed `produced` bytes.
+    fn failure_after(status: Status, produced: usize) -> Failure {
+        Failure {
+            produced,
+            ..failure(status)
+        }
     }
 
     #[test]
@@ -362,6 +382,51 @@ mod tests {
             (Status::SuspiciousArchive, "ovba.module.not_read"),
         ];
         assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn a_read_that_fails_takes_the_bytes_it_had_decompressed_from_what_is_left() {
+        let mut allowance = Allowance {
+            left: 100,
+            stopped: false,
+        };
+
+        let _ = allowance.read_next(|_| Err(failure_after(Status::Corrupted, 40)));
+        assert_eq!((allowance.left, allowance.stopped), (60, false));
+
+        let _ = allowance.read_next(|_| Err(failure_after(Status::Corrupted, 1_000)));
+        assert_eq!((allowance.left, allowance.stopped), (0, false));
+    }
+
+    #[test]
+    fn modules_that_break_after_all_they_may_take_use_up_the_budget_in_a_few_reads() {
+        // Each read decompresses all that it is allowed to, then breaks: what a
+        // stream does that is made to, and that every module may name.
+        let mut allowance = Allowance::new();
+        let (mut reads, mut produced) = (0_u32, 0_usize);
+        let mut last = None;
+
+        for _ in 0..MAX_MODULES {
+            last = allowance
+                .read_next(|max_source| {
+                    reads = reads.saturating_add(1);
+                    produced = produced.saturating_add(max_source);
+                    Err(failure_after(Status::Corrupted, max_source))
+                })
+                .err();
+        }
+
+        // 42 reads, and not 2,000 of 8 MiB each.
+        assert!(reads <= 64, "{reads} reads");
+        assert!(produced <= MAX_PROJECT_SOURCE, "{produced} bytes");
+        // No read was suspicious, so the reading was not stopped: the modules
+        // after the last read are refused for want of budget.
+        assert!(!allowance.stopped);
+        let last = last.expect("a failure");
+        assert_eq!(
+            (last.status, last.error.code.as_str()),
+            (Status::SuspiciousArchive, "ovba.decompress.too_large")
+        );
     }
 
     #[test]

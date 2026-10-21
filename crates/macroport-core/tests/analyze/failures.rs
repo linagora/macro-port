@@ -132,24 +132,48 @@ fn a_project_stream_above_the_limit_is_too_large_and_the_modules_are_still_read(
 }
 
 /// The stream of a module with `compiled` bytes of compiled part, whose source
-/// decompresses to a little more than the 8 MiB that a module may take: 2,049
-/// chunks of 4,096 bytes, each a literal and a copy of 4,095 bytes of it.
-fn bomb(compiled: usize) -> Vec<u8> {
+/// is `count` chunks of 4,096 bytes, each a literal and a copy of 4,095 bytes of
+/// it, then `tail`.
+fn stream_of_chunks(compiled: usize, count: usize, tail: &[u8]) -> Vec<u8> {
     let chunk = [0x03, 0xB0, 0x02, b'a', 0xFC, 0x0F];
     let mut stream = vec![0; compiled];
     stream.push(0x01);
-    stream.extend(chunk.repeat(2049));
+    stream.extend(chunk.repeat(count));
+    stream.extend_from_slice(tail);
     stream
+}
+
+/// The stream of a module whose source decompresses to a little more than the
+/// 8 MiB that a module may take: 2,049 chunks.
+fn bomb(compiled: usize) -> Vec<u8> {
+    stream_of_chunks(compiled, 2049, &[])
+}
+
+/// The stream of a module whose source decompresses to the 8 MiB that a module
+/// may take, and then breaks: 2,048 chunks, and a chunk header without a
+/// signature.
+fn bomb_that_breaks(compiled: usize) -> Vec<u8> {
+    stream_of_chunks(compiled, 2048, &[0x00, 0x00])
+}
+
+/// A package whose modules all have the stream that `stream` makes from the
+/// length of their compiled part.
+fn package_of_streams(stream: fn(usize) -> Vec<u8>) -> Vec<u8> {
+    package(|c| {
+        for module in modules(c, "") {
+            let compiled = usize::try_from(module.text_offset).expect("an offset");
+            replace_stream(
+                c,
+                &format!("/VBA/{}", module.stream_name),
+                &stream(compiled),
+            );
+        }
+    })
 }
 
 #[test]
 fn the_modules_after_one_that_decompresses_past_its_limit_are_not_read() {
-    let package = package(|c| {
-        for module in modules(c, "") {
-            let compiled = usize::try_from(module.text_offset).expect("an offset");
-            replace_stream(c, &format!("/VBA/{}", module.stream_name), &bomb(compiled));
-        }
-    });
+    let package = package_of_streams(bomb);
 
     let extraction = extraction(&package, "a.xlsm");
 
@@ -170,6 +194,28 @@ fn the_modules_after_one_that_decompresses_past_its_limit_are_not_read() {
             .iter()
             .all(|module| !module.source_available)
     );
+}
+
+#[test]
+fn the_modules_that_break_after_much_output_take_the_budget_of_the_project() {
+    let package = package_of_streams(bomb_that_breaks);
+
+    let extraction = extraction(&package, "a.xlsm");
+
+    // The first two modules decompress 8 MiB each, as much as one may, and break.
+    // They have taken 16 MiB of the 32 MiB of the project, so the third may
+    // decompress 5.3 MiB only: it crosses that limit before the break. If the
+    // reads that fail were free, the third would break like the others, and so
+    // would any number of modules that name such a stream.
+    let report = &extraction.file;
+    assert_eq!(report.status, Status::Corrupted);
+    let expected = [
+        "ovba.decompress.bad_chunk",
+        "ovba.decompress.bad_chunk",
+        "ovba.decompress.too_large",
+    ];
+    assert_eq!(codes(report), expected);
+    assert_eq!(extraction.indicators, ["sec.suspicious-archive"]);
 }
 
 #[test]
