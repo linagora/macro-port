@@ -6,7 +6,7 @@
 
 use macroport_core::analyze::{Options, analyze, analyze_modules};
 use macroport_core::report::{
-    Container, FileError, FileReport, ModuleReport, ProcedureKind, Status, Visibility,
+    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, Status, Visibility,
 };
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
@@ -30,6 +30,16 @@ fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
 /// The report of `text` as the only module of a file.
 fn report_of(text: &str) -> FileReport {
     report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
+}
+
+/// The complexity that `metrics` give: the highest cyclomatic complexity, their
+/// sum, and the deepest nesting.
+fn complexity(metrics: &Metrics) -> (Option<u32>, Option<u32>, Option<u32>) {
+    (
+        metrics.cyclomatic,
+        metrics.cyclomatic_total,
+        metrics.max_nesting,
+    )
 }
 
 /// The names of the procedures of `module`, with whether each has a trait.
@@ -170,6 +180,57 @@ fn a_procedure_reports_its_complexity_nesting_parameters_and_jumps() {
     assert_eq!(work.max_nesting, Some(2));
     assert_eq!((work.parameters, work.goto_count), (Some(2), Some(1)));
     assert_eq!((work.loc, work.logical_loc), (17, 17));
+}
+
+/// A procedure whose blocks nest three times, with three decision points.
+const NESTED: &str = "\
+Sub Deep()
+    If a Then
+        If b Then
+            If c Then
+                x = 1
+            End If
+        End If
+    End If
+End Sub
+";
+
+#[test]
+fn the_complexity_of_a_module_and_of_its_file_follows_from_its_procedures() {
+    let branching = format!("{BRANCHING}Sub Flat()\nEnd Sub\n");
+    let file = report_of_modules(vec![
+        source("Branching", ModuleType::Standard, &branching),
+        source("Nested", ModuleType::Standard, NESTED),
+        source("Plain", ModuleType::Standard, "Option Explicit\n"),
+    ]);
+
+    // The greatest complexity and nesting, and the complexities summed.
+    let found: Vec<_> = (modules(&file).iter())
+        .map(|m| complexity(&m.metrics))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (Some(8), Some(9), Some(2)),
+            (Some(4), Some(4), Some(3)),
+            // A module with no procedure measures zero: it has no complexity to
+            // add up.
+            (Some(0), Some(0), Some(0)),
+        ]
+    );
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(complexity(metrics), (Some(8), Some(13), Some(3)));
+    // The jumps and the parameters belong to the procedures.
+    assert_eq!((metrics.goto_count, metrics.parameters), (None, None));
+}
+
+#[test]
+fn a_label_and_its_statement_on_one_line_count_once_in_a_procedure_and_in_its_module() {
+    let file = report_of("Sub A()\nDone: x = 1\nEnd Sub\n");
+
+    let module = module(&file);
+    assert_eq!(module.procedures[0].metrics.logical_loc, 3);
+    assert_eq!(module.metrics.logical_loc, 3);
 }
 
 #[test]
@@ -449,6 +510,18 @@ fn a_module_reports_the_declarations_outside_its_procedures() {
     );
     // The metric of the module is the same count of `Declare` statements.
     assert_eq!(module.metrics.declare_count, Some(3));
+}
+
+#[test]
+fn the_external_dependencies_of_a_file_are_left_out_whatever_its_declares_say() {
+    let file = report_of(DECLARING);
+
+    // A `Declare` statement is a dependency, but the ProgIDs that the statements
+    // pass to `CreateObject` and `GetObject` are not read yet, so a count would
+    // fall short.
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.declare_count, Some(3));
+    assert_eq!(metrics.external_dependencies, None);
 }
 
 #[test]

@@ -20,14 +20,16 @@
 //!
 //! Only what the parser and the metrics show is filled so far: the spans of the
 //! procedures and their metrics (sizes, cyclomatic complexity, nesting,
-//! parameters and `GoTo`s), the sizes and the counts of the modules and of the
-//! file, the declarations of the modules (and the count of their `Declare`
-//! statements, a metric), and the trait that the recoveries of the parser and
-//! the blocks that do not match give. The other fields are left out until the
-//! stages that measure them run, since a missing value is not a zero. The
-//! exceptions are three fields of a procedure that the schema requires and that
-//! only the rule engine can decide: until it runs, `primary_family` is
-//! `unclassified`, and `families` and `signals` are empty.
+//! parameters and `GoTo`s), the metrics of the modules and of the file (their
+//! sizes, their counts and what their procedures add up to), the declarations
+//! of the modules (and the count of their `Declare` statements, a metric), and
+//! the trait that the recoveries of the parser and the blocks that do not match
+//! give. The other fields are left out until the stages that measure them run,
+//! since a missing value is not a zero. The external dependencies of a file are
+//! such a field: the ProgIDs of its statements are not read yet. The exceptions
+//! are three fields of a procedure that the schema requires and that only the
+//! rule engine can decide: until it runs, `primary_family` is `unclassified`,
+//! and `families` and `signals` are empty.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -37,12 +39,11 @@ mod text_file;
 use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
     Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
-    VbaProject,
 };
-use crate::rules::{ModuleType, RuleSet, StructuralPredicate, TraitRule};
+use crate::rules::{RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    Declaration, DeclarationKind, LogicalKind, LogicalLine, OptionKind, ParsedModule, Procedure,
-    ProcedureMeasure, SourceLines, VbaError, measure_procedure, parse, split_lines,
+    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, ProcedureMeasure,
+    SourceLines, VbaError, file_metrics, measure_procedure, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -194,12 +195,10 @@ impl Front {
             })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
+        let procedure_metrics = analysis.measures.iter().map(|measure| &measure.metrics);
         module.metrics = Metrics {
-            loc: analysis.lines.physical_lines,
-            logical_loc: logical_lines(&analysis.lines.logical),
-            procedures: Some(count(module.procedures.len())),
             declare_count: declarations.declare_count,
-            ..Metrics::default()
+            ..module_metrics(&analysis.lines, procedure_metrics)
         };
         module.declarations = Some(declarations);
         self.recovered |= analysis.is_recovered();
@@ -214,8 +213,9 @@ impl Front {
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file follow from those of its modules, the errors of the front end
-    /// join those of the extraction, and the status follows from the procedures.
+    /// the file follow from those of its modules and of their procedures, the
+    /// errors of the front end join those of the extraction, and the status
+    /// follows from the procedures.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
@@ -227,7 +227,12 @@ impl Front {
     /// container indicators.
     fn seal(self, file: &mut FileReport) {
         if let Some(project) = &file.vba_project {
-            file.metrics = Some(file_metrics(project));
+            file.metrics = Some(Metrics {
+                // The ProgIDs that the statements pass to `CreateObject` and
+                // `GetObject` are not read yet, so the count would fall short.
+                external_dependencies: None,
+                ..file_metrics(project, std::iter::empty::<&str>())
+            });
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match self.failures.first() {
@@ -350,32 +355,9 @@ fn declarations_report(declarations: &[Declaration]) -> Declarations {
     }
 }
 
-/// The number of logical lines that are not comment-only.
-fn logical_lines(lines: &[LogicalLine]) -> u32 {
-    let code = (lines.iter()).filter(|line| line.kind != LogicalKind::CommentOnly);
-    count(code.count())
-}
-
 /// A length as the `u32` that the report holds: `u32::MAX` if it is larger.
 fn count(len: usize) -> u32 {
     u32::try_from(len).unwrap_or(u32::MAX)
-}
-
-/// The metrics of a file: the sizes of its modules summed.
-fn file_metrics(project: &VbaProject) -> Metrics {
-    let mut metrics = Metrics::default();
-    let (mut procedures, mut forms, mut declares) = (0u32, 0u32, 0u32);
-    for module in &project.modules {
-        metrics.loc = metrics.loc.saturating_add(module.metrics.loc);
-        metrics.logical_loc = (metrics.logical_loc).saturating_add(module.metrics.logical_loc);
-        procedures = procedures.saturating_add(count(module.procedures.len()));
-        forms = forms.saturating_add(u32::from(module.module_type == ModuleType::Form));
-        declares = declares.saturating_add(module.metrics.declare_count.unwrap_or(0));
-    }
-    metrics.procedures = Some(procedures);
-    metrics.forms = Some(forms);
-    metrics.declare_count = Some(declares);
-    metrics
 }
 
 #[cfg(test)]
