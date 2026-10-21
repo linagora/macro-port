@@ -349,15 +349,13 @@ impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
-        let rest = self.text.get(self.at..)?;
-        let gap = rest
-            .len()
-            .saturating_sub(rest.trim_start_matches(is_space).len());
-        let start = self.at.saturating_add(gap);
-        let rest = self.text.get(start..)?;
+        let rest = self.text.get(self.at..)?.trim_start_matches(is_space);
         let c = rest.chars().next()?;
+        // `rest` is the end of the text, so it starts where its length says.
+        let start = self.text.len().saturating_sub(rest.len());
         let (kind, len) = self.read(c, rest);
-        let end = start.saturating_add(len);
+        // Every token covers its first character: the lexer always advances.
+        let end = start.saturating_add(len.max(c.len_utf8()));
         self.at = end;
         self.last_kind = Some(kind);
         Some(Token { kind, start, end })
@@ -422,4 +420,29 @@ fn number(rest: &str) -> usize {
         }
     }
     end.saturating_add(type_character(rest.get(end..).unwrap_or_default()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_token_covers_at_least_the_character_it_starts_with() {
+        let characters = [
+            "\"", "[", "]", "#", "&", "!", "'", "_", ".", ":", "=", "<", ">", "é", "€", "\u{0}",
+            "\u{19}", "Rem", "If",
+        ];
+        for first in characters {
+            for second in characters {
+                let text = format!("{first}{second}");
+                let tokens = tokenize(&text);
+                let mut at = 0;
+                for token in &tokens {
+                    assert!(token.start >= at, "{text:?}");
+                    assert!(token.end > token.start, "{text:?}");
+                    at = token.end;
+                }
+            }
+        }
+    }
 }
