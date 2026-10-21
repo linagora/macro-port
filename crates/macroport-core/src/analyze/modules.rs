@@ -22,12 +22,12 @@
 //! procedures and their metrics (sizes, cyclomatic complexity, nesting,
 //! parameters and `GoTo`s), the sizes and the counts of the modules and of the
 //! file, the declarations of the modules (and the count of their `Declare`
-//! statements, a metric), and the trait that the recoveries of the parser give.
-//! The other fields are left out until the stages that measure them run, since
-//! a missing value is not a zero. The exceptions are three fields of a
-//! procedure that the schema requires and that only the rule engine can decide:
-//! until it runs, `primary_family` is `unclassified`, and `families` and
-//! `signals` are empty.
+//! statements, a metric), and the trait that the recoveries of the parser and
+//! the blocks that do not match give. The other fields are left out until the
+//! stages that measure them run, since a missing value is not a zero. The
+//! exceptions are three fields of a procedure that the schema requires and that
+//! only the rule engine can decide: until it runs, `primary_family` is
+//! `unclassified`, and `families` and `signals` are empty.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -92,6 +92,21 @@ impl Analysis {
         })
     }
 
+    /// Whether the structural predicate `parse_recovered` holds for the
+    /// procedure at `index` (SPEC M2 item 6): the parser stepped over something
+    /// in it, or its blocks do not match.
+    pub(super) fn procedure_recovered(&self, index: usize) -> bool {
+        let parsed = (self.module.procedures.get(index)).is_some_and(Procedure::is_recovered);
+        parsed || (self.measures.get(index)).is_some_and(|measure| measure.unbalanced_blocks)
+    }
+
+    /// Whether `parse_recovered` holds for the module as a whole: for a
+    /// procedure, or for the code outside the procedures.
+    pub(super) fn is_recovered(&self) -> bool {
+        self.module.is_recovered()
+            || (self.measures.iter()).any(|measure| measure.unbalanced_blocks)
+    }
+
     /// How many lines reading the module took: the greater of its physical and
     /// its logical lines, since a line can hold many statements.
     fn weight(&self) -> u32 {
@@ -106,10 +121,11 @@ struct Front {
     /// The procedures that the modules may still report.
     procedures_left: u32,
     /// The ids of the traits that the rules give to the predicate
-    /// `parse_recovered`. The parser decides that one, so the procedures and
-    /// the file that have it can be marked before the rule engine runs.
+    /// `parse_recovered`. The parser and the metrics decide that one, so the
+    /// procedures and the file that have it can be marked before the rule engine
+    /// runs.
     recovery_traits: Vec<String>,
-    /// Whether the parser stepped over something in a module read so far.
+    /// Whether `parse_recovered` holds for a module read so far.
     recovered: bool,
     /// Why modules were not read, in the order they were met.
     failures: Vec<Failure>,
@@ -171,9 +187,9 @@ impl Front {
     /// declarations.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
-        module.procedures = found
-            .map(|(procedure, measure)| {
-                let traits = self.recovery_traits_if(procedure.is_recovered());
+        module.procedures = (found.enumerate())
+            .map(|(index, (procedure, measure))| {
+                let traits = self.recovery_traits_if(analysis.procedure_recovered(index));
                 procedure_report(procedure, measure, traits)
             })
             .collect();
@@ -186,11 +202,13 @@ impl Front {
             ..Metrics::default()
         };
         module.declarations = Some(declarations);
-        self.recovered |= analysis.module.is_recovered();
+        self.recovered |= analysis.is_recovered();
     }
 
-    /// The traits of a procedure that `recovered` says did not parse cleanly:
-    /// those that the rules tie to the predicate `parse_recovered`.
+    /// The traits of a procedure or of a file that `recovered` says did not
+    /// parse cleanly: those that the rules tie to the predicate
+    /// `parse_recovered`. `None` if it parsed cleanly, or if no rule has that
+    /// predicate.
     fn recovery_traits_if(&self, recovered: bool) -> Option<Vec<String>> {
         (recovered && !self.recovery_traits.is_empty()).then(|| self.recovery_traits.clone())
     }
@@ -221,8 +239,8 @@ impl Front {
                 }
             };
         }
-        if self.recovered && !self.recovery_traits.is_empty() {
-            file.traits = Some(self.recovery_traits);
+        if let Some(traits) = self.recovery_traits_if(self.recovered) {
+            file.traits = Some(traits);
         }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(self.failures.into_iter().map(|failure| failure.error));
@@ -280,7 +298,7 @@ fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasur
 }
 
 /// The report of a procedure, as far as its structure and its measure show it,
-/// with the `traits` that the parse gives it.
+/// with the `traits` that the front end gives it, if any.
 fn procedure_report(
     procedure: &Procedure,
     measure: &ProcedureMeasure,
@@ -425,5 +443,30 @@ mod tests {
             .collect();
         assert_eq!(analysis.measures.len(), analysis.module.procedures.len());
         assert_eq!(cyclomatic, [Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn an_analysis_tells_which_procedures_did_not_parse_cleanly() {
+        let of = |text| Analysis::of(text).expect("a short module");
+
+        // The blocks of the first of three procedures do not match, and the
+        // parser recovers in the second, which has no end. There is no fourth.
+        let both = of("Sub A()\n    If x Then\nEnd Sub\nSub B()\nSub C()\nEnd Sub\n");
+        let recovered: Vec<_> = (0..4)
+            .map(|index| both.procedure_recovered(index))
+            .collect();
+        assert_eq!(recovered, [true, true, false, false]);
+        assert!(both.is_recovered());
+
+        // The blocks alone, and the code outside the procedures alone.
+        let blocks = of("Sub A()\n    Next\nEnd Sub\n");
+        assert!(!blocks.module.is_recovered());
+        assert!(blocks.procedure_recovered(0) && blocks.is_recovered());
+        let outside = of("Sub A()\nEnd Sub\nEnd Sub\n");
+        assert!(!outside.procedure_recovered(0));
+        assert!(outside.is_recovered());
+
+        let clean = of("Sub A()\n    If x Then\n    End If\nEnd Sub\n");
+        assert!(!clean.procedure_recovered(0) && !clean.is_recovered());
     }
 }

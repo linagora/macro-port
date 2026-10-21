@@ -326,6 +326,34 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
 }
 
 #[test]
+fn a_procedure_whose_blocks_do_not_match_gets_the_trait_and_marks_the_file() {
+    for (text, expected) in [
+        // An `If` that nothing ends, an `End If` that nothing opened, an `Else`
+        // outside any `If`.
+        (
+            "Sub Open_If()\n    If x Then\n        y = 1\nEnd Sub\n",
+            true,
+        ),
+        ("Sub Spare_End()\n    y = 1\n    End If\nEnd Sub\n", true),
+        ("Sub Spare_Else()\n    Else\nEnd Sub\n", true),
+        (
+            "Sub Fine()\n    If x Then\n        y = 1\n    End If\nEnd Sub\n",
+            false,
+        ),
+    ] {
+        let file = report_of(&format!("{text}Sub Other()\nEnd Sub\n"));
+
+        let traits = expected.then(|| vec!["compile_error_suspected".to_owned()]);
+        let [first, other] = &module(&file).procedures[..] else {
+            panic!("two procedures expected");
+        };
+        assert_eq!(first.traits, traits, "{text:?}");
+        assert_eq!(other.traits, None, "{text:?}");
+        assert_eq!(file.traits, traits, "{text:?}");
+    }
+}
+
+#[test]
 fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
