@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Helpers for the tests of the commands that read and write files: a scratch
 //! directory for each test, the files to put in it, the files that a test
-//! makes unreadable, and the binary to run.
+//! makes unreadable, the reports that a command writes, the rules to check, and
+//! the binary to run.
 
 // Each test binary includes this module and uses some of its helpers.
 #![allow(dead_code)]
@@ -9,6 +10,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+use macroport_core::report::Report;
+use macroport_testkit::report_problems;
 
 /// The root of the repository.
 pub fn repo_root() -> PathBuf {
@@ -61,6 +65,24 @@ pub fn put(dir: &Path, relative: &str, content: &[u8]) -> PathBuf {
     }
     fs::write(&path, content).expect("the file is written");
     path
+}
+
+/// A module with one small procedure: the smallest file worth scanning.
+pub const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
+
+/// The text of the `report.json` in `out`, once it has passed the schema: every
+/// JSON that the tests read is validated (ACCEPTANCE A3).
+pub fn report_json(out: &Path) -> String {
+    let path = out.join("report.json");
+    let json = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+    json
+}
+
+/// The `report.json` in `out`, read into the model.
+pub fn read_report(out: &Path) -> Report {
+    serde_json::from_str(&report_json(out)).expect("report.json is a report")
 }
 
 /// A file or directory that a test made unreadable. It gets its permissions
@@ -133,21 +155,28 @@ pub fn shipped_rules_with_version(dir: &Path, version: &str) -> PathBuf {
     rules
 }
 
-/// The minimal valid rules of `tests/fixtures/rules/` in `dir/rules`, but for
-/// `families.yaml`, which is the fixture `families` of
-/// `tests/fixtures/rules/families/`. Gives the directory.
-pub fn fixture_rules(dir: &Path, families: &str) -> PathBuf {
-    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rules");
+/// The rules files of `kind` (`families`, `security` or `complexity`) that
+/// `tests/fixtures/rules/` holds, a directory of `<fixture>.yaml`.
+fn rules_fixtures(kind: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/rules")
+        .join(kind)
+}
+
+/// The minimal valid rules of `tests/fixtures/rules/` in `dir/rules`: the
+/// fixture `valid-minimal` of each rules file. Gives the directory.
+pub fn valid_rules(dir: &Path) -> PathBuf {
     let rules = dir.join("rules");
     fs::create_dir_all(&rules).expect("the rules directory is created");
     for kind in ["families", "security", "complexity"] {
-        let fixture = if kind == "families" {
-            families
-        } else {
-            "valid-minimal"
-        };
-        let from = fixtures.join(kind).join(format!("{fixture}.yaml"));
-        fs::copy(from, rules.join(format!("{kind}.yaml"))).expect("a fixture is copied");
+        use_fixture(&rules, kind, "valid-minimal");
     }
     rules
+}
+
+/// Puts the fixture `tests/fixtures/rules/<kind>/<fixture>.yaml` in `rules` as
+/// `<kind>.yaml`.
+pub fn use_fixture(rules: &Path, kind: &str, fixture: &str) {
+    let fixture = rules_fixtures(kind).join(format!("{fixture}.yaml"));
+    fs::copy(fixture, rules.join(format!("{kind}.yaml"))).expect("a fixture is copied");
 }

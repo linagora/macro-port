@@ -100,7 +100,7 @@ impl<'a> Settings<'a> {
 /// Runs `macro-port scan`.
 pub fn run(args: &Args) -> ExitCode {
     let analysis = &args.analysis;
-    command::run(
+    command::with_rules(
         analysis.lang(),
         analysis.rules.as_deref(),
         |rules, messages| execute(args, rules, messages),

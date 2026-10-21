@@ -6,24 +6,28 @@ mod support;
 
 use std::fs;
 use std::path::Path;
+use std::process::Output;
 
-use macroport_core::report::Report;
-use macroport_testkit::report_problems;
 use support::{
-    RULES_FILES, as_arg, fixture_rules, put, run_in, scratch, shipped_rules_with_version, text,
+    MODULE, RULES_FILES, as_arg, put, read_report, run_in, scratch, shipped_rules_with_version,
+    text, use_fixture, valid_rules,
 };
-
-/// A module with a procedure, small enough to be analysed at once.
-const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
 
 /// The version of rules that no release ships.
 const OTHER_VERSION: &str = "9.9.9";
 
-/// The `report.json` in `out`, once it has passed the schema.
-fn read_report(out: &Path) -> Report {
-    let json = fs::read_to_string(out.join("report.json")).expect("report.json is written");
-    assert_eq!(report_problems(&json), Vec::<String>::new());
-    serde_json::from_str(&json).expect("report.json is a report")
+/// Scans `m.bas` of `dir` into `dir/out` with the rules of `rules`, and gives
+/// the output of `scan` followed by that of `rules check` on the same rules.
+fn scan_and_check(dir: &Path, rules: &Path, lang: &str) -> (Output, Output) {
+    let rules = as_arg(rules);
+    let scan = run_in(
+        dir,
+        &[
+            "scan", "m.bas", "-o", "out", "--rules", rules, "--lang", lang,
+        ],
+    );
+    let check = run_in(dir, &["rules", "check", "--rules", rules]);
+    (scan, check)
 }
 
 #[test]
@@ -56,20 +60,15 @@ fn scan_stops_with_3_on_rules_that_do_not_pass_the_schemas() {
     text_of_families.push_str("bogus: 1\n");
     fs::write(&families, text_of_families).expect("families.yaml is written");
 
-    let output = run_in(
-        &dir,
-        &["scan", "m.bas", "-o", "out", "--rules", as_arg(&rules)],
-    );
+    let (scan, check) = scan_and_check(&dir, &rules, "en");
 
     // SPEC M4: any problem in the rules stops the scan with exit code 3, and
-    // the problems are those of `rules check`.
-    assert_eq!(output.status.code(), Some(3), "{output:?}");
-    assert_eq!(
-        text(&output.stderr),
-        "families.yaml: unknown key 'bogus' (at /bogus)\n\
-         1 problem found (regexes, ids and references are not checked yet)\n"
-    );
-    assert!(text(&output.stdout).is_empty());
+    // the problems are those of `rules check`, which exits with 1.
+    assert_eq!(scan.status.code(), Some(3), "{scan:?}");
+    assert_eq!(check.status.code(), Some(1), "{check:?}");
+    assert_eq!(text(&scan.stderr), text(&check.stderr));
+    assert!(text(&scan.stderr).starts_with("families.yaml: unknown key 'bogus'"));
+    assert!(text(&scan.stdout).is_empty());
     assert!(!dir.join("out").exists(), "nothing is scanned or written");
 }
 
@@ -77,22 +76,15 @@ fn scan_stops_with_3_on_rules_that_do_not_pass_the_schemas() {
 fn scan_stops_with_3_on_rules_that_do_not_pass_the_core() {
     let dir = scratch("scan_rules_core");
     put(&dir, "m.bas", MODULE);
-    let rules = fixture_rules(&dir, "invalid-regex");
+    let rules = valid_rules(&dir);
+    use_fixture(&rules, "families", "invalid-regex");
 
-    let output = run_in(
-        &dir,
-        &["scan", "m.bas", "-o", "out", "--rules", as_arg(&rules)],
-    );
+    let (scan, check) = scan_and_check(&dir, &rules, "en");
 
-    assert_eq!(output.status.code(), Some(3), "{output:?}");
-    assert_eq!(
-        text(&output.stderr),
-        "families.yaml: fmt.loop-cells: invalid regex '\\bFor\\s+(Each': unclosed group \
-         (at /families/0/signals/2/pattern)\n\
-         families.yaml: fmt.style-name: invalid regex '[Heading': unclosed character class \
-         (at /families/0/signals/3/pattern/1)\n\
-         2 problems found\n"
-    );
+    assert_eq!(scan.status.code(), Some(3), "{scan:?}");
+    assert_eq!(check.status.code(), Some(1), "{check:?}");
+    assert_eq!(text(&scan.stderr), text(&check.stderr));
+    assert!(text(&scan.stderr).ends_with("2 problems found\n"));
     assert!(!dir.join("out").exists(), "nothing is scanned or written");
 }
 
@@ -104,27 +96,72 @@ fn scan_stops_with_3_when_a_rules_file_cannot_be_read() {
         let rules = shipped_rules_with_version(&dir, OTHER_VERSION);
         fs::remove_file(rules.join(name)).expect("a rules file is removed");
 
-        let output = run_in(
-            &dir,
-            &["scan", "m.bas", "-o", "out", "--rules", as_arg(&rules)],
-        );
+        let (scan, check) = scan_and_check(&dir, &rules, "en");
 
-        assert_eq!(output.status.code(), Some(3), "{name}: {output:?}");
-        let stderr = text(&output.stderr);
+        // Nothing can be checked: both commands exit with 3.
+        assert_eq!(scan.status.code(), Some(3), "{name}: {scan:?}");
+        assert_eq!(check.status.code(), Some(3), "{name}: {check:?}");
+        assert_eq!(text(&scan.stderr), text(&check.stderr), "{name}");
         let start = format!("error: cannot read {}: ", rules.join(name).display());
-        assert!(stderr.starts_with(&start), "{name}: {stderr}");
+        assert!(text(&scan.stderr).starts_with(&start), "{name}");
         assert!(!dir.join("out").exists(), "{name}");
     }
 }
 
 #[test]
-fn scan_exits_with_2_when_the_rules_directory_does_not_exist() {
-    let dir = scratch("scan_rules_absent");
+fn scan_says_what_is_wrong_with_the_rules_in_the_language_of_the_command() {
+    let dir = scratch("scan_rules_french");
     put(&dir, "m.bas", MODULE);
 
-    let output = run_in(&dir, &["scan", "m.bas", "--rules", "no-such-rules"]);
+    // Problems found before the core.
+    let rules = valid_rules(&dir.join("schema"));
+    fs::write(rules.join("security.yaml"), b"").expect("security.yaml is emptied");
+    let (scan, _) = scan_and_check(&dir, &rules, "fr");
+    assert_eq!(scan.status.code(), Some(3), "{scan:?}");
+    assert_eq!(
+        text(&scan.stderr),
+        "security.yaml: empty document\n\
+         1 problème trouvé (les expressions régulières, les identifiants et les références \
+         ne sont pas encore vérifiés)\n"
+    );
 
-    assert_eq!(output.status.code(), Some(2), "{output:?}");
-    assert!(text(&output.stderr).contains("not an existing directory"));
-    assert!(!dir.join("macro-port-report").exists());
+    // Problems found by the core.
+    let rules = valid_rules(&dir.join("core"));
+    use_fixture(&rules, "families", "invalid-regex");
+    let (scan, _) = scan_and_check(&dir, &rules, "fr");
+    assert_eq!(scan.status.code(), Some(3), "{scan:?}");
+    assert!(text(&scan.stderr).ends_with("2 problèmes trouvés\n"));
+
+    // A file that cannot be read.
+    let rules = valid_rules(&dir.join("unreadable"));
+    fs::remove_file(rules.join("complexity.yaml")).expect("complexity.yaml is removed");
+    let (scan, _) = scan_and_check(&dir, &rules, "fr");
+    assert_eq!(scan.status.code(), Some(3), "{scan:?}");
+    let start = format!(
+        "erreur : impossible de lire {} : ",
+        rules.join("complexity.yaml").display()
+    );
+    assert!(text(&scan.stderr).starts_with(&start), "{scan:?}");
+
+    assert!(!dir.join("out").exists(), "nothing is scanned or written");
+}
+
+#[test]
+fn scan_exits_with_2_when_the_rules_are_not_a_directory() {
+    let dir = scratch("scan_rules_absent");
+    put(&dir, "m.bas", MODULE);
+    put(&dir, "rules.yaml", b"version: 0.1.0\n");
+
+    // A usage error, as for `rules check --rules`: a directory that does not
+    // exist, and a file.
+    for rules in ["no-such-rules", "rules.yaml"] {
+        let output = run_in(&dir, &["scan", "m.bas", "--rules", rules]);
+
+        assert_eq!(output.status.code(), Some(2), "{rules}: {output:?}");
+        assert!(
+            text(&output.stderr).contains("not an existing directory"),
+            "{rules}: {output:?}"
+        );
+        assert!(!dir.join("macro-port-report").exists(), "{rules}");
+    }
 }

@@ -8,6 +8,7 @@ pub mod args;
 pub mod clock;
 pub mod command;
 pub mod console;
+pub mod exit;
 pub mod i18n;
 pub mod render;
 pub mod reports;
