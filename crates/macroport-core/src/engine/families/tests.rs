@@ -73,11 +73,15 @@ fn uses(number: u32, name: &str) -> CodeLine {
     line(number, &format!("x.{name}")).member(name)
 }
 
+/// Statements that use these members, one per line from line 2.
+fn uses_each(names: &[&str]) -> Vec<CodeLine> {
+    (2..).zip(names).map(|(n, name)| uses(n, name)).collect()
+}
+
 /// A procedure of the standard module `Module1` from line 1, whose body uses
-/// these members, one per line from line 2.
+/// these members.
 fn hits_of(names: &[&str]) -> ProjectInput {
-    let body: Vec<_> = (2..).zip(names).map(|(n, name)| uses(n, name)).collect();
-    project_of(&body)
+    project_of(&uses_each(names))
 }
 
 fn family_and_score(score: &FamilyScore) -> (&str, f64) {
@@ -321,6 +325,103 @@ fn secondary_families_reach_the_ratio_of_the_primary_score() {
     assert_eq!(found_all.families.len(), 3);
     // The minimum score of 3 is not a threshold of the secondary families.
     assert_eq!(found(&[3, 2]).secondary_families, ["02-b"]);
+}
+
+/// `First` and `Second` of `Module1`, `Third` of `Module2`, each from line 1,
+/// whose bodies use these members from line 2.
+fn three_procedures(first: &[&str], second: &[&str], third: &[&str]) -> ProjectInput {
+    let sub = |name, used: &[&str]| procedure(name, 1, uses_each(used));
+    let standard = |name, procedures| module(name, ModuleType::Standard, procedures);
+    project(vec![
+        standard("Module1", vec![sub("First", first), sub("Second", second)]),
+        standard("Module2", vec![sub("Third", third)]),
+    ])
+}
+
+fn file_scores(found: &ProjectFamilies) -> Vec<(&str, f64)> {
+    found.file.families.iter().map(family_and_score).collect()
+}
+
+#[test]
+fn the_families_of_a_file_are_the_sums_of_its_procedures() {
+    let rules = rules(vec![
+        family("01-a", vec![signal("a.foo", &["Foo"], 1)]),
+        family("02-b", vec![signal("b.bar", &["Bar"], 1)]),
+    ]);
+    // No procedure reaches 3, the file does: 2 + 1 + 1 for 01-a, 1 for 02-b.
+    let project = three_procedures(&["Foo", "Foo"], &["Foo", "Bar"], &["Foo"]);
+    let found = classify(&project, &rules);
+    let procedures = found.modules.iter().flatten();
+    assert!(procedures.clone().all(|p| p.primary_family == UNCLASSIFIED));
+    assert_eq!(found.file.primary_family, "01-a");
+    assert_eq!(file_scores(&found), [("01-a", 4.0), ("02-b", 1.0)]);
+    // A file has no evidence.
+    assert!(found.file.families.iter().all(|f| f.evidence.is_none()));
+    // Below the minimum score, the file is unclassified as well.
+    let found = classify(&three_procedures(&["Foo"], &["Foo"], &[]), &rules);
+    assert_eq!(found.file.primary_family, UNCLASSIFIED);
+    assert_eq!(file_scores(&found), [("01-a", 2.0)]);
+}
+
+#[test]
+fn the_tie_break_of_a_file_counts_each_signal_once() {
+    // Both families total 6. 01-y matches y.foo in two procedures: one
+    // distinct signal. 02-x matches x.bar in one and x.baz in the other: two.
+    let rules = rules(vec![
+        family("01-y", vec![signal("y.foo", &["Foo"], 3)]),
+        family(
+            "02-x",
+            vec![signal("x.bar", &["Bar"], 3), signal("x.baz", &["Baz"], 3)],
+        ),
+    ]);
+    let project = three_procedures(&["Foo", "Bar"], &["Foo", "Baz"], &[]);
+    let found = classify(&project, &rules);
+    // In each procedure the families tie on score and on signals: 01-y wins.
+    assert!(found.modules[0].iter().all(|p| p.primary_family == "01-y"));
+    assert_eq!(file_scores(&found), [("02-x", 6.0), ("01-y", 6.0)]);
+    assert_eq!(found.file.primary_family, "02-x");
+}
+
+#[test]
+fn the_code_of_a_module_with_no_procedure_counts_for_the_file_only() {
+    let kernel = signal("a.ref", &[], 4)
+        .at(Scope::Project)
+        .matching(references(&["Kernel"]));
+    let rules = rules_of(vec![
+        signal("a.foo", &["Foo"], 2),
+        signal("a.ptr", &["Ptr"], 4).at(Scope::Module),
+        kernel,
+    ]);
+    let code = vec![
+        uses(2, "Foo"),
+        uses(3, "Foo"),
+        uses(4, "Ptr"),
+        uses(5, "Bar"),
+    ];
+    let snippet = module("Module1", ModuleType::Standard, Vec::new()).with_declarations(code);
+    let sheet = module("Sheet1", ModuleType::Document, Vec::new());
+    let project = project(vec![snippet, sheet]).with_references(&["Kernel Library"]);
+    let found = classify(&project, &rules);
+    assert!(found.modules.iter().all(Vec::is_empty));
+    // Two hits of the procedure signal (2 x 2) and one of the module signal
+    // (4 / 2). The project signal reaches procedures only.
+    assert_eq!(file_scores(&found), [("01-a", 6.0)]);
+    assert_eq!(found.file.primary_family, "01-a");
+}
+
+#[test]
+fn a_file_that_no_signal_scores_is_unclassified() {
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 2)]);
+    // The declarations of a module that has procedures feed its module signals
+    // only: here the one signal is of procedure scope.
+    let idle = procedure("Idle", 5, vec![uses(6, "Bar")]);
+    let declared = module("Module1", ModuleType::Standard, vec![idle]);
+    let declared = declared.with_declarations(vec![uses(2, "Foo")]);
+    for project in [ProjectInput::default(), project(vec![declared])] {
+        let found = classify(&project, &rules);
+        assert!(found.file.families.is_empty());
+        assert_eq!(found.file.primary_family, UNCLASSIFIED);
+    }
 }
 
 #[test]

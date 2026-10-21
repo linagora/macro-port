@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Family scores and primary families of the procedures (SPEC M3, ACCEPTANCE
-//! A4).
+//! Family scores and primary families of the procedures and of the file (SPEC
+//! M3, ACCEPTANCE A4).
 //!
 //! [`classify`] scores each procedure of a project against the families of
-//! `families.yaml`:
+//! `families.yaml`, then scores the file:
 //!
 //! - A signal adds its weight once per hit, for at most
 //!   `max_hits_per_procedure` hits. A signal of module scope is matched over
@@ -20,6 +20,11 @@
 //!   the procedure, so that every score cites a line inside the procedure
 //!   (ACCEPTANCE A4). When the cap cuts the hits of a signal of module or
 //!   project scope, the hits in the procedure are the ones kept.
+//! - The families of the file are the sums of the scores of its procedures,
+//!   ranked the same way, with no evidence. The code of a module that has no
+//!   procedure is scored like one, for the file only, by its signals of
+//!   procedure and module scope: a snippet, or a module of `Declare`
+//!   statements, is still a file about something.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,15 +39,17 @@ use crate::rules::{Families, FamilySignal, Scope, Scoring};
 #[cfg(test)]
 mod tests;
 
-/// The `primary_family` of a procedure that no family claims.
+/// The `primary_family` of a procedure or a file that no family claims.
 pub const UNCLASSIFIED: &str = "unclassified";
 
-/// The family scores of every procedure of a project.
+/// The family fields of every procedure of a project, and of the file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectFamilies {
     /// `modules[m][p]` is the procedure `p` of the module `m` of the
-    /// [`ProjectInput`].
+    /// [`ProjectInput`]: a module with no procedure has an empty list.
     pub modules: Vec<Vec<ProcedureFamilies>>,
+    /// The file.
+    pub file: FileFamilies,
 }
 
 /// The `primary_family`, `secondary_families` and `families` of a procedure.
@@ -58,28 +65,46 @@ pub struct ProcedureFamilies {
     pub families: Vec<FamilyScore>,
 }
 
-/// Scores the procedures of `project` against `rules`.
+/// The `primary_family` and `families` of a file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileFamilies {
+    /// The family that the file is about, or [`UNCLASSIFIED`].
+    pub primary_family: String,
+    /// The sums of the scores of the procedures, best first, with no evidence.
+    pub families: Vec<FamilyScore>,
+}
+
+/// Scores the procedures of `project` against `rules`, then the file.
 ///
 /// Pure and deterministic: ties are broken as the module documentation says,
 /// and the lists come out in the order of their scores.
 pub fn classify(project: &ProjectInput, rules: &Families) -> ProjectFamilies {
     let scorer = Scorer::new(project, rules);
+    let mut sums = Tallies::default();
     let mut modules = Vec::with_capacity(project.modules.len());
     for (module, owner) in project.modules.iter().enumerate() {
-        let module_hits = scorer.module_hits(module);
         let mut procedures = Vec::with_capacity(owner.procedures.len());
-        for (index, procedure) in owner.procedures.iter().enumerate() {
-            let at = Located {
-                module,
-                index,
-                procedure,
-            };
-            let tallies = scorer.score(at, &module_hits);
-            procedures.push(procedure_families(tallies, &rules.scoring));
+        if owner.procedures.is_empty() {
+            sums.add(&scorer.score_code(module));
+        } else {
+            let module_hits = scorer.module_hits(module);
+            for (index, procedure) in owner.procedures.iter().enumerate() {
+                let at = Located {
+                    module,
+                    index,
+                    procedure,
+                };
+                let tallies = scorer.score(at, &module_hits);
+                sums.add(&tallies);
+                procedures.push(procedure_families(tallies, &rules.scoring));
+            }
         }
         modules.push(procedures);
     }
-    ProjectFamilies { modules }
+    ProjectFamilies {
+        modules,
+        file: file_families(sums, &rules.scoring),
+    }
 }
 
 /// A procedure of the project, and where to find it.
@@ -180,7 +205,29 @@ impl<'a> Scorer<'a> {
             }
             let cited = counted.iter().map(|hit| evidence(&signal.id, hit, at));
             let tally = tallies.0.entry(family).or_default();
-            tally.count(&signal.id, half_points(signal), cited.collect());
+            tally.count(&signal.id, half_points(signal), counted.len());
+            tally.evidence.extend(cited);
+        }
+        tallies
+    }
+
+    /// The scores of the code of a module that has no procedure, which count
+    /// for the file only and have no evidence: the signals of procedure and
+    /// module scope read all of it. Those of project scope reach procedures.
+    fn score_code(&self, module: usize) -> Tallies<'a> {
+        let mut tallies = Tallies::default();
+        for &(family, signal) in &self.signals {
+            if signal.scope == Scope::Project {
+                continue;
+            }
+            let hits = self
+                .evaluator
+                .module_hits(module, &signal.matcher, signal.text);
+            let counted = hits.len().min(cap(signal));
+            if counted > 0 {
+                let tally = tallies.0.entry(family).or_default();
+                tally.count(&signal.id, half_points(signal), counted);
+            }
         }
         tallies
     }
@@ -262,14 +309,20 @@ struct Tally<'a> {
 }
 
 impl<'a> Tally<'a> {
-    /// Adds the hits of the signal `id`, each worth `per_hit` half points: the
-    /// `evidence` has one item for each.
-    fn count(&mut self, id: &'a str, per_hit: u64, evidence: Vec<Evidence>) {
-        let hits = u64::try_from(evidence.len()).unwrap_or(u64::MAX);
-        let points = per_hit.saturating_mul(hits);
-        self.half_points = self.half_points.saturating_add(points);
+    /// Adds `hits` hits of the signal `id`, each worth `per_hit` half points.
+    fn count(&mut self, id: &'a str, per_hit: u64, hits: usize) {
+        let hits = u64::try_from(hits).unwrap_or(u64::MAX);
+        self.half_points = self
+            .half_points
+            .saturating_add(per_hit.saturating_mul(hits));
         self.signals.insert(id);
-        self.evidence.extend(evidence);
+    }
+
+    /// Adds the points and the signals of `other`: all that a file keeps of a
+    /// procedure.
+    fn merge(&mut self, other: &Tally<'a>) {
+        self.half_points = self.half_points.saturating_add(other.half_points);
+        self.signals.extend(&other.signals);
     }
 
     /// The score of `family`, with its evidence in the order of the lines.
@@ -284,11 +337,18 @@ impl<'a> Tally<'a> {
     }
 }
 
-/// The tallies of a procedure, by family id.
+/// The tallies of a procedure or of a file, by family id.
 #[derive(Debug, Default)]
 struct Tallies<'a>(BTreeMap<&'a str, Tally<'a>>);
 
 impl<'a> Tallies<'a> {
+    /// Adds the tallies of `other`: the file sums those of its procedures.
+    fn add(&mut self, other: &Tallies<'a>) {
+        for (&family, tally) in &other.0 {
+            self.0.entry(family).or_default().merge(tally);
+        }
+    }
+
     /// The families, best first: the higher score, then the more distinct
     /// signals, then the lower family id.
     fn ranked(self) -> Vec<(&'a str, Tally<'a>)> {
@@ -340,6 +400,22 @@ fn procedure_families(tallies: Tallies<'_>, scoring: &Scoring) -> ProcedureFamil
     ProcedureFamilies {
         primary_family,
         secondary_families,
+        families,
+    }
+}
+
+fn file_families(sums: Tallies<'_>, scoring: &Scoring) -> FileFamilies {
+    let ranked = sums.ranked();
+    let (primary_family, _) = verdict(&ranked, scoring);
+    let families = ranked
+        .into_iter()
+        .map(|(family, tally)| FamilyScore {
+            evidence: None,
+            ..tally.into_score(family)
+        })
+        .collect();
+    FileFamilies {
+        primary_family,
         families,
     }
 }
