@@ -28,26 +28,40 @@ pub fn put(dir: &Path, relative: &str, content: &[u8]) -> PathBuf {
     path
 }
 
-/// Makes the file or directory `path` unreadable, and tells whether it is: a
-/// process that runs as root reads anything, and then there is nothing to test.
+/// A file or directory that a test made unreadable. It gets its permissions
+/// back when the guard goes out of scope, a failed check included, so that the
+/// next run can remove it.
 #[cfg(unix)]
-pub fn lock(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).expect("permissions are set");
-    let locked = fs::File::open(path).is_err() && fs::read_dir(path).is_err();
-    if !locked {
-        unlock(path);
-    }
-    locked
+#[derive(Debug)]
+pub struct Denied {
+    path: PathBuf,
+    permissions: fs::Permissions,
 }
 
-/// Gives `path` back its permissions. A test calls it before it checks
-/// anything, so that a failed check does not leave a path that the next run
-/// cannot remove.
 #[cfg(unix)]
-pub fn unlock(path: &Path) {
+impl Drop for Denied {
+    fn drop(&mut self) {
+        // Nothing to report from a drop: the next run fails to remove the path.
+        let _ = fs::set_permissions(&self.path, self.permissions.clone());
+    }
+}
+
+/// Makes the file or directory `path` unreadable, for as long as the guard
+/// lives. `None` when it can be read all the same: a process that runs as root
+/// reads anything, and then there is nothing to test.
+#[cfg(unix)]
+pub fn deny_access(path: &Path) -> Option<Denied> {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("permissions are set");
+    let permissions = fs::metadata(path)
+        .expect("the path to deny exists")
+        .permissions();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).expect("permissions are set");
+    let guard = Denied {
+        path: path.to_owned(),
+        permissions,
+    };
+    let denied = fs::File::open(path).is_err() && fs::read_dir(path).is_err();
+    // A path that is not denied is given back by dropping the guard.
+    denied.then_some(guard)
 }
