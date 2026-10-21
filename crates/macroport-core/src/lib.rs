@@ -11,6 +11,7 @@
 pub mod analyze;
 pub mod container;
 pub mod ovba;
+pub mod redact;
 pub mod report;
 pub mod rules;
 
