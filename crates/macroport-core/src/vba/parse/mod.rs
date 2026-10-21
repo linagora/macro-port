@@ -37,6 +37,10 @@ pub enum RecoveryKind {
     /// A terminator with nothing to close: an `End Sub`, `End Function` or
     /// `End Property` outside a procedure.
     StrayTerminator,
+    /// A statement that does not parse as what it starts like. So far: the
+    /// header of a procedure that names nothing, such as `Sub (a, b)` or
+    /// `Sub 123()`. Found at the statement.
+    Unparseable,
 }
 
 /// A place where the parser went on past what it could not read.
@@ -52,7 +56,8 @@ pub struct Recovery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Procedure {
     /// Its name as the source spells it, without brackets or type character.
-    /// Empty when the header names nothing.
+    /// Empty when the header names nothing, and the procedure is then
+    /// recovered.
     pub name: String,
     /// `Sub`, `Function` or one of the three `Property`.
     pub kind: ProcedureKind,
@@ -210,10 +215,15 @@ impl Parser<'_> {
     }
 
     /// A procedure header: the procedure still open has no end, and this
-    /// header opens another one.
+    /// header opens another one. A header that names nothing opens one all the
+    /// same, so that its `End` has something to close, and it is recovered.
     fn header(&mut self, index: usize, line: &LogicalLine, header: Header) {
         self.close_unended();
-        self.open = Some(Open::new(header, index, line));
+        let mut open = Open::new(header, index, line);
+        if open.header.name.is_empty() {
+            open.recover(RecoveryKind::Unparseable, open.start_line);
+        }
+        self.open = Some(open);
     }
 
     /// An `End Sub`, `End Function` or `End Property`: it closes the procedure

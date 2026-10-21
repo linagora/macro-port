@@ -83,6 +83,41 @@ fn a_name_is_given_without_its_brackets_or_its_type_character() {
 }
 
 #[test]
+fn a_header_that_names_nothing_opens_a_procedure_that_is_recovered() {
+    let text = "Sub (a, b)\nEnd Sub\nPublic Sub\nEnd Sub\nSub 123()\nEnd Sub\nSub A()\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(
+        spans(&module),
+        [
+            ("", Sub, 1, 2),
+            ("", Sub, 3, 4),
+            ("", Sub, 5, 6),
+            ("A", Sub, 7, 8)
+        ]
+    );
+    for (procedure, line) in module.procedures.iter().zip([1, 3, 5]) {
+        assert_eq!(
+            procedure.recoveries,
+            [Recovery {
+                line,
+                kind: RecoveryKind::Unparseable
+            }],
+            "line {line}"
+        );
+    }
+    assert!(!module.procedures[3].is_recovered());
+    assert!(module.recoveries.is_empty());
+    // It has no end either: the recoveries come in the order they are found.
+    let module = module_of("Sub\n");
+    let kinds: Vec<_> = module.procedures[0]
+        .recoveries
+        .iter()
+        .map(|r| r.kind)
+        .collect();
+    assert_eq!(kinds, [RecoveryKind::Unparseable, RecoveryKind::MissingEnd]);
+}
+
+#[test]
 fn the_parameters_of_a_header_are_counted() {
     // Each header stands alone: the End it lacks changes nothing to its count.
     let headers = [
