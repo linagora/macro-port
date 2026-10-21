@@ -10,12 +10,19 @@
 //! `parse_recovered`, [`Procedure::is_recovered`]); the recoveries outside any
 //! procedure are on the [`ParsedModule`], which is recovered as a whole
 //! ([`ParsedModule::is_recovered`]) when a procedure or the module has any.
+//!
+//! Conditional compilation is not evaluated: the lines of every branch are
+//! read. A procedure header that stands in a branch after the header of the
+//! same procedure in another one is another form of it, as in `#If VBA7 Then`,
+//! `Public Sub S(h As LongPtr)`, `#Else`, `Public Sub S(h As Long)`,
+//! `#End If`, and then the body, which the two forms share. The name, the kind
+//! and the parameters are the ones of the first form.
 
 mod shape;
 
 use std::ops::Range;
 
-use self::shape::{EndOf, Header, Shape, shape};
+use self::shape::{Directive, EndOf, Header, Shape, shape};
 use super::{LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
 use crate::report::{ProcedureKind, Visibility};
 
@@ -69,14 +76,15 @@ pub struct Procedure {
     pub is_static: bool,
     /// How many parameters the header declares. `ParamArray` counts for one.
     pub parameter_count: usize,
-    /// The physical line of the `Sub`, `Function` or `Property` keyword.
+    /// The physical line of the `Sub`, `Function` or `Property` keyword, of the
+    /// first header when conditional compilation gives the procedure several.
     pub start_line: u32,
     /// The physical line of the `End` that closes it; of the last line of code
     /// when the procedure has no end.
     pub end_line: u32,
     /// Its logical lines, as indices into [`SourceLines::logical`]: the header
-    /// to the `End`, comments between them included. The lines of a procedure
-    /// with no end stop at its last line of code.
+    /// to the `End`, comments and directives between them included. The lines
+    /// of a procedure with no end stop at its last line of code.
     pub lines: Range<usize>,
     /// What the parser stepped over inside it, the first [`MAX_RECOVERIES`].
     pub recoveries: Vec<Recovery>,
@@ -116,6 +124,7 @@ pub fn parse(source: &SourceLines) -> ParsedModule {
         source,
         module: ParsedModule::default(),
         open: None,
+        frames: Vec::new(),
     };
     parser.run();
     parser.module
@@ -133,6 +142,9 @@ struct Open {
     last: usize,
     last_line: u32,
     recoveries: Vec<Recovery>,
+    /// An `#Else` or an `#ElseIf` came after the header, inside the `#If` that
+    /// holds it: a header that follows is another form of this procedure.
+    alternative: bool,
 }
 
 impl Open {
@@ -145,6 +157,7 @@ impl Open {
             last: index,
             last_line: line.end_line,
             recoveries: Vec::new(),
+            alternative: false,
         }
     }
 
@@ -182,6 +195,8 @@ struct Parser<'a> {
     source: &'a SourceLines,
     module: ParsedModule,
     open: Option<Open>,
+    /// The logical lines of the `#If` directives that are not closed yet.
+    frames: Vec<usize>,
 }
 
 impl Parser<'_> {
@@ -201,11 +216,16 @@ impl Parser<'_> {
         self.close_unended();
     }
 
-    /// Reads a line of code: a procedure header, an end, or a statement.
+    /// Reads a line of code: a procedure header, an end, a directive, or a
+    /// statement.
     fn code(&mut self, index: usize, line: &LogicalLine, tokens: &[Token]) {
         match shape(tokens, &line.text) {
             Shape::Header(header) => self.header(index, line, header),
             Shape::End(end) => self.end(index, line, end),
+            Shape::Directive(directive) => {
+                self.directive(directive, index);
+                self.touch(index, line);
+            }
             Shape::Statement => self.touch(index, line),
         }
     }
@@ -224,16 +244,46 @@ impl Parser<'_> {
         }
     }
 
-    /// A procedure header: the procedure still open has no end, and this
-    /// header opens another one. A header that names nothing opens one all the
-    /// same, so that its `End` has something to close, and it is recovered.
+    /// A procedure header. After the `#Else` of the `#If` that holds the header
+    /// of the procedure being read, it is another form of that procedure, and
+    /// the body is shared. Elsewhere the procedure still open has no end, and
+    /// this header opens another one. A header that names nothing opens one all
+    /// the same, so that its `End` has something to close, and it is recovered.
     fn header(&mut self, index: usize, line: &LogicalLine, header: Header) {
+        if let Some(open) = self.open.as_mut().filter(|open| open.alternative) {
+            open.alternative = false;
+            open.touch(index, line);
+            return;
+        }
         self.close_unended();
         let mut open = Open::new(header, index, line);
         if open.header.name.is_empty() {
             open.recover(RecoveryKind::Unparseable, open.start_line);
         }
         self.open = Some(open);
+    }
+
+    /// A conditional-compilation directive, at the logical line `index`. The
+    /// `#If` blocks that hold the header of the procedure being read tell
+    /// whether the next header is another form of it.
+    fn directive(&mut self, directive: Directive, index: usize) {
+        match directive {
+            Directive::If => self.frames.push(index),
+            Directive::ElseIf | Directive::Else => {
+                if let (Some(&frame), Some(open)) = (self.frames.last(), self.open.as_mut()) {
+                    open.alternative |= open.first > frame;
+                }
+            }
+            Directive::EndIf => {
+                let frame = self.frames.pop();
+                if let (Some(frame), Some(open)) = (frame, self.open.as_mut())
+                    && open.first > frame
+                {
+                    open.alternative = false;
+                }
+            }
+            Directive::Const => {}
+        }
     }
 
     /// An `End Sub`, `End Function` or `End Property`: it closes the procedure
