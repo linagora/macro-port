@@ -304,7 +304,7 @@ fn a_closer_closes_the_blocks_left_open_inside_its_block() {
 }
 
 #[test]
-fn blocks_closed_in_the_order_they_open_are_balanced() {
+fn properly_nested_blocks_are_balanced() {
     assert!(!unbalanced(""));
     assert!(!unbalanced("x = 1"));
     let every = "If a Then\nSelect Case n\nCase 1\nFor i = 1 To 3\nFor Each c In r\nDo While p\n\
@@ -353,8 +353,8 @@ fn a_closer_with_no_block_of_its_kind_is_unbalanced() {
     }
     // The second name of a Next with one loop open.
     assert!(unbalanced("For i = 1 To 3\nNext j, i"));
-    // The Else and the End If that the sample 09-03 has too many.
-    assert!(unbalanced("If a Then\nx = 1\nEnd If\nElse\nEnd If"));
+    // The End If that the sample 09-03 has too many, after its Else.
+    assert!(unbalanced("If a Then\nx = 1\nElse\ny = 2\nEnd If\nEnd If"));
 }
 
 #[test]
@@ -362,6 +362,110 @@ fn a_closer_that_closes_blocks_left_open_inside_its_own_is_unbalanced() {
     assert!(unbalanced("If a Then\nFor i = 1 To 3\nEnd If"));
     assert!(unbalanced("For i = 1 To 3\nIf a Then\nNext i"));
     assert!(unbalanced("With r\nDo\nEnd With"));
+}
+
+#[test]
+fn a_branch_with_no_block_to_belong_to_is_unbalanced() {
+    for branch in ["Else", "ElseIf a Then", "Case 1", "Case Else"] {
+        assert!(unbalanced(branch), "{branch}");
+    }
+    // The block is over, is no block (a one-line If) or is of another kind.
+    assert!(unbalanced("If a Then\nEnd If\nElse"));
+    assert!(unbalanced("If a Then\nEnd If\nElseIf b Then"));
+    assert!(unbalanced("Select Case n\nEnd Select\nCase 1"));
+    assert!(unbalanced("If a Then x = 1\nElse\nx = 2"));
+    assert!(unbalanced("Select Case n\nElse\nEnd Select"));
+    assert!(unbalanced("If a Then\nCase 1\nEnd If"));
+    // The Else that the sample 09-03 has too many, with no End If after it.
+    assert!(unbalanced("If a Then\nx = 1\nEnd If\nElse"));
+}
+
+#[test]
+fn the_branches_of_one_line_forms_are_balanced() {
+    // After a colon an Else may end a one-line If, and a Case still has its Select.
+    assert!(!unbalanced("If a Then x = 1: Else y = 2"));
+    let select = "Select Case n: Case 1: x = 1: Case Else: x = 2: End Select";
+    assert!(!unbalanced(select));
+}
+
+#[test]
+fn words_that_only_look_like_blocks_leave_the_blocks_balanced() {
+    for body in [
+        // The For of an Open, the For and the Do of an Exit, the Next of a Resume.
+        "Open f For Input As #1\nClose #1",
+        "Open f For Output As #1\nClose #1",
+        "Open f For Append As #1\nClose #1",
+        "Open f For Binary As #1\nClose #1",
+        "Open f For Random As #1 Len = 10\nClose #1",
+        "For i = 1 To 3\nIf a Then Exit For\nNext i",
+        "Do\nExit Do\nLoop",
+        "Select Case n\nCase 1\nExit Sub\nEnd Select",
+        "On Error Resume Next\nx = 1\nOn Error GoTo 0",
+        "On Error GoTo Done\nx = 1\nResume Next\nDone:\nResume Next",
+        // Names that start like a keyword, and members or arguments named as one.
+        "DoEvents\nx = Application.WorksheetFunction.Max(1, 2)",
+        "x = r.End(xlUp).Row\ny = Selection.Next.Value",
+        "r.Find What:=\"a\", After:=c, LookAt:=xlWhole\nz = Foo(Loop:=1)",
+        // Statements chained on a line, and lines joined by continuations.
+        "For i = 1 To 3: x = x + i: Next i",
+        "With r: .Value = 1: End With",
+        "Do: x = x + 1: Loop While x < 5",
+        "If a Then _\nx = 1",
+        "If a And _\nb Then\nx = 1\nEnd If",
+        "If a Then x = 1 Else _\ny = 2",
+        // Loops that test at the top or at the bottom, labels and line numbers.
+        "Do While x < 5\nx = x + 1\nLoop",
+        "Do\nx = x + 1\nLoop Until x > 5",
+        "While x < 5\nx = x + 1\nWend",
+        "10 x = 1\nDone:\nx = 2",
+        "If a Then GoTo Done\nDone:",
+        // A Case Else, and blocks of other kinds inside a Select or an If.
+        "If a Then\nSelect Case n\nCase Else\nEnd Select\nEnd If",
+        "Select Case n\nCase 1\nWith r\nEnd With\nEnd Select",
+    ] {
+        assert!(!unbalanced(body), "{body}");
+    }
+}
+
+#[test]
+fn the_sides_of_a_conditional_compilation_start_from_the_same_blocks() {
+    for (opener, closer) in [
+        ("If a Then", "End If"),
+        ("For i = 1 To 3", "Next i"),
+        ("Do", "Loop"),
+        ("While a", "Wend"),
+        ("With r", "End With"),
+        ("Select Case n", "End Select"),
+    ] {
+        // Each side opens a block, and the one that is compiled has the closer.
+        let split = format!("#If Win64 Then\n{opener}\n#Else\n{opener}\n#End If\nx = 1");
+        assert!(!unbalanced(&format!("{split}\n{closer}")), "{opener}");
+        assert_eq!(nesting(&format!("{split}\n{closer}")), 1, "{opener}");
+        // Without it the block is open at the end, whichever side is compiled.
+        assert!(unbalanced(&split), "{opener}");
+    }
+    // Three sides, and sides within sides.
+    let three = "#If A Then\nWith r\n#ElseIf B Then\nWith s\n#Else\nWith t\n#End If\nEnd With";
+    assert!(!unbalanced(three));
+    let nested = "#If A Then\n#If B Then\nFor i = 1 To 3\n#Else\nFor i = 1 To 4\n#End If\n#Else\n\
+                  For i = 1 To 5\n#End If\nx = 1\nNext i";
+    assert!(!unbalanced(nested));
+    assert_eq!(nesting(nested), 1);
+    // Sides that close what they open.
+    let closed = "#If A Then\nFor i = 1 To 3\nNext i\n#Else\nFor i = 1 To 4\nNext i\n#End If";
+    assert!(!unbalanced(closed));
+    // A block open before the `#If` stays open through its sides.
+    let outer = "If a Then\n#If A Then\nWith r\n#Else\nWith s\n#End If\nEnd With\nEnd If";
+    assert!(!unbalanced(outer));
+    assert_eq!(nesting(outer), 2);
+}
+
+#[test]
+fn a_directive_with_no_if_drops_nothing() {
+    // The `#Else` and the `#End If` have no `#If`: the If is still open.
+    let body = "If a Then\n#End If\n#Else\nWith r\nEnd With\nEnd If";
+    assert!(!unbalanced(body));
+    assert_eq!(nesting(body), 2);
 }
 
 #[test]

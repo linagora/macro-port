@@ -27,10 +27,16 @@ pub struct ProcedureMeasure {
     /// of each line that holds an `If` or an `ElseIf` that compares values with
     /// `=`, `<>` or `StrComp` in a loop that is itself in a loop, in order.
     pub nested_loop_compare: Vec<usize>,
-    /// Whether the blocks do not match: a closer found no block of its kind or
-    /// closed blocks left open inside its own, or a block is still open at the
-    /// end. VBA refuses such a procedure, which is what SPEC M2 item 6 calls
-    /// unbalanced blocks, and the parser (`parse_recovered`) does not see it.
+    /// Whether the blocks do not match, which SPEC M2 item 6 calls unbalanced
+    /// blocks and gives the trait of the `parse_recovered` predicate: a closer
+    /// (`End If`, `Next`, `Loop`, ...) found no block of its kind or closed
+    /// blocks left open inside its own, an `Else`, `ElseIf` or `Case` has no
+    /// `If` or `Select` to belong to, or a block is still open at the end.
+    ///
+    /// It is a suspicion drawn from the lines alone. Only one side of a
+    /// `#If ... #Else` is compiled, so each side starts from the blocks that
+    /// were open at the `#If`: what the side before it left open is dropped. A
+    /// side that closes a block opened before the `#If` is not undone.
     pub unbalanced_blocks: bool,
 }
 
@@ -43,8 +49,9 @@ pub struct ProcedureMeasure {
 /// lines from one to the other, those that are not code included. `parameters`
 /// is the parser's count.
 ///
-/// The measure is best effort and never fails: a block that is not closed, a
-/// closer that closes nothing or a statement that is not VBA only give odd
+/// The measure is best effort and never fails: a statement that is not VBA only
+/// gives odd numbers, and blocks that do not match are told by
+/// [`ProcedureMeasure::unbalanced_blocks`], whatever they do to the other
 /// numbers.
 pub fn measure_procedure(
     start_line: u32,
@@ -58,7 +65,7 @@ pub fn measure_procedure(
             let continues = lines
                 .get(position.saturating_add(1))
                 .is_some_and(|next| next.after_separator);
-            walk.line(&Line::new(&line.text, position, continues));
+            walk.line(&Line::new(line, position, continues));
         }
     }
     ProcedureMeasure {
@@ -108,17 +115,21 @@ struct Line<'a> {
     /// Whether the next logical line follows this one on the same chain of
     /// statements (`If a Then: b`).
     continues: bool,
+    /// Whether this line follows the previous one on the same chain of
+    /// statements: it starts after a `:`.
+    follows: bool,
 }
 
 impl<'a> Line<'a> {
-    fn new(text: &'a str, position: usize, continues: bool) -> Self {
-        let mut tokens = tokenize(text);
+    fn new(line: &'a LogicalLine, position: usize, continues: bool) -> Self {
+        let mut tokens = tokenize(&line.text);
         tokens.retain(|token| token.kind != TokenKind::Comment);
         Self {
-            text,
+            text: &line.text,
             tokens,
             position,
             continues,
+            follows: line.after_separator,
         }
     }
 
@@ -212,9 +223,10 @@ impl Block {
 /// The blocks that are open at a point of the procedure.
 ///
 /// A closer closes the innermost block of its kind and the blocks left open
-/// inside it. One with no block of its kind open is ignored, which the count of
-/// each kind tells at once and keeps a hostile run of closers linear. VBA
-/// refuses both, and so they are noted.
+/// inside it, which is noted as a mismatch. One with no block of its kind open
+/// is ignored and noted as well, which the count of each kind tells at once and
+/// keeps a hostile run of closers linear. So is an `Else`, an `ElseIf` or a
+/// `Case` with no `If` or `Select` open.
 #[derive(Debug, Default)]
 struct Blocks {
     stack: Vec<Block>,
@@ -222,15 +234,18 @@ struct Blocks {
     open: BTreeMap<Block, u32>,
     /// The most blocks that were open at once.
     deepest: u32,
-    /// Whether a closer found no block of its kind, or closed blocks left open
-    /// inside its own.
+    /// How many blocks were open at each `#If` that has not ended yet.
+    branches: Vec<usize>,
+    /// Whether a closer found no block of its kind or closed blocks left open
+    /// inside its own, or an `Else`, `ElseIf` or `Case` found none to belong to.
     mismatched: bool,
 }
 
 impl Blocks {
     /// Opens and closes the blocks that the statement starting at
-    /// `line.tokens[i]` opens and closes by its first word. The `If` is not
-    /// one of them: only its `Then` tells whether it is a block.
+    /// `line.tokens[i]` opens and closes by its first word, and checks that the
+    /// branch it makes has a block to belong to. The `If` is not one of the
+    /// blocks: only its `Then` tells whether it is one.
     fn head(&mut self, line: &Line, i: usize) {
         let Some(TokenKind::Keyword(word)) = line.kind(i) else {
             return;
@@ -257,6 +272,35 @@ impl Blocks {
                 Some(TokenKind::Keyword(Keyword::With)) => self.close(Block::With),
                 _ => {}
             },
+            // An `Else` that follows a `:` may belong to a one-line `If`, which
+            // is no block: it is not checked.
+            Keyword::Else | Keyword::ElseIf if i == 0 && !line.follows => {
+                self.belongs_to(Block::If);
+            }
+            // A `Case` needs its `Select`, also in `Select Case a: Case 1: b`.
+            Keyword::Case if i == 0 => {
+                self.belongs_to(Block::Select);
+            }
+            _ => {}
+        }
+    }
+
+    /// Follows the sides of a conditional-compilation directive. Only one side
+    /// of a `#If` is compiled, so the blocks that a side leaves open are
+    /// dropped when the next side starts.
+    fn directive(&mut self, line: &Line) {
+        match line.kind(1) {
+            Some(TokenKind::Keyword(Keyword::If)) => self.branches.push(self.stack.len()),
+            Some(TokenKind::Keyword(Keyword::Else | Keyword::ElseIf)) => {
+                if let Some(&depth) = self.branches.last() {
+                    while self.stack.len() > depth {
+                        self.pop();
+                    }
+                }
+            }
+            Some(TokenKind::Keyword(Keyword::End)) => {
+                self.branches.pop();
+            }
             _ => {}
         }
     }
@@ -281,15 +325,13 @@ impl Blocks {
         self.deepest = self.deepest.max(depth);
     }
 
+    /// Closes the innermost block of this kind, and the blocks left open inside
+    /// it.
     fn close(&mut self, block: Block) {
-        if self.count(block) == 0 {
-            self.mismatched = true;
+        if !self.belongs_to(block) {
             return;
         }
-        while let Some(top) = self.stack.pop() {
-            if let Some(count) = self.open.get_mut(&top) {
-                *count = count.saturating_sub(1);
-            }
+        while let Some(top) = self.pop() {
             if top == block {
                 break;
             }
@@ -297,8 +339,25 @@ impl Blocks {
         }
     }
 
-    /// Whether the blocks read so far do not match: a closer did not find its
-    /// block, or a block is still open.
+    /// Closes the innermost block, whatever it is.
+    fn pop(&mut self) -> Option<Block> {
+        let top = self.stack.pop()?;
+        if let Some(count) = self.open.get_mut(&top) {
+            *count = count.saturating_sub(1);
+        }
+        Some(top)
+    }
+
+    /// Whether a block of this kind is open, which a closer or a branch needs.
+    /// If none is, the blocks do not match.
+    fn belongs_to(&mut self, block: Block) -> bool {
+        let open = self.count(block) > 0;
+        self.mismatched |= !open;
+        open
+    }
+
+    /// Whether the blocks read so far do not match, or a block is still open
+    /// (see [`ProcedureMeasure::unbalanced_blocks`]).
     fn is_unbalanced(&self) -> bool {
         self.mismatched || !self.stack.is_empty()
     }
@@ -373,8 +432,10 @@ impl Walk {
     /// `Else`, and a `:` that the splitter left starts one as well.
     fn line(&mut self, line: &Line) {
         // A conditional-compilation directive is no statement of the
-        // procedure: the code on each side of it is read as written.
+        // procedure. The code on each side of it is read, each side from the
+        // blocks that were open at the `#If`.
         if line.kind(0) == Some(TokenKind::Hash) {
+            self.blocks.directive(line);
             return;
         }
         let last = line.tokens.len().saturating_sub(1);
