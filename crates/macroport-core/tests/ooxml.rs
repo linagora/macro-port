@@ -371,8 +371,9 @@ fn of_several_parts_typed_as_a_vba_project_only_the_first_is_read() {
 
 #[test]
 fn of_several_parts_typed_as_a_vba_project_the_usual_one_comes_first() {
-    // The fixtures type every `.bin` part as a VBA project with one default,
-    // so a part that sorts before `xl/vbaProject.bin` must not take its place.
+    // The `.xlsm` fixtures type every `.bin` part as a VBA project with one
+    // default, so a part that sorts before `xl/vbaProject.bin` must not take its
+    // place.
     let types = types_of(&[("bin", VBA_TYPE)], &[]);
     let parts: [(&str, &[u8]); 3] = [
         ("xl/a.bin", b"another"),
