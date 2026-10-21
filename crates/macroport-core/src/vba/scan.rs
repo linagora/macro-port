@@ -189,6 +189,13 @@ mod tests {
     }
 
     #[test]
+    fn a_literal_that_the_lookahead_cannot_reach_the_end_of_is_not_one() {
+        let padded = |blanks: usize| format!("#{}1:30 PM# + 1", " ".repeat(blanks));
+        assert_eq!(date_literal_len(&padded(10)), Some(19));
+        assert_eq!(date_literal_len(&padded(60)), None);
+    }
+
+    #[test]
     fn file_numbers_and_directives_are_not_literals() {
         let refused = [
             "#1, x",

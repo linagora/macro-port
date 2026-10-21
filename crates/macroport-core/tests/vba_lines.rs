@@ -187,6 +187,9 @@ fn a_hash_after_a_name_or_before_a_file_number_is_not_a_date() {
         shape("Print #1, 2: Close #1"),
         ["1 Print #1, 2", "1: Close #1"]
     );
+    // A closing parenthesis or bracket ends a name as well.
+    assert_eq!(shape("a(1)#1:2#"), ["1 a(1)#1", "1: 2#"]);
+    assert_eq!(shape("[a]#1:2#"), ["1 [a]#1", "1: 2#"]);
 }
 
 #[test]
@@ -214,6 +217,18 @@ fn a_statement_split_over_a_continuation_keeps_its_own_lines() {
 fn a_statement_after_then_and_a_colon_follows_a_separator() {
     assert_eq!(shape("If x Then: y = 1"), ["1 If x Then", "1: y = 1"]);
     assert_eq!(shape("If x Then\n y = 1"), ["1 If x Then", "2 y = 1"]);
+}
+
+#[test]
+fn a_statement_after_a_separator_knows_the_physical_line_of_each_offset() {
+    let split = lines("a = 1: b = _\n 2: c = _\n 3");
+    let line = |index: usize| split.logical.get(index).expect("a logical line");
+    let b = line(1);
+    assert_eq!((b.text.as_str(), b.line, b.end_line), ("b = 2", 1, 2));
+    assert_eq!((b.line_at(0), b.line_at(4)), (1, 2));
+    let c = line(2);
+    assert_eq!((c.text.as_str(), c.line, c.end_line), ("c = 3", 2, 3));
+    assert_eq!((c.line_at(0), c.line_at(4)), (2, 3));
 }
 
 #[test]
@@ -374,6 +389,10 @@ fn a_comment_may_follow_a_line_number() {
     // Only the number that opens a chain is a line number.
     assert_eq!(shape("x = 1: 10 Rem note"), ["1 x = 1", "1: 10 Rem note"]);
     assert_eq!(shape("x = 1 + _\n10 Rem note"), ["1-2 x = 1 + 10 Rem note"]);
+    assert_eq!(
+        shape("x = 1: _\n10 Rem note"),
+        ["1 x = 1", "2: 10 Rem note"]
+    );
 }
 
 #[test]

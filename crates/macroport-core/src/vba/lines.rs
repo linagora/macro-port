@@ -896,3 +896,16 @@ fn literal_len(rest: &str) -> Option<usize> {
     (number || word.eq_ignore_ascii_case("true") || word.eq_ignore_ascii_case("false"))
         .then_some(len)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scan_of_a_line_stops_collecting_separators_one_past_the_limit() {
+        let line = ":".repeat((MAX_LINES as usize).saturating_mul(2));
+        let mut seps = Vec::new();
+        scan(&line, false, &mut true, &mut seps);
+        assert_eq!(seps.len(), (MAX_LINES as usize).saturating_add(1));
+    }
+}
