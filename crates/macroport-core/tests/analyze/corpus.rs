@@ -90,7 +90,7 @@ fn a_sample_has_no_macros_only_when_it_has_no_procedure() {
 }
 
 #[test]
-fn only_three_samples_get_the_trait_of_a_parse_that_recovered() {
+fn the_trait_of_a_parse_that_recovered_goes_to_the_expected_samples_only() {
     let mut marked = Vec::new();
     for path in samples() {
         let file = corpus_report(&path);
@@ -103,20 +103,26 @@ fn only_three_samples_get_the_trait_of_a_parse_that_recovered() {
             marked.push(sample_id(&path).to_owned());
         }
     }
-    // 09-03 and 13-05: blocks that do not match (see `vba_metrics_corpus.rs`).
-    // 10-01 stops before the `End Sub` of its only procedure.
-    assert_eq!(marked, ["09-03", "10-01", "13-05"]);
+    // 01-06, 05-04, 06-02 and 13-05: a statement that cannot be read (see
+    // `vba_parse_corpus.rs`). 09-03 and 13-05: blocks that do not match (see
+    // `vba_metrics_corpus.rs`). 10-01 stops before the `End Sub` of its only
+    // procedure.
+    assert_eq!(
+        marked,
+        ["01-06", "05-04", "06-02", "09-03", "10-01", "13-05"]
+    );
 }
 
 /// The samples with a compile error on purpose (ACCEPTANCE A2), and whether the
-/// parser marks them. The statements of 01-06 (line 13), 05-04 (line 36) and
-/// 06-02 (line 11) that do not parse are not stepped over yet (issue 40), and
-/// the parser reads no such statement in 02-04, 08-04 and 08-05.
+/// parser marks them. It marks 01-06, 05-04 and 06-02 for a statement that it
+/// cannot read, and 09-03 for blocks that do not match. It reads no such
+/// statement in 02-04, 08-04 and 08-05, and leaves them unmarked on purpose
+/// (see `vba_parse_corpus.rs`).
 const COMPILE_ERRORS: [(&str, bool); 7] = [
-    ("01-06", false),
+    ("01-06", true),
     ("02-04", false),
-    ("05-04", false),
-    ("06-02", false),
+    ("05-04", true),
+    ("06-02", true),
     ("08-04", false),
     ("08-05", false),
     ("09-03", true),
