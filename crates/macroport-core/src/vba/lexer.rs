@@ -116,7 +116,8 @@ pub enum TokenKind {
     /// A word that gives the structure of the code.
     Keyword(Keyword),
     /// A string literal, quotes included. It runs to the end of the text when
-    /// the closing quote is missing.
+    /// the closing quote is missing, which VBA does not accept:
+    /// [`Token::string_value`] is `None` for it.
     String,
     /// A number: `42`, `1.5E3`, `10%`.
     Number,
@@ -215,19 +216,17 @@ impl Token {
     }
 
     /// What a string literal holds, with its quotes off and `""` read as `"`.
-    /// `None` for any other token.
+    /// `None` for any other token, and for a string whose closing quote is
+    /// missing: it is not a literal, and nothing is made of it.
     pub fn string_value(&self, source: &str) -> Option<String> {
         if self.kind != TokenKind::String {
             return None;
         }
         let text = self.text(source);
-        let inside = text.strip_prefix('"')?;
-        let closed = string_len(text) == Some(text.len());
-        let inside = if closed {
-            inside.strip_suffix('"').unwrap_or(inside)
-        } else {
-            inside
-        };
+        if string_len(text) != Some(text.len()) {
+            return None;
+        }
+        let inside = text.strip_prefix('"')?.strip_suffix('"')?;
         Some(inside.replace("\"\"", "\""))
     }
 
@@ -533,6 +532,22 @@ mod tests {
                     at = token.end;
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_string_without_its_closing_quote_has_no_value() {
+        for (text, value) in [
+            (r#""abc""#, Some("abc")),
+            (r#""a""b""#, Some("a\"b")),
+            (r#""""#, Some("")),
+            (r#""abc"#, None),
+            (r#""a"""#, None),
+            (r#"""#, None),
+        ] {
+            let tokens = tokenize(text);
+            assert_eq!(tokens.len(), 1, "{text:?}");
+            assert_eq!(tokens[0].string_value(text).as_deref(), value, "{text:?}");
         }
     }
 
