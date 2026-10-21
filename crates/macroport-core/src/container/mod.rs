@@ -7,8 +7,13 @@ use std::fmt;
 
 use crate::report::Status;
 
+mod biff;
+mod cfb;
 mod ooxml;
 
+pub use self::biff::{BiffInfo, read_biff_workbook};
+pub use self::cfb::{CfbFile, MAX_DIRECTORY_ENTRIES, MAX_STORAGE_DEPTH, MAX_STREAM_SIZE};
+pub(crate) use ooxml::XLM_MACROSHEET;
 pub use ooxml::{OoxmlPackage, read_ooxml};
 
 /// Why a container could not be read.
