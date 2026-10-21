@@ -9,6 +9,7 @@ mod facts;
 mod fold;
 mod lexer;
 mod lines;
+mod parse;
 mod scan;
 
 use crate::report::Status;
@@ -21,6 +22,10 @@ pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
+};
+pub use parse::{
+    Declaration, DeclarationKind, Directive, MAX_RECOVERIES, OptionKind, ParsedModule, Procedure,
+    Recovery, RecoveryKind, parse,
 };
 
 /// The source of one module: what the extraction layer, or a text file,
