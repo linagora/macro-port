@@ -288,8 +288,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Whether the last token ends an operand: a name, a literal or `)`. A
-    /// `.` that follows one reaches a member, and anywhere else it may start
-    /// a number.
+    /// `&` that follows one joins strings, where a `&` that starts an octal
+    /// number needs the place of an operand.
     fn after_operand(&self) -> bool {
         matches!(
             self.last,
@@ -334,9 +334,9 @@ impl<'a> Lexer<'a> {
             },
             _ if is_ident_start(c) => self.word(rest),
             '0'..='9' => (TokenKind::Number, number_len(rest)),
-            '.' if !self.after_operand()
-                && char_at(1).is_some_and(|next| next.is_ascii_digit()) =>
-            {
+            // No member is named with a digit, so `.5` is a number even after
+            // a name: `MsgBox .5`.
+            '.' if char_at(1).is_some_and(|next| next.is_ascii_digit()) => {
                 (TokenKind::Number, number_len(rest))
             }
             '.' => (TokenKind::Dot, 1),
