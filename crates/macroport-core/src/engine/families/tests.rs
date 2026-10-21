@@ -333,6 +333,23 @@ fn secondary_families_reach_the_ratio_of_the_primary_score() {
     assert_eq!(with_weights(&[3, 2]).secondary_families, ["02-b"]);
 }
 
+#[test]
+fn a_score_at_the_ratio_is_secondary_whatever_the_rounding_of_the_product() {
+    // 0.55 x 50 is 27.500000000000004 in binary floating point, above the
+    // score of 27.5 that is at the ratio.
+    let mut rules = rules(vec![
+        family("01-a", vec![signal("a.foo", &["Foo"], 50)]),
+        family(
+            "02-b",
+            vec![signal("b.foo", &["Foo"], 55).at(Scope::Module)],
+        ),
+    ]);
+    rules.scoring.secondary_ratio = 0.55;
+    let found = &classify(&hits_of(&["Foo"]), &rules).modules[0][0];
+    assert_eq!(scores(found), [("01-a", 50.0), ("02-b", 27.5)]);
+    assert_eq!(found.secondary_families, ["02-b"]);
+}
+
 /// `First` and `Second` of `Module1`, `Third` of `Module2`, each from line 1,
 /// whose bodies use these members from line 2.
 fn three_procedures(first: &[&str], second: &[&str], third: &[&str]) -> ProjectInput {

@@ -378,6 +378,13 @@ impl<'a> Tallies<'a> {
     }
 }
 
+/// The slack when a score is compared with a ratio of the primary score. A score
+/// is a multiple of one half and a ratio is a short decimal, so the product is
+/// exact on paper and not in binary: 0.55 x 50 is 27.500000000000004. The slack
+/// is far below the least gap between two scores, 0.005 for a ratio of two
+/// decimals.
+const RATIO_SLACK: f64 = 1e-9;
+
 /// The primary family of a ranking, and the secondary ones. Below `min_score`
 /// nothing is primary, and then nothing is secondary either.
 fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<String>) {
@@ -388,7 +395,9 @@ fn verdict(ranked: &[(&str, Tally<'_>)], scoring: &Scoring) -> (String, Vec<Stri
     let top = best.score();
     if top >= scoring.min_score {
         let floor = scoring.secondary_ratio * top;
-        let close = others.iter().filter(|(_, tally)| tally.score() >= floor);
+        let close = others
+            .iter()
+            .filter(|(_, tally)| tally.score() + RATIO_SLACK >= floor);
         let secondary = close.map(|&(id, _)| id.to_owned()).collect();
         ((*family).to_owned(), secondary)
     } else {
