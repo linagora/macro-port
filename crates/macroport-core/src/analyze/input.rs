@@ -21,6 +21,14 @@
 //! What the front end does not read yet is left empty, not guessed: the ProgIDs
 //! of the statements, and the predicates `udf_candidate`, `chr_obfuscation` and
 //! `possibly_unused`.
+//!
+//! The facts of a statement weigh a few dozen times its text, and only the text
+//! of the file bounds how many statements it holds. The engine keeps what it
+//! reads of every module until the last one is read, so the input of a file has
+//! a [`Room`] of its own. A statement is refused on what it may weigh, which its
+//! tokens tell before its facts are read, and the module that would take a file
+//! past the room is not read: it takes nothing of it, and the modules after it
+//! may still fit.
 
 use std::ops::Range;
 
@@ -28,12 +36,139 @@ use super::modules::Analysis;
 use crate::engine::{
     CallSite, CodeLine, MemberUse, ModuleInput, NameSet, ParserPredicates, ProcedureInput,
 };
-use crate::report::Metrics;
+use crate::report::{Metrics, Status};
 use crate::rules::ModuleType;
 use crate::vba::{
     self, ConstTable, DeclarationKind, LogicalKind, LogicalLine, Procedure, StatementReader, Token,
-    TokenKind, measure_procedure, tokenize,
+    TokenKind, VbaError, measure_procedure, tokenize,
 };
+
+/// The most bytes that the input of the rule engine may take for the modules of
+/// one file, as [`line_bytes`] counts them. A module of 8 MiB made of `a.a.a.`
+/// has four million members, which took 220 MB to keep where a file may take
+/// 256 MB in all (ACCEPTANCE A2): the lines of a file do not bound its facts,
+/// so the facts have a limit of their own.
+///
+/// The text corpus takes 490 bytes a line, which makes room for 137,000 lines
+/// of it, more than a file may hold (`MAX_FILE_LINES`); a line of 88
+/// characters and thirteen names takes 1.5 KB and fills the room with 45,000.
+/// The worst input measured peaks at 177 MB (release, Linux/glibc): a module of
+/// 250,000 one-character lines, which the room refuses once it is full.
+const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+
+/// What an allocation costs beyond the bytes it holds: its header, and the
+/// rounding of its size.
+const ALLOCATION: usize = 16;
+
+/// What the rule engine may still read of the modules of a file, in the bytes
+/// of input that [`line_bytes`] counts.
+#[derive(Debug, Clone)]
+pub(super) struct Room {
+    left: usize,
+}
+
+impl Room {
+    /// The room that the modules of one file share.
+    pub(super) fn of_a_file() -> Self {
+        Self {
+            left: MAX_INPUT_BYTES,
+        }
+    }
+
+    /// A room of `bytes`.
+    #[cfg(test)]
+    pub(super) fn of(bytes: usize) -> Self {
+        Self { left: bytes }
+    }
+
+    /// Takes `bytes` of the room, or fails and takes none when it has less.
+    fn take(&mut self, bytes: usize) -> Result<(), VbaError> {
+        self.left = self.left.checked_sub(bytes).ok_or_else(too_much_code)?;
+        Ok(())
+    }
+
+    /// Fails when the room has less than `bytes`, and takes none in any case.
+    fn fits(&self, bytes: usize) -> Result<(), VbaError> {
+        if bytes > self.left {
+            return Err(too_much_code());
+        }
+        Ok(())
+    }
+}
+
+/// The error of a module that does not fit in the room of its file.
+fn too_much_code() -> VbaError {
+    VbaError::new(
+        Status::TooLarge,
+        "vba.too_much_code",
+        format!(
+            "the statements of the modules of the file take more than {} MiB to read",
+            MAX_INPUT_BYTES / (1024 * 1024)
+        ),
+    )
+}
+
+/// What the facts of a statement take at the most for each of its tokens, the
+/// text apart: a name is at most a member, a call and an element of a chain,
+/// which are three structs with an allocation each.
+const FACTS_PER_TOKEN: usize =
+    size_of::<MemberUse>() + size_of::<CallSite>() + size_of::<String>() + 3 * ALLOCATION;
+
+/// How many times the text of a statement may be copied in its line: as its
+/// raw text, as its code, and as the name of a member, of a call and of a chain.
+const COPIES: usize = 5;
+
+/// What a statement of `text` and `tokens` tokens may take at the most once it
+/// is read as a line, known before its facts are: a line over what is left of
+/// the room is refused without being read.
+fn ceiling(text: &str, tokens: usize) -> usize {
+    size_of::<CodeLine>()
+        .saturating_add(text.len().saturating_mul(COPIES))
+        .saturating_add(tokens.saturating_mul(FACTS_PER_TOKEN))
+}
+
+/// What `line` takes in memory, near enough: the line itself, its texts, and
+/// for each fact the struct that holds it and the allocation of its name.
+fn line_bytes(line: &CodeLine) -> usize {
+    fn text(text: &str) -> usize {
+        match text.len() {
+            0 => 0,
+            len => len.saturating_add(ALLOCATION),
+        }
+    }
+    fn owned(text_of: &str) -> usize {
+        size_of::<String>().saturating_add(text(text_of))
+    }
+    fn total(parts: impl Iterator<Item = usize>) -> usize {
+        parts.fold(0, usize::saturating_add)
+    }
+
+    let texts = text(&line.raw)
+        .saturating_add(text(&line.code))
+        .saturating_add(line.comment.as_deref().map_or(0, text));
+    let strings = total(line.strings.iter().map(|string| owned(string)));
+    let members = total(
+        (line.members.iter())
+            .map(|member| size_of::<MemberUse>().saturating_add(text(&member.name))),
+    );
+    let calls = total(
+        (line.calls.iter()).map(|call| size_of::<CallSite>().saturating_add(text(&call.name))),
+    );
+    let chains = total(line.chains.iter().map(|chain| {
+        let elements = total(chain.iter().map(|element| owned(element)));
+        size_of::<Vec<String>>()
+            .saturating_add(ALLOCATION)
+            .saturating_add(elements)
+    }));
+    let progids = total(line.progids.iter().map(|progid| owned(progid)));
+    size_of::<CodeLine>()
+        .saturating_add(texts)
+        .saturating_add(strings)
+        .saturating_add(members)
+        .saturating_add(calls)
+        .saturating_add(chains)
+        .saturating_add(progids)
+}
 
 /// A module as the rule engine and the metrics read it.
 pub(super) struct Adapted {
@@ -83,8 +218,27 @@ fn module_input(name: &str, module_type: ModuleType) -> ModuleInput {
 }
 
 /// Adapts the module `name` of type `module_type`, which the front end read as
-/// `analysis`.
-pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) -> Adapted {
+/// `analysis`, taking from `room` what its lines weigh. A module that does not
+/// fit is not adapted, and takes nothing.
+pub(super) fn adapt(
+    name: &str,
+    module_type: ModuleType,
+    analysis: &Analysis,
+    room: &mut Room,
+) -> Result<Adapted, VbaError> {
+    let mut left = room.clone();
+    let adapted = read_module(name, module_type, analysis, &mut left)?;
+    *room = left;
+    Ok(adapted)
+}
+
+/// The module `name` as the engine reads it, its lines taken from `room`.
+fn read_module(
+    name: &str,
+    module_type: ModuleType,
+    analysis: &Analysis,
+    room: &mut Room,
+) -> Result<Adapted, VbaError> {
     let logical = &analysis.lines.logical;
     let parsed = &analysis.module;
     let outside = gaps(logical.len(), &parsed.procedures);
@@ -96,6 +250,7 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
     }
     let mut converter = Converter {
         reader: StatementReader::new(&consts),
+        room,
     };
 
     let mut input = module_input(name, module_type);
@@ -103,7 +258,7 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
     // read, or blocks that do not match.
     let mut suspect = false;
     for gap in &outside {
-        let (code, deep) = converter.code_lines(slice(logical, gap));
+        let (code, deep) = converter.code_lines(slice(logical, gap))?;
         input.declarations.extend(code);
         suspect |= deep;
     }
@@ -117,7 +272,7 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
             procedure.parameter_count,
             body,
         );
-        let (lines, deep) = converter.code_lines(body);
+        let (lines, deep) = converter.code_lines(body)?;
         let suspected = deep || measure.unbalanced_blocks;
         suspect |= suspected;
         procedures.push(ProcedureInput {
@@ -154,14 +309,14 @@ pub(super) fn adapt(name: &str, module_type: ModuleType, analysis: &Analysis) ->
             _ => None,
         });
 
-    Adapted {
+    Ok(Adapted {
         input,
         measured: Measured {
             read: true,
             procedures: metrics,
             declared: declared.collect(),
         },
-    }
+    })
 }
 
 /// The lines of `range`. None when the range leaves the lines, which the parser
@@ -187,29 +342,34 @@ fn gaps(count: usize, procedures: &[Procedure]) -> Vec<Range<usize>> {
     gaps
 }
 
-/// Reads the logical lines of a module into the lines of the engine.
-struct Converter<'c> {
+/// Reads the logical lines of a module into the lines of the engine, taking
+/// what each weighs from the room of the file.
+struct Converter<'c, 'r> {
     reader: StatementReader<'c>,
+    room: &'r mut Room,
 }
 
-impl Converter<'_> {
+impl Converter<'_, '_> {
     /// The lines of the engine for `lines`, and whether one of the statements
-    /// nests expressions deeper than the reader follows.
-    fn code_lines(&mut self, lines: &[LogicalLine]) -> (Vec<CodeLine>, bool) {
+    /// nests expressions deeper than the reader follows. Fails when a line does
+    /// not fit in the room that is left.
+    fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<(Vec<CodeLine>, bool), VbaError> {
         let mut too_deep = false;
-        let code = (lines.iter())
-            .map(|line| {
-                let (code, deep) = self.code_line(line);
-                too_deep |= deep;
-                code
-            })
-            .collect();
-        (code, too_deep)
+        // The room limits what is kept, so room is not made for all the lines
+        // at once: a module of a quarter of a million lines would take 50 MB
+        // before the first of them was refused.
+        let mut code = Vec::with_capacity(lines.len().min(1 << 12));
+        for line in lines {
+            let (converted, deep) = self.code_line(line)?;
+            too_deep |= deep;
+            code.push(converted);
+        }
+        Ok((code, too_deep))
     }
 
     /// The line of the engine for `line`, and whether its statement nests
     /// expressions too deep to be read.
-    fn code_line(&mut self, line: &LogicalLine) -> (CodeLine, bool) {
+    fn code_line(&mut self, line: &LogicalLine) -> Result<(CodeLine, bool), VbaError> {
         let comment = line.comment.as_ref().map(|comment| comment.text.clone());
         let raw = raw_text(&line.text, comment.as_deref());
         if line.kind != LogicalKind::Code {
@@ -221,19 +381,21 @@ impl Converter<'_> {
                 comment,
                 ..CodeLine::default()
             };
-            return (code, false);
+            self.room.take(line_bytes(&code))?;
+            return Ok((code, false));
         }
-        // The reader cuts the statement into tokens of its own, because it needs
-        // to know the continued lines for the chains: these tokens are gone
-        // when it reads.
+        // A statement that cannot fit is refused on its tokens, before its
+        // facts are read. The tokens are gone when the facts are: they weigh 24
+        // bytes each, and a hostile statement has a million.
         let tokens = tokenize(&line.text);
-        let text = without_strings(&line.text, &tokens);
+        self.room.fits(ceiling(&line.text, tokens.len()))?;
+        let code = without_strings(&line.text, &tokens);
         drop(tokens);
         let facts = self.reader.read(line);
-        let code = CodeLine {
+        let converted = CodeLine {
             line: line.line,
             raw,
-            code: text,
+            code,
             comment,
             strings: facts.strings,
             members: facts.members.into_iter().map(member).collect(),
@@ -241,7 +403,8 @@ impl Converter<'_> {
             chains: facts.chains,
             ..CodeLine::default()
         };
-        (code, facts.too_deep)
+        self.room.take(line_bytes(&converted))?;
+        Ok((converted, facts.too_deep))
     }
 }
 
@@ -301,7 +464,13 @@ mod tests {
     }
 
     fn adapted(text: &str) -> Adapted {
-        adapt("Module1", ModuleType::Standard, &analysis(text))
+        adapt(
+            "Module1",
+            ModuleType::Standard,
+            &analysis(text),
+            &mut Room::of_a_file(),
+        )
+        .expect("a module that fits")
     }
 
     /// The lines of `lines` as (line, raw) pairs.
@@ -474,7 +643,9 @@ mod tests {
             "ThisWorkbook",
             ModuleType::Document,
             &analysis("Sub Run()\nEnd Sub\n"),
-        );
+            &mut Room::of_a_file(),
+        )
+        .expect("a module that fits");
 
         assert_eq!(adapted.input.name, "ThisWorkbook");
         assert_eq!(adapted.input.module_type, ModuleType::Document);
@@ -564,5 +735,172 @@ mod tests {
         assert_eq!(unread.input.name, "Sheet1");
         assert!(unread.input.procedures.is_empty() && unread.input.declarations.is_empty());
         assert!(!unread.measured.read);
+    }
+
+    #[test]
+    fn a_line_weighs_its_texts_and_its_facts() {
+        const TEXT: usize = 2 + ALLOCATION;
+        const OWNED: usize = size_of::<String>() + 1 + ALLOCATION;
+
+        assert_eq!(line_bytes(&CodeLine::default()), size_of::<CodeLine>());
+
+        let member = CodeLine {
+            raw: "ws".to_owned(),
+            code: "ws".to_owned(),
+            members: vec![MemberUse {
+                name: "ws".to_owned(),
+                named_argument: false,
+            }],
+            ..CodeLine::default()
+        };
+        assert_eq!(
+            line_bytes(&member),
+            size_of::<CodeLine>() + 2 * TEXT + size_of::<MemberUse>() + TEXT
+        );
+
+        let chain = CodeLine {
+            strings: vec!["x".to_owned()],
+            chains: vec![vec!["a".to_owned(), "b".to_owned()]],
+            progids: vec!["p".to_owned()],
+            ..CodeLine::default()
+        };
+        assert_eq!(
+            line_bytes(&chain),
+            size_of::<CodeLine>() + 2 * OWNED + size_of::<Vec<String>>() + ALLOCATION + 2 * OWNED
+        );
+    }
+
+    #[test]
+    fn a_module_takes_from_the_room_what_its_lines_weigh() {
+        const FULL: usize = 1 << 20;
+        let text = "Option Explicit\nSub Run()\n    ws.Cells(1, 1).Value = 2\nEnd Sub\n";
+        let mut room = Room::of(FULL);
+
+        let adapted = adapt("Module1", ModuleType::Standard, &analysis(text), &mut room)
+            .expect("a module that fits");
+
+        let input = &adapted.input;
+        let procedures = input
+            .procedures
+            .iter()
+            .flat_map(|procedure| &procedure.lines);
+        let weight: usize = input
+            .declarations
+            .iter()
+            .chain(procedures)
+            .map(line_bytes)
+            .sum();
+        assert!(weight > 0);
+        assert_eq!(room.left.saturating_add(weight), FULL);
+    }
+
+    #[test]
+    fn a_module_that_does_not_fit_in_the_room_is_refused_and_takes_none_of_it() {
+        const FULL: usize = 1 << 20;
+        // Comments only: a statement is refused on its ceiling, which is above
+        // what its line weighs, and a comment is refused on its weight.
+        let text = "' the first\n' the second\n' the third\n";
+        let mut full = Room::of(FULL);
+        adapt("Module1", ModuleType::Standard, &analysis(text), &mut full)
+            .expect("a module that fits");
+        let weight = FULL.saturating_sub(full.left);
+
+        // The room it needs is enough, and one byte less is not.
+        let mut exact = Room::of(weight);
+        assert!(adapt("Module1", ModuleType::Standard, &analysis(text), &mut exact).is_ok());
+        assert_eq!(exact.left, 0);
+        let mut short = Room::of(weight.saturating_sub(1));
+        let error = adapt("Module1", ModuleType::Standard, &analysis(text), &mut short)
+            .err()
+            .expect("a module that does not fit");
+        assert_eq!(
+            (error.status, error.code),
+            (Status::TooLarge, "vba.too_much_code")
+        );
+        assert_eq!(short.left, weight.saturating_sub(1));
+    }
+
+    #[test]
+    fn the_facts_of_a_statement_weigh_more_than_its_text() {
+        // Ten thousand members take 0.9 MB where the text takes 20 kB.
+        let text = format!("Sub Run()\n    x = {}a\nEnd Sub\n", "a.".repeat(10_000));
+
+        let mut room = Room::of(100_000);
+        let refused = adapt("Module1", ModuleType::Standard, &analysis(&text), &mut room);
+
+        assert_eq!(
+            refused.err().map(|error| error.code),
+            Some("vba.too_much_code")
+        );
+        assert_eq!(room.left, 100_000);
+        let mut roomy = Room::of(4_000_000);
+        adapt(
+            "Module1",
+            ModuleType::Standard,
+            &analysis(&text),
+            &mut roomy,
+        )
+        .expect("a module that fits");
+        let weight = 4_000_000 - roomy.left;
+        assert!((800_000..1_200_000).contains(&weight), "{weight}");
+    }
+
+    #[test]
+    fn a_statement_is_refused_when_it_may_not_fit_though_it_would() {
+        // A thousand numbers have no fact: the line takes 8 kB. They are 2,000
+        // tokens, which could have been names, so the line may take 340 kB.
+        let numbers = vec!["1"; 1_000].join(" + ");
+        let text = format!("Sub Run()\n    x = {numbers}\nEnd Sub\n");
+
+        let mut room = Room::of(1 << 20);
+        adapt("Module1", ModuleType::Standard, &analysis(&text), &mut room)
+            .expect("a module that fits");
+        let weight = (1 << 20) - room.left;
+        assert!(weight < 20_000, "{weight}");
+
+        let mut tight = Room::of(100_000);
+        let refused = adapt(
+            "Module1",
+            ModuleType::Standard,
+            &analysis(&text),
+            &mut tight,
+        );
+        assert_eq!(
+            refused.err().map(|error| error.code),
+            Some("vba.too_much_code")
+        );
+    }
+
+    #[test]
+    fn a_statement_never_weighs_more_than_its_ceiling() {
+        let many = |unit: &str| unit.repeat(500);
+        let statements = [
+            "x = 1".to_owned(),
+            many("a."),
+            many("a!"),
+            many("Dir "),
+            many("a("),
+            many("f(a),"),
+            many("\"a\","),
+            many("[a b]."),
+            many("ws.Cells(1, 1)."),
+            many("a:="),
+            "x = Chr(65) & Chr(66) & \"x\" & Prefix".to_owned(),
+            "Dim a As Long, b As New Collection, c As String".to_owned(),
+            "Set o = CreateObject(\"WScript.Shell\").Exec(cmd).StdOut.ReadAll".to_owned(),
+            "With ws\n        .Cells(1, 1).Font.Bold = True\n    End With".to_owned(),
+        ];
+        for statement in statements {
+            let text = format!("Const Prefix = \"p\"\nSub Run()\n    {statement}\nEnd Sub\n");
+            let adapted = adapted(&text);
+            let lines = &adapted.input.procedures[0].lines;
+            for line in lines.iter().filter(|line| line.comment.is_none()) {
+                let tokens = tokenize(&line.raw).len();
+                let ceiling = ceiling(&line.raw, tokens);
+                let weight = line_bytes(line);
+                let start: String = line.raw.chars().take(40).collect();
+                assert!(weight <= ceiling, "{weight} > {ceiling} for {start:?}");
+            }
+        }
     }
 }

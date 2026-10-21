@@ -53,6 +53,7 @@
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
+//! | `vba.too_much_code` | `too_large` | a module would take the statements of the file past what the rule engine may read |
 //!
 //! The message of an error about a module starts with `module <name>:`.
 

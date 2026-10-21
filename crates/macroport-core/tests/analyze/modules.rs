@@ -281,6 +281,36 @@ fn a_module_with_too_many_procedures_is_too_large_and_the_others_are_still_read(
 }
 
 #[test]
+fn a_module_with_too_much_code_is_too_large_and_the_others_are_still_read() {
+    // A statement of half a million names may take more than the rule engine
+    // may read, whatever its text weighs, and it is refused before it is read.
+    let dense = format!("x = {}a\n", "a.".repeat(250_000));
+
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, HELLO),
+        source("Dense", ModuleType::Standard, &dense),
+        source("Third", ModuleType::Standard, HELLO),
+    ]);
+
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_much_code".to_owned(),
+        message:
+            "module Dense: the statements of the modules of the file take more than 64 MiB to read"
+                .to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let [first, dense, third] = modules(&file) else {
+        panic!("three modules expected");
+    };
+    // The dense module is listed as a module that no stage measured, and the
+    // modules around it are read.
+    assert_eq!((dense.procedures.len(), dense.metrics.loc), (0, 0));
+    assert_eq!((first.procedures.len(), third.procedures.len()), (1, 1));
+}
+
+#[test]
 fn the_modules_of_a_file_are_read_up_to_a_budget_of_lines() {
     // The rule engine keeps what it reads of every module until the last one is
     // read, so the lines of a file are bounded to bound its memory.

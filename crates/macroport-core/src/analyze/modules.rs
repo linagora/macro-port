@@ -31,7 +31,7 @@ mod text;
 mod text_file;
 
 use super::apply::apply;
-use super::input::{Adapted, Measured, adapt};
+use super::input::{Adapted, Measured, Room, adapt};
 use super::metrics::{count, progids, project_metrics};
 use super::{Extraction, Failure, Options, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
@@ -56,14 +56,17 @@ const UNCLASSIFIED: &str = "unclassified";
 /// 32 MiB, which modules of one-character lines turn into millions of lines,
 /// far more than the time, the memory and the report of a file should take: the
 /// rule engine keeps what it reads of every module until the last one is read,
-/// some 330 bytes for each line. The modules past this budget are not read, and
-/// the one that crosses it is read whole, so a file holds this many lines and
-/// those of one module more ([`MAX_LINES`](crate::vba::MAX_LINES)), and nothing
-/// is split once the budget is spent.
+/// some 330 bytes for each line of one character. The modules past this budget
+/// are not read, and the one that crosses it is read whole, so a file holds
+/// this many lines and those of one module more
+/// ([`MAX_LINES`](crate::vba::MAX_LINES)), and nothing is split once the budget
+/// is spent.
 ///
-/// Measured on modules of one-character lines, in a release build on macOS, the
-/// peak of a file is 204 MB at the worst, where the limit is 256 MB (ACCEPTANCE
-/// A2); a budget of a million lines took 481 MB.
+/// The lines do not bound the memory by themselves, since the statements of a
+/// line may hold any number of names: the engine's input has a room of its own
+/// ([`Room`]). A budget of a million lines took 481 MB, measured on modules of
+/// one-character lines, in a release build on macOS, where the limit is 256 MB
+/// (ACCEPTANCE A2).
 const MAX_FILE_LINES: u32 = 100_000;
 
 /// The most procedures that the modules of one file may report in all. A
@@ -104,6 +107,8 @@ struct Front<'r> {
     budget: u32,
     /// The procedures that the modules may still report.
     procedures_left: u32,
+    /// What the rule engine may still read of the modules, in bytes of input.
+    room: Room,
     /// What the rule engine reads of each module met so far, one entry for each,
     /// in order: the modules of the engine are those of the report.
     inputs: Vec<ModuleInput>,
@@ -119,6 +124,7 @@ impl<'r> Front<'r> {
             rules,
             budget: MAX_FILE_LINES,
             procedures_left: MAX_FILE_PROCEDURES,
+            room: Room::of_a_file(),
             inputs: Vec::new(),
             measured: Vec::new(),
             failures: Vec::new(),
@@ -135,14 +141,16 @@ impl<'r> Front<'r> {
 
     /// Keeps `module`, the next one of the file, given what [`analyse`] made of
     /// its text (none for a module with no source): its report is filled, and
-    /// what the engine reads of it is kept. A module that was not read is kept
-    /// all the same, empty, so that the modules of the engine are those of the
-    /// report, in the same order.
+    /// what the engine reads of it is kept. A module that was not read, or that
+    /// does not fit in the room of the engine, is kept all the same, empty, so
+    /// that the modules of the engine are those of the report, in the same
+    /// order.
     ///
     /// [`analyse`]: Self::analyse
     fn keep(&mut self, module: &mut ModuleReport, analysed: Option<Result<Analysis, VbaError>>) {
-        let adapted = match analysed {
-            Some(Ok(analysis)) => Self::fill(module, &analysis),
+        let read = analysed.map(|analysis| analysis.and_then(|read| self.fill(module, &read)));
+        let adapted = match read {
+            Some(Ok(adapted)) => adapted,
             Some(Err(error)) => {
                 (self.failures).push(Failure::from(error).in_module(&module.name));
                 Adapted::unread(&module.name, module.module_type)
@@ -180,9 +188,15 @@ impl<'r> Front<'r> {
 
     /// Puts what `analysis` shows of a module into its report: its sizes, its
     /// declarations, and its procedures with their spans and their sizes. What
-    /// the rule engine decides is left for [`seal`](Self::seal).
-    fn fill(module: &mut ModuleReport, analysis: &Analysis) -> Adapted {
-        let adapted = adapt(&module.name, module.module_type, analysis);
+    /// the rule engine decides is left for [`seal`](Self::seal). Fails, and
+    /// leaves the report alone, when what the engine reads of the module does
+    /// not fit in the room that is left.
+    fn fill(
+        &mut self,
+        module: &mut ModuleReport,
+        analysis: &Analysis,
+    ) -> Result<Adapted, VbaError> {
+        let adapted = adapt(&module.name, module.module_type, analysis, &mut self.room)?;
         let metrics = &adapted.measured.procedures;
         module.procedures = (analysis.module.procedures.iter().zip(metrics))
             .map(|(procedure, metrics)| procedure_report(procedure, metrics))
@@ -193,7 +207,7 @@ impl<'r> Front<'r> {
             ..module_metrics(&analysis.lines, metrics)
         };
         module.declarations = Some(declarations);
-        adapted
+        Ok(adapted)
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
@@ -332,7 +346,7 @@ fn declarations_report(declarations: &[Declaration]) -> Declarations {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::RulesSources;
+    use crate::rules::{ModuleType, RulesSources};
 
     fn rules() -> RuleSet {
         RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
@@ -373,6 +387,40 @@ mod tests {
         assert!(front.analyse("Sub C()\nEnd Sub\n").is_ok());
         assert!(front.analyse("Dim x As Long\n").is_ok());
         assert!(front.analyse("Sub D()\nEnd Sub\n").is_err());
+    }
+
+    #[test]
+    fn the_statements_of_a_file_are_read_within_a_room() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        front.room = Room::of(8_000);
+        let read = |front: &mut Front, name: &str, text: &str| {
+            let mut module = text::text_module(name, ModuleType::Standard, text);
+            front.read(&mut module, Some(text));
+            module
+        };
+        let small = "Sub A()\n    x = 1\nEnd Sub\n";
+        // A statement of five thousand members takes more than the room.
+        let dense = format!("Sub B()\n    x = {}a\nEnd Sub\n", "a.".repeat(5_000));
+
+        assert_eq!(read(&mut front, "First", small).procedures.len(), 1);
+        let refused = read(&mut front, "Second", &dense);
+        // The module is listed, empty, with the failure of the file, and the
+        // room it did not take is left to the modules after it.
+        assert!(refused.procedures.is_empty() && refused.declarations.is_none());
+        let [failure] = front.failures.as_slice() else {
+            panic!("one failure expected");
+        };
+        assert_eq!(failure.status, Status::TooLarge);
+        assert_eq!(failure.error.code, "vba.too_much_code");
+        assert!(failure.error.message.starts_with("module Second: "));
+        assert_eq!(read(&mut front, "Third", small).procedures.len(), 1);
+
+        let names: Vec<_> = (front.inputs.iter())
+            .map(|input| (input.name.as_str(), input.procedures.len()))
+            .collect();
+        assert_eq!(names, [("First", 1), ("Second", 0), ("Third", 1)]);
+        assert_eq!(front.measured.len(), 3);
     }
 
     #[test]
