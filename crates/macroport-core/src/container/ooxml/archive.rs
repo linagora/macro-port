@@ -117,6 +117,17 @@ impl<'a> Archive<'a> {
         self.names.contains_key(&normalize(name))
     }
 
+    /// The names of the entries, normalised, in order.
+    pub(super) fn names(&self) -> impl Iterator<Item = &str> {
+        self.names.keys().map(String::as_str)
+    }
+
+    /// The normalised name of the entry called `name`, if there is one.
+    pub(super) fn canonical(&self, name: &str) -> Option<&str> {
+        let (canonical, _) = self.names.get_key_value(&normalize(name))?;
+        Some(canonical)
+    }
+
     /// The content of the entry called `name`, or `None` when there is no such
     /// entry. At most `cap` bytes are inflated.
     pub(super) fn read(&self, name: &str, cap: u64) -> Result<Option<Vec<u8>>, ContainerError> {

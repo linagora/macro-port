@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The XML parts of an OPC package that the reader needs: the relationships.
+//! The XML parts of an OPC package that the reader needs: the relationships
+//! and the content types.
 //!
 //! A pull parser reads them. What the reader keeps of a part is the target of
-//! each relationship of a role it needs, a copy of some of the part's own text,
-//! so it never weighs more than the part, which the cap on XML parts bounds.
+//! each relationship of a role it needs, or the content type of each entry
+//! passed on to the caller one at a time: a copy of some of the part's own
+//! text, so it never weighs more than the part, which the cap on XML parts
+//! bounds.
 //!
 //! A part that is not what the format says is `corrupted`, rather than read
 //! with a leniency that Excel may not share: a DTD, text outside the root, a
@@ -25,6 +28,10 @@ use crate::report::Status;
 const RELATIONSHIPS_NAMESPACE: &str =
     "http://schemas.openxmlformats.org/package/2006/relationships";
 
+/// The namespace of the content types of a package.
+const CONTENT_TYPES_NAMESPACE: &str =
+    "http://schemas.openxmlformats.org/package/2006/content-types";
+
 /// Deepest nesting of elements accepted. A relationships part is two levels
 /// deep. The parser keeps the name and the offset of each open element, so a
 /// part of the largest size that does nothing but open elements would cost
@@ -40,6 +47,10 @@ const OFFICE_DOCUMENT: &str =
 /// The type of the relationship from a workbook to its VBA project.
 const VBA_PROJECT: &str = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
 
+/// What the type of the relationship to an Excel 4.0 macro sheet ends with
+/// (SPEC M1).
+const MACRO_SHEET_SUFFIX: &str = "/xlMacrosheet";
+
 /// What a relationship says its target is, as far as the reader cares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Role {
@@ -47,19 +58,35 @@ pub(super) enum Role {
     Workbook,
     /// A VBA project.
     VbaProject,
+    /// An Excel 4.0 macro sheet.
+    MacroSheet,
 }
 
 impl Role {
-    /// The role a relationship type stands for. The whole URI counts, exactly
-    /// as written, not its last segment, so that a relationship of another type
-    /// cannot take the place of the real one.
+    /// The role a relationship type stands for. For the workbook and the VBA
+    /// project the whole URI counts, exactly as written, not its last segment,
+    /// so that a relationship of another type cannot take the place of the real
+    /// one. A macro sheet is any type that ends with `/xlMacrosheet`, whatever
+    /// its case, as SPEC M1 has it: every one is counted, so a wrong guess
+    /// counts one sheet too many and hides none.
     fn of(relationship_type: &str) -> Option<Self> {
         match relationship_type {
             OFFICE_DOCUMENT => Some(Self::Workbook),
             VBA_PROJECT => Some(Self::VbaProject),
+            _ if ends_with_ignore_case(relationship_type, MACRO_SHEET_SUFFIX) => {
+                Some(Self::MacroSheet)
+            }
             _ => None,
         }
     }
+}
+
+/// Whether `text` ends with `suffix`, without regard to ASCII case.
+fn ends_with_ignore_case(text: &str, suffix: &str) -> bool {
+    let bytes = text.as_bytes();
+    let start = bytes.len().checked_sub(suffix.len());
+    let tail = start.and_then(|start| bytes.get(start..));
+    tail.is_some_and(|tail| tail.eq_ignore_ascii_case(suffix.as_bytes()))
 }
 
 /// An internal relationship of a role the reader cares about.
@@ -93,6 +120,42 @@ pub(super) fn relationships(xml: &[u8]) -> Result<Vec<Relationship>, ContainerEr
         Ok(())
     })?;
     Ok(kept)
+}
+
+/// What an entry of a content types part gives its content type to.
+pub(super) enum Applies<'a> {
+    /// The parts with this extension that no override covers: a `Default`.
+    Extension(&'a str),
+    /// The part of this name, as written: an `Override`.
+    Part(&'a str),
+}
+
+/// Calls `visit` on each `Default` and `Override` of a content types part, with
+/// what it applies to and its content type. An entry that lacks either has no
+/// effect. The entries are passed on one at a time, so that what the caller
+/// keeps is its own choice.
+pub(super) fn content_types(
+    xml: &[u8],
+    mut visit: impl FnMut(Applies<'_>, &str),
+) -> Result<(), ContainerError> {
+    children(xml, CONTENT_TYPES_NAMESPACE, "Types", |element| {
+        let (key, is_default) = match element.local_name().as_ref() {
+            "Default" => ("Extension", true),
+            "Override" => ("PartName", false),
+            _ => return Ok(()),
+        };
+        let applies_to = attribute(element, key)?;
+        let content_type = attribute(element, "ContentType")?;
+        if let (Some(applies_to), Some(content_type)) = (applies_to, content_type) {
+            let applies = if is_default {
+                Applies::Extension(&applies_to)
+            } else {
+                Applies::Part(&applies_to)
+            };
+            visit(applies, &content_type);
+        }
+        Ok(())
+    })
 }
 
 fn malformed(message: &'static str) -> ContainerError {

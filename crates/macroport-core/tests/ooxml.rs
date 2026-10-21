@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The OOXML reader: the VBA part of a package, found through its
-//! relationships, within the limits of SPEC M1.
+//! relationships, its content types or its name, and its Excel 4.0 macro
+//! sheets, within the limits of SPEC M1.
 
 // `clippy.toml` lets `#[test]` functions panic, not the helpers they call.
 #![allow(
@@ -13,8 +14,11 @@
 use std::io::{Cursor, Read, Write};
 
 use macroport_core::container::{ContainerError, read_ooxml};
+use macroport_core::report::Container;
 use macroport_core::report::Status::{self, Corrupted, Encrypted, SuspiciousArchive, Unsupported};
+use macroport_core::rules::{RuleSet, RulesSources};
 use macroport_testkit::corpus;
+use serde::Deserialize;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -22,17 +26,32 @@ const CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 const MIB: usize = 1024 * 1024;
 const VBA: &str = "xl/vbaProject.bin";
 const RELS_NAMESPACE: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+const TYPES_NAMESPACE: &str = "http://schemas.openxmlformats.org/package/2006/content-types";
 const OFFICE_DOCUMENT: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
 const VBA_RELATIONSHIP: &str = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
+const MACRO_SHEET_RELATIONSHIP: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/xlMacrosheet";
+const VBA_TYPE: &str = "application/vnd.ms-office.vbaProject";
+const MACRO_SHEET_TYPE: &str = "application/vnd.ms-excel.macrosheet+xml";
+const BINARY_MACRO_SHEET_TYPE: &str = "application/vnd.ms-excel.macrosheet";
+const WORKSHEET_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
+const IN_XLSX: &str = "sec.vbaproject-in-xlsx";
+const MACRO_SHEET_INDICATOR: &str = "sec.xlm-macrosheet";
 
-/// A zip whose entries are `(name, content, method)`.
+/// A zip whose entries are `(name, content, method)`. A name that ends with a
+/// slash is a directory, and its content is ignored.
 fn zip_of(entries: &[(&str, &[u8], CompressionMethod)]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     for (name, content, method) in entries {
         let mut options = SimpleFileOptions::default().compression_method(*method);
         if *method == CompressionMethod::Deflated {
             options = options.compression_level(Some(9));
+        }
+        if name.ends_with('/') {
+            writer.add_directory(*name, options).unwrap();
+            continue;
         }
         writer.start_file(*name, options).unwrap();
         writer.write_all(content).unwrap();
@@ -100,6 +119,35 @@ fn root_rels() -> String {
     rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")])
 }
 
+/// A `[Content_Types].xml` part with this XML between the tags of its root.
+fn types_with(body: &str) -> String {
+    format!(r#"<Types xmlns="{TYPES_NAMESPACE}">{body}</Types>"#)
+}
+
+/// A `[Content_Types].xml` part with these `(extension, type)` defaults and
+/// these `(part name, type)` overrides.
+fn types_of(defaults: &[(&str, &str)], overrides: &[(&str, &str)]) -> String {
+    let default = |(extension, kind): &(&str, &str)| {
+        format!(r#"<Default Extension="{extension}" ContentType="{kind}"/>"#)
+    };
+    let over = |(part, kind): &(&str, &str)| {
+        format!(r#"<Override PartName="{part}" ContentType="{kind}"/>"#)
+    };
+    let defaults = defaults.iter().map(default);
+    types_with(
+        &defaults
+            .chain(overrides.iter().map(over))
+            .collect::<String>(),
+    )
+}
+
+/// `workbook_package` with this `[Content_Types].xml`.
+fn typed_package(types: &str, relationships: &[(&str, &str)], parts: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut parts = parts.to_vec();
+    parts.push(("[Content_Types].xml", types.as_bytes()));
+    workbook_package(relationships, &parts)
+}
+
 /// A zip with one deflated entry, the VBA part.
 fn deflated(content: &[u8]) -> Vec<u8> {
     zip_of(&[(VBA, content, CompressionMethod::Deflated)])
@@ -163,16 +211,21 @@ fn workbooks_with_vba() -> Vec<String> {
     with_vba.collect()
 }
 
-/// What the relationships of a workbook whose VBA part has moved say about it.
+/// What leads to the VBA part of a workbook once it has moved.
 #[derive(Clone, Copy)]
 enum Link {
-    /// They still name `vbaProject.bin`, which is no longer there.
+    /// Nothing: the relationships still name `vbaProject.bin`, and neither the
+    /// content types nor the new name, `xl/custom.dat`, lead to the part.
     Broken,
-    /// They name the new place, `custom.dat`.
+    /// The relationships name the new place, `xl/custom.dat`.
     Followed,
+    /// The content types type the new place, `xl/custom.bin`, as a VBA project
+    /// (the type of `.bin` in an `.xlsm`, an override in an `.xlsb`), and the
+    /// relationships still name `vbaProject.bin`.
+    Typed,
 }
 
-/// `workbook` with its VBA part under another name, `xl/custom.dat`.
+/// `workbook` with its VBA part under another name.
 fn with_vba_moved(workbook: &[u8], link: Link) -> Vec<u8> {
     let mut source = ZipArchive::new(Cursor::new(workbook)).unwrap();
     let mut parts = Vec::new();
@@ -182,10 +235,22 @@ fn with_vba_moved(workbook: &[u8], link: Link) -> Vec<u8> {
         part.read_to_end(&mut content).unwrap();
         let mut name = part.name().unwrap().into_owned();
         if name == VBA {
-            name = "xl/custom.dat".to_owned();
+            let new = if matches!(link, Link::Typed) {
+                "xl/custom.bin"
+            } else {
+                "xl/custom.dat"
+            };
+            name = new.to_owned();
         } else if matches!(link, Link::Followed) && name.ends_with(".rels") {
             let rels = String::from_utf8(content).unwrap();
             let moved = rels.replace(r#"Target="vbaProject.bin""#, r#"Target="custom.dat""#);
+            content = moved.into_bytes();
+        } else if matches!(link, Link::Typed) && name == "[Content_Types].xml" {
+            let types = String::from_utf8(content).unwrap();
+            let moved = types.replace(
+                r#"PartName="/xl/vbaProject.bin""#,
+                r#"PartName="/xl/custom.bin""#,
+            );
             content = moved.into_bytes();
         }
         parts.push((name, content));
@@ -210,19 +275,391 @@ fn every_generated_macro_workbook_gives_its_vba_project() {
 
 /// The fixtures all name the VBA part by its usual name, which is where the
 /// reader looks anyway: this one moves it, so that only the relationship of the
-/// workbook (`workbook.xml.rels` in `.xlsm`, `workbook.bin.rels` in `.xlsb`)
-/// leads to it.
+/// workbook (`workbook.xml.rels` in `.xlsm`, `workbook.bin.rels` in `.xlsb`),
+/// or only its content types, lead to it.
 #[test]
-fn every_generated_workbook_relates_to_its_vba_project() {
+fn every_generated_workbook_leads_to_its_vba_project_by_relationship_and_by_type() {
     for path in workbooks_with_vba() {
         let workbook = corpus::read(&path);
-        // Moved and not related to any more, the part is lost: otherwise its
-        // name would find it and the test would prove nothing.
+        // Moved and not led to any more, the part is lost: otherwise its name
+        // would find it and the test would prove nothing.
         let lost = with_vba_moved(&workbook, Link::Broken);
         assert!(read_ooxml(&lost).unwrap().vba_project.is_none(), "{path}");
-        let related = with_vba_moved(&workbook, Link::Followed);
-        assert_eq!(vba_of(&related), vba_of(&workbook), "{path}");
+        let expected = vba_of(&workbook);
+        for link in [Link::Followed, Link::Typed] {
+            assert_eq!(vba_of(&with_vba_moved(&workbook, link)), expected, "{path}");
+        }
     }
+}
+
+#[test]
+fn a_part_typed_as_a_vba_project_is_found_without_a_relationship() {
+    // However the type is given: for the part or for its extension, with the
+    // case and the parameters it may have.
+    let cases = [
+        types_of(&[], &[("/xl/custom.dat", VBA_TYPE)]),
+        types_of(&[], &[("xl/custom.dat", VBA_TYPE)]),
+        types_of(&[], &[("/XL/Custom.DAT", VBA_TYPE)]),
+        types_of(&[("dat", VBA_TYPE)], &[]),
+        types_of(&[("DAT", VBA_TYPE)], &[]),
+        types_of(&[("dat", "APPLICATION/VND.MS-OFFICE.VBAPROJECT")], &[]),
+        types_of(
+            &[("dat", " application/vnd.ms-office.vbaProject ; x=1")],
+            &[],
+        ),
+        types_of(&[("dat", "text/plain")], &[("/xl/custom.dat", VBA_TYPE)]),
+    ];
+    let parts: [(&str, &[u8]); 1] = [("xl/custom.dat", b"by type")];
+    for types in &cases {
+        let package = typed_package(types, &[], &parts);
+        assert_eq!(vba_of(&package), b"by type", "{types}");
+    }
+}
+
+#[test]
+fn a_part_not_typed_as_a_vba_project_is_not_taken_for_one() {
+    let signature = "application/vnd.ms-office.vbaProjectSignature";
+    let cases = [
+        types_of(&[("dat", "text/plain")], &[]),
+        types_of(&[("bin", VBA_TYPE)], &[]),
+        types_of(&[("dat", signature)], &[]),
+        types_of(&[("dat", "application/vnd.ms-office.vbaProject+xml")], &[]),
+        // An override of another type replaces the type of the extension.
+        types_of(&[("dat", VBA_TYPE)], &[("/xl/custom.dat", "text/plain")]),
+        // A type given to a part that is not there.
+        types_of(&[], &[("/xl/missing.dat", VBA_TYPE)]),
+    ];
+    let parts: [(&str, &[u8]); 1] = [("xl/custom.dat", b"by type")];
+    for types in &cases {
+        let package = typed_package(types, &[], &parts);
+        assert!(
+            read_ooxml(&package).unwrap().vba_project.is_none(),
+            "{types}"
+        );
+    }
+}
+
+#[test]
+fn the_vba_part_is_found_by_relationship_then_by_type_then_by_name() {
+    let types = types_of(&[], &[("/xl/typed.dat", VBA_TYPE)]);
+    let parts: [(&str, &[u8]); 3] = [
+        ("xl/custom.dat", b"by relationship"),
+        ("xl/typed.dat", b"by type"),
+        (VBA, b"by name"),
+    ];
+    let related = [(VBA_RELATIONSHIP, "custom.dat")];
+    let by_relationship = typed_package(&types, &related, &parts);
+    assert_eq!(vba_of(&by_relationship), b"by relationship");
+    assert_eq!(vba_of(&typed_package(&types, &[], &parts)), b"by type");
+    let untyped = types_of(&[], &[]);
+    assert_eq!(vba_of(&typed_package(&untyped, &[], &parts)), b"by name");
+}
+
+#[test]
+fn of_several_parts_typed_as_a_vba_project_only_the_first_is_read() {
+    // The first by name is the project. The others are not even inflated, as
+    // the one of them that is a bomb shows.
+    let types = types_of(&[("dat", VBA_TYPE)], &[]);
+    let bomb = vec![0; 20 * MIB];
+    let parts: [(&str, &[u8]); 3] = [
+        ("xl/b.dat", &bomb),
+        ("xl/a.dat", b"first"),
+        ("xl/c.dat", &bomb),
+    ];
+    assert_eq!(vba_of(&typed_package(&types, &[], &parts)), b"first");
+}
+
+#[test]
+fn content_types_that_are_not_what_the_format_says_are_corrupted() {
+    let ns = TYPES_NAMESPACE;
+    let cases = [
+        format!(r#"<Types xmlns="{ns}">"#),
+        "<Types/>".to_owned(),
+        format!(r#"<Relationships xmlns="{ns}"/>"#),
+        types_with(r#"<Default Extension="a" ContentType="x" ContentType="y"/>"#),
+        types_with(r#"<Override xmlns="urn:evil" PartName="/a" ContentType="x"/>"#),
+        types_with(r#"<Override PartName="/a" ContentType="x""#),
+    ];
+    for types in &cases {
+        let package = typed_package(types, &[], &[]);
+        assert_fails(&package, Corrupted, "ooxml.malformed_xml");
+    }
+}
+
+#[test]
+fn content_types_over_their_caps_are_a_suspicious_archive() {
+    let (stored, deflated) = (CompressionMethod::Stored, CompressionMethod::Deflated);
+    let root = root_rels();
+    let package = |types: &[u8], method| {
+        zip_of(&[
+            ("_rels/.rels", root.as_bytes(), deflated),
+            ("[Content_Types].xml", types, method),
+        ])
+    };
+    let over = package(&vec![b' '; 16 * MIB + 1], stored);
+    assert_fails(&over, SuspiciousArchive, "zip.entry_too_large");
+    let mut types = types_of(&[], &[]).into_bytes();
+    types.resize(16 * MIB, b' ');
+    assert!(read_ooxml(&package(&types, stored)).is_ok());
+    let bomb = package(&vec![b' '; 20 * MIB], deflated);
+    assert_fails(&bomb, SuspiciousArchive, "zip.ratio");
+}
+
+fn macro_sheets_of(bytes: &[u8]) -> u32 {
+    read_ooxml(bytes).unwrap().macro_sheets
+}
+
+/// The expectations of `fixtures.yaml` that the macro sheet tests use.
+#[derive(Deserialize)]
+struct Fixtures {
+    fixtures: Vec<Fixture>,
+}
+
+#[derive(Deserialize)]
+struct Fixture {
+    file: String,
+    expected_xlm: Option<ExpectedXlm>,
+}
+
+#[derive(Deserialize)]
+struct ExpectedXlm {
+    macro_sheets: u32,
+}
+
+#[test]
+fn the_macro_sheets_of_the_fixtures_are_counted() {
+    let text = String::from_utf8(corpus::read("fixtures/fixtures.yaml")).unwrap();
+    // The file starts with a byte order mark.
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+    let manifest: Fixtures = serde_saphyr::from_str(text).unwrap();
+    let (mut packages, mut with_sheets) = (0, 0);
+    for fixture in manifest.fixtures {
+        let bytes = corpus::read(&format!("fixtures/{}", fixture.file));
+        // The `.xls` workbooks and the encrypted package are compound files.
+        if !bytes.starts_with(b"PK") {
+            continue;
+        }
+        // A fixture that says nothing about Excel 4.0 macros has none.
+        let expected = fixture.expected_xlm.map_or(0, |xlm| xlm.macro_sheets);
+        assert_eq!(macro_sheets_of(&bytes), expected, "{}", fixture.file);
+        packages += 1;
+        with_sheets += u32::from(expected > 0);
+    }
+    assert!(packages >= 150, "only {packages} packages");
+    assert!(with_sheets >= 1, "no package with macro sheets");
+}
+
+#[test]
+fn macro_sheets_are_counted_through_content_types_and_relationships() {
+    let parts: [(&str, &[u8]); 4] = [
+        ("xl/macrosheets/sheet1.xml", b"<macro/>"),
+        ("xl/macrosheets/sheet2.xml", b"<macro/>"),
+        ("xl/macrosheets/sheet3.bin", b"binary"),
+        ("xl/worksheets/sheet1.xml", b"<sheet/>"),
+    ];
+    let sheet1 = ("/xl/macrosheets/sheet1.xml", MACRO_SHEET_TYPE);
+    let by_type = types_of(&[], &[sheet1]);
+    let none = types_of(&[], &[]);
+    let related = |target: &'static str| (MACRO_SHEET_RELATIONSHIP, target);
+    let other = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    let (worksheet, international) = (
+        format!("{other}/worksheet"),
+        format!("{other}/xlIntlMacrosheet"),
+    );
+    let cases = [
+        ("a type", by_type.clone(), vec![], 1),
+        (
+            "the binary type",
+            types_of(
+                &[],
+                &[("/xl/macrosheets/sheet3.bin", BINARY_MACRO_SHEET_TYPE)],
+            ),
+            vec![],
+            1,
+        ),
+        (
+            "a type, in any case, with parameters",
+            types_of(
+                &[],
+                &[(
+                    "/xl/macrosheets/sheet1.xml",
+                    "Application/VND.MS-Excel.MacroSheet+XML ; x=1",
+                )],
+            ),
+            vec![],
+            1,
+        ),
+        (
+            "an extension, but not for the parts that have another type",
+            types_of(
+                &[("xml", MACRO_SHEET_TYPE)],
+                &[
+                    ("/xl/worksheets/sheet1.xml", WORKSHEET_TYPE),
+                    ("/xl/workbook.xml", WORKSHEET_TYPE),
+                ],
+            ),
+            vec![],
+            2,
+        ),
+        (
+            "a relationship",
+            none.clone(),
+            vec![related("macrosheets/sheet1.xml")],
+            1,
+        ),
+        (
+            "a relationship type in any case",
+            none.clone(),
+            vec![("http://example.com/XLMACROSHEET", "macrosheets/sheet1.xml")],
+            1,
+        ),
+        (
+            "a type and a relationship, for one part",
+            by_type.clone(),
+            vec![related("macrosheets/sheet1.xml")],
+            1,
+        ),
+        (
+            "a type and a relationship, for two parts",
+            by_type.clone(),
+            vec![related("macrosheets/sheet2.xml")],
+            2,
+        ),
+        (
+            "a relationship to a part that is not there",
+            none.clone(),
+            vec![related("macrosheets/missing.xml")],
+            0,
+        ),
+        (
+            "a type for a part that is not there",
+            types_of(&[], &[("/xl/macrosheets/missing.xml", MACRO_SHEET_TYPE)]),
+            vec![],
+            0,
+        ),
+        (
+            "other types of sheets",
+            types_of(&[], &[("/xl/worksheets/sheet1.xml", WORKSHEET_TYPE)]),
+            vec![
+                (worksheet.as_str(), "worksheets/sheet1.xml"),
+                (international.as_str(), "macrosheets/sheet1.xml"),
+            ],
+            0,
+        ),
+    ];
+    for (label, types, relationships, expected) in cases {
+        let package = typed_package(&types, &relationships, &parts);
+        assert_eq!(macro_sheets_of(&package), expected, "{label}");
+    }
+}
+
+#[test]
+fn a_macro_sheet_related_to_the_package_or_not_internal_is_counted_or_not() {
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", b"<macro/>")];
+    // The workbook is not the only part whose relationships count.
+    let root = rels_of(&[
+        (OFFICE_DOCUMENT, "xl/workbook.xml"),
+        (MACRO_SHEET_RELATIONSHIP, "xl/macrosheets/sheet1.xml"),
+    ]);
+    let workbook = rels_of(&[]);
+    let package = package_of(root.as_bytes(), workbook.as_bytes(), &parts);
+    assert_eq!(macro_sheets_of(&package), 1);
+    // An address is not a part, even when a part has that name.
+    let external = format!(
+        r#"<Relationship Id="x" Type="{MACRO_SHEET_RELATIONSHIP}" Target="macrosheets/sheet1.xml" TargetMode="External"/>"#
+    );
+    let workbook = rels_with(&external);
+    let package = package_of(root_rels().as_bytes(), workbook.as_bytes(), &parts);
+    assert_eq!(macro_sheets_of(&package), 0);
+}
+
+#[test]
+fn a_macro_sheet_is_counted_without_being_read() {
+    // Inflated, this part would be a suspicious archive.
+    let bomb = vec![0; 20 * MIB];
+    let types = types_of(&[], &[("/xl/macrosheets/sheet1.xml", MACRO_SHEET_TYPE)]);
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", &bomb)];
+    assert_eq!(macro_sheets_of(&typed_package(&types, &[], &parts)), 1);
+}
+
+#[test]
+fn a_directory_of_the_archive_is_not_a_part() {
+    // A folder entry has no content, so no type makes it a sheet or a project.
+    let types = types_of(
+        &[],
+        &[
+            ("/xl/macrosheets/", MACRO_SHEET_TYPE),
+            ("/xl/project/", VBA_TYPE),
+        ],
+    );
+    let folders: [(&str, &[u8]); 2] = [("xl/macrosheets/", b""), ("xl/project/", b"")];
+    let package = read_ooxml(&typed_package(&types, &[], &folders)).unwrap();
+    assert_eq!(package.macro_sheets, 0);
+    assert!(package.vba_project.is_none());
+}
+
+#[test]
+fn the_content_types_part_is_not_a_part() {
+    // A type given to every `.xml` part does not reach `[Content_Types].xml`.
+    let types = types_of(&[("xml", MACRO_SHEET_TYPE)], &[]);
+    let package = typed_package(&types, &[], &[]);
+    // Only `xl/workbook.xml` is left.
+    assert_eq!(macro_sheets_of(&package), 1);
+}
+
+#[test]
+fn a_package_without_content_types_has_no_typed_parts() {
+    let parts: [(&str, &[u8]); 1] = [("xl/macrosheets/sheet1.xml", b"<macro/>")];
+    assert_eq!(macro_sheets_of(&workbook_package(&[], &parts)), 0);
+}
+
+#[test]
+fn a_vba_part_in_a_package_declared_as_xlsx_raises_an_indicator() {
+    let package = read_ooxml(&fixture("malformed/macros-in-xlsx.xlsx")).unwrap();
+    assert!(package.vba_project.is_some());
+    for declared in [Container::Xlsx, Container::Xltx] {
+        assert_eq!(package.indicators(declared), [IN_XLSX], "{declared:?}");
+    }
+    for declared in [
+        Container::Xlsm,
+        Container::Xltm,
+        Container::Xlam,
+        Container::Xlsb,
+    ] {
+        assert!(package.indicators(declared).is_empty(), "{declared:?}");
+    }
+}
+
+#[test]
+fn macro_sheets_raise_an_indicator_and_a_plain_workbook_none() {
+    let xlm = read_ooxml(&fixture("generated/xlm-01-macrosheet.xlsm")).unwrap();
+    assert_eq!(xlm.indicators(Container::Xlsm), [MACRO_SHEET_INDICATOR]);
+    let plain = read_ooxml(&fixture("generated/none-01-no-macros.xlsm")).unwrap();
+    assert!(plain.indicators(Container::Xlsx).is_empty());
+    // Both, in the order of `rules/security.yaml`.
+    let types = types_of(&[], &[("/xl/macrosheets/sheet1.xml", MACRO_SHEET_TYPE)]);
+    let parts: [(&str, &[u8]); 2] = [("xl/macrosheets/sheet1.xml", b"<macro/>"), (VBA, b"vba")];
+    let both = read_ooxml(&typed_package(&types, &[], &parts)).unwrap();
+    assert_eq!(
+        both.indicators(Container::Xlsx),
+        [MACRO_SHEET_INDICATOR, IN_XLSX]
+    );
+    assert_eq!(both.indicators(Container::Xlsm), [MACRO_SHEET_INDICATOR]);
+}
+
+#[test]
+fn the_indicators_are_those_of_the_shipped_rules_in_their_order() {
+    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+    let known: Vec<&str> = (rules.security.container_indicators.iter())
+        .map(|indicator| indicator.id.as_str())
+        .collect();
+    let position = |id: &str| known.iter().position(|&known| known == id);
+    assert!(position(MACRO_SHEET_INDICATOR).is_some(), "{known:?}");
+    assert!(position(IN_XLSX).is_some(), "{known:?}");
+    assert!(
+        position(MACRO_SHEET_INDICATOR) < position(IN_XLSX),
+        "{known:?}"
+    );
 }
 
 #[test]
@@ -743,7 +1180,14 @@ fn numbers() -> impl FnMut() -> usize {
 fn changed_xml_never_panics() {
     let seeds = [
         rels_of(&[(OFFICE_DOCUMENT, "xl/workbook.xml")]),
-        rels_of(&[(VBA_RELATIONSHIP, "vbaProject.bin")]),
+        rels_of(&[
+            (VBA_RELATIONSHIP, "vbaProject.bin"),
+            (MACRO_SHEET_RELATIONSHIP, "macrosheets/sheet1.xml"),
+        ]),
+        types_of(
+            &[("bin", VBA_TYPE)],
+            &[("/xl/macrosheets/sheet1.xml", MACRO_SHEET_TYPE)],
+        ),
     ];
     // The characters that give XML its shape.
     let syntax = b"<>/=\"&;'! ?-[]:";
@@ -758,12 +1202,12 @@ fn changed_xml_never_panics() {
                 _ => next().to_le_bytes()[0],
             };
         }
-        let deflated = CompressionMethod::Deflated;
-        let package = zip_of(&[
-            ("_rels/.rels", &parts[0], deflated),
-            ("xl/_rels/workbook.xml.rels", &parts[1], deflated),
-            (VBA, b"vba", deflated),
-        ]);
+        let others: [(&str, &[u8]); 3] = [
+            (VBA, b"vba"),
+            ("xl/macrosheets/sheet1.xml", b"<macro/>"),
+            ("[Content_Types].xml", &parts[2]),
+        ];
+        let package = package_of(&parts[0], &parts[1], &others);
         if let Err(error) = read_ooxml(&package) {
             assert!(
                 matches!(error.status, Corrupted | SuspiciousArchive),
