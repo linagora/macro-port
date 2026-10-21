@@ -20,8 +20,8 @@ use self::shape::{EndOf, Header, Shape, shape};
 use crate::vba::{LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
 
 /// The most recoveries kept for the module and for each procedure. The first
-/// ones tell where the code stops parsing, and a hostile text holds as many
-/// as it has lines.
+/// ones tell where the code stops parsing, which is what a reader looks for,
+/// and a hostile text holds as many as it has lines.
 pub const MAX_RECOVERIES: usize = 32;
 
 /// What the parser had to step over.
@@ -31,8 +31,9 @@ pub enum RecoveryKind {
     /// the header of another one, or the end of the module, closed it. Found at
     /// its header.
     MissingEnd,
-    /// An `End` that closes another kind of procedure than the one it ends,
-    /// such as an `End Function` for a `Sub`.
+    /// An `End Sub`, `End Function` or `End Property` that names another kind
+    /// of procedure than the one it closes, such as an `End Function` after a
+    /// `Sub`. Found at the `End`.
     WrongEnd,
     /// A terminator with nothing to close: an `End Sub`, `End Function` or
     /// `End Property` outside a procedure.
@@ -63,15 +64,14 @@ pub struct Procedure {
     pub is_static: bool,
     /// How many parameters the header declares. `ParamArray` counts for one.
     pub parameter_count: usize,
-    /// The physical line of the `Sub`, `Function` or `Property` keyword, of the
-    /// first header when conditional compilation gives the procedure several.
+    /// The physical line of the `Sub`, `Function` or `Property` keyword.
     pub start_line: u32,
     /// The physical line of the `End` that closes it; of the last line of code
     /// when the procedure has no end.
     pub end_line: u32,
     /// Its logical lines, as indices into [`SourceLines::logical`]: the header
-    /// to the `End`, comments and directives between them included. The lines
-    /// of a procedure with no end stop at its last line of code.
+    /// to the `End`, comments between them included. The lines of a procedure
+    /// with no end stop at its last line of code.
     pub lines: Range<usize>,
     /// What the parser stepped over inside it, the first [`MAX_RECOVERIES`].
     pub recoveries: Vec<Recovery>,
