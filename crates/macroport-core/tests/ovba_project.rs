@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The `PROJECT` stream of a VBA project: whether the project is protected.
-//! The values come from the `CMG`, `DPB` and `GC` of the MS-OVBA example, which
-//! the helper that writes the data encryption reproduces before it builds the
-//! others. The `GC` that Excel wrote are checked by the fixture tests.
+//! The `PROJECT` stream of a VBA project: whether the project is protected,
+//! and the type of its modules. The values of the protection come from the
+//! `CMG`, `DPB` and `GC` of the MS-OVBA example, which the helper that writes
+//! the data encryption reproduces before it builds the others. The streams that
+//! Excel wrote are read by the fixture tests.
 
 // The helpers build their own inputs: a panic in one is a failed test.
 #![allow(clippy::unwrap_used)]
 
 mod ovba_common;
 
-use macroport_core::ovba::{MAX_PROJECT_STREAM, parse_project};
+use macroport_core::ovba::{DirModule, MAX_MODULES, MAX_PROJECT_STREAM, parse_project};
+use macroport_core::rules::ModuleType;
 use ovba_common::Lcg;
 
 // The examples of the specification.
@@ -334,6 +336,242 @@ fn reads_past_bytes_that_no_code_page_maps() {
     assert!(parse_project(&stream, Some(932)).protected);
 }
 
+// The type of a module.
+
+/// A module of the `dir` stream, of which only the name and whether it is
+/// procedural matter.
+fn dir_module(name: &str, procedural: bool) -> DirModule {
+    DirModule {
+        name: name.to_string(),
+        stream_name: name.to_string(),
+        text_offset: 0,
+        procedural,
+    }
+}
+
+/// The properties that declare a module named `name`, with the type that each
+/// gives it.
+fn declarations(name: &str) -> [(String, ModuleType); 4] {
+    [
+        (format!("Document={name}/&H00000000"), ModuleType::Document),
+        (format!("Class={name}"), ModuleType::Class),
+        (format!("BaseClass={name}"), ModuleType::Form),
+        (format!("Module={name}"), ModuleType::Standard),
+    ]
+}
+
+/// The type that a stream, read in `code_page`, gives to a module that is not
+/// procedural.
+fn type_in_code_page(stream: &[u8], code_page: Option<u16>, name: &str) -> ModuleType {
+    parse_project(stream, code_page).module_type(&dir_module(name, false))
+}
+
+/// The type that a stream, read in code page 1252, gives to a module that is
+/// not procedural.
+fn type_of(stream: &str, name: &str) -> ModuleType {
+    type_in_code_page(stream.as_bytes(), Some(1252), name)
+}
+
+#[test]
+fn reads_each_form_of_module_property() {
+    for name in ["Foo", "My Module", " Padded ", "a=b", "a/b", "a/&Hb"] {
+        for (line, expected) in declarations(name) {
+            assert_eq!(type_of(&format!("{line}\r\n"), name), expected, "{line}");
+            // The first declaration of a name wins. A second one, of any type,
+            // shows that this one was read, even where it gives Document, the
+            // type that a module gets when nothing declares it.
+            for (other, _) in declarations(name) {
+                let stream = format!("{line}\r\n{other}\r\n");
+                assert_eq!(type_of(&stream, name), expected, "{line} then {other}");
+            }
+        }
+    }
+}
+
+#[test]
+fn reads_a_document_whatever_follows_its_name() {
+    // The version of the Automation server is not checked, and may be missing.
+    for line in [
+        "Document=Foo/&H00000000",
+        "Document=Foo/&hFFFFFFFF",
+        "Document=Foo/&H",
+        "Document=Foo/&H1",
+        "Document=Foo",
+    ] {
+        // A class that comes second shows that this line was read: a module
+        // that nothing declares is a document too.
+        let stream = format!("{line}\r\nClass=Foo\r\n");
+        assert_eq!(type_of(&stream, "Foo"), ModuleType::Document, "{line}");
+    }
+}
+
+#[test]
+fn skips_a_declaration_with_no_name() {
+    // A module that nothing declares is a document, so only the other types
+    // show that no module gets the empty name.
+    for line in ["Class=", "BaseClass=", "Module="] {
+        assert_eq!(type_of(line, ""), ModuleType::Document, "{line}");
+    }
+    let stream = "Document=\r\nDocument=/&H00000000\r\nClass=\r\nBaseClass=\r\nModule=\r\n";
+    assert_eq!(type_of(stream, ""), ModuleType::Document);
+}
+
+#[test]
+fn takes_a_module_that_no_property_names_for_a_document() {
+    assert_eq!(type_of("", "Foo"), ModuleType::Document);
+    // The properties name other modules, or none.
+    let stream = concat!(
+        "Class=Bar\r\n",
+        "Package={AC9F2F90-E877-11CE-9F68-00AA00574A4F}\r\n",
+        "Name=\"Foo\"\r\n",
+    );
+    assert_eq!(type_of(stream, "Foo"), ModuleType::Document);
+    // The stream was read.
+    assert_eq!(type_of(stream, "Bar"), ModuleType::Class);
+}
+
+#[test]
+fn takes_a_procedural_module_for_a_standard_one() {
+    let procedural = dir_module("Foo", true);
+    let none = parse_project(b"", Some(1252));
+    assert_eq!(none.module_type(&procedural), ModuleType::Standard);
+    // Whatever the stream says: the dir stream is what knows.
+    for (line, _) in declarations("Foo") {
+        let info = parse_project(line.as_bytes(), Some(1252));
+        assert_eq!(
+            info.module_type(&procedural),
+            ModuleType::Standard,
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn reads_the_key_of_a_module_property_whatever_its_case() {
+    for (line, expected) in declarations("Foo") {
+        for cased in [line.to_ascii_lowercase(), line.to_ascii_uppercase()] {
+            for (other, other_type) in declarations("Foo") {
+                if other_type != expected {
+                    let stream = format!("{cased}\r\n{other}\r\n");
+                    assert_eq!(type_of(&stream, "Foo"), expected, "{cased} then {other}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn skips_a_property_whose_key_is_not_one_of_the_four() {
+    // A longer key, a shorter one or a padded one is another property. Each
+    // would give its module a type that comes first, and the class that comes
+    // second shows that none does.
+    for key in [
+        " Document",
+        "Document ",
+        "Documents",
+        "Documen",
+        "BaseClasses",
+        "BaseClas",
+        " BaseClass",
+        "Base Class",
+        "Modules",
+        "Modul",
+        "xModule",
+        " Module",
+    ] {
+        let stream = format!("{key}=Foo\r\nClass=Foo\r\n");
+        assert_eq!(type_of(&stream, "Foo"), ModuleType::Class, "{key:?}");
+    }
+}
+
+#[test]
+fn reads_the_name_of_a_module_whatever_its_case() {
+    // Classes show it: a module that nothing declares is a document.
+    assert_eq!(
+        type_of("Class=ThisWorkbook", "THISWORKBOOK"),
+        ModuleType::Class
+    );
+    assert_eq!(
+        type_of("Class=THISWORKBOOK", "thisworkbook"),
+        ModuleType::Class
+    );
+    // More than ASCII: 0xC9 and 0xE9 are the capital and the small E acute of
+    // code page 1252.
+    let stream = b"Class=\xC9COLE";
+    let class_named = |name| type_in_code_page(stream, Some(1252), name);
+    assert_eq!(class_named("\u{e9}cole"), ModuleType::Class);
+    assert_eq!(class_named("\u{c9}COLE"), ModuleType::Class);
+    assert_eq!(class_named("ecole"), ModuleType::Document);
+}
+
+#[test]
+fn reads_the_name_of_a_module_in_the_code_page_of_the_project() {
+    // The name of a module in Russian, then in Japanese.
+    let russian = "\u{41b}\u{438}\u{441}\u{442}1";
+    let in_1251 = b"Class=\xCB\xE8\xF1\xF2\x31";
+    assert_eq!(
+        type_in_code_page(in_1251, Some(1251), russian),
+        ModuleType::Class
+    );
+    // Read in another code page, the same bytes are another name.
+    assert_eq!(
+        type_in_code_page(in_1251, Some(1252), russian),
+        ModuleType::Document
+    );
+    let japanese = "\u{65e5}\u{672c}\u{8a9e}";
+    let in_932 = b"Class=\x93\xFA\x96\x7B\x8C\xEA";
+    assert_eq!(
+        type_in_code_page(in_932, Some(932), japanese),
+        ModuleType::Class
+    );
+    assert_eq!(
+        type_in_code_page(in_932, Some(1252), japanese),
+        ModuleType::Document
+    );
+    // Code page 1200 is UTF-16.
+    let utf16: Vec<u8> = format!("Class={russian}")
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    assert_eq!(
+        type_in_code_page(&utf16, Some(1200), russian),
+        ModuleType::Class
+    );
+}
+
+#[test]
+fn reads_no_module_after_the_first_section() {
+    for header in ["[Host Extender Info]", "[Workspace]", "[x"] {
+        let stream = format!("Name=\"x\"\r\n{header}\r\nClass=Foo\r\n");
+        assert_eq!(type_of(&stream, "Foo"), ModuleType::Document, "{header}");
+    }
+    // The properties that come before the section are read.
+    let stream = "Class=Foo\r\n[Workspace]\r\nClass=Bar\r\n";
+    assert_eq!(type_of(stream, "Foo"), ModuleType::Class);
+    assert_eq!(type_of(stream, "Bar"), ModuleType::Document);
+}
+
+#[test]
+fn reads_the_modules_of_the_example_stream() {
+    let info = parse_project(EXAMPLE.as_bytes(), Some(1252));
+    let type_named = |name: &str| info.module_type(&dir_module(name, false));
+    assert_eq!(type_named("ThisWorkbook"), ModuleType::Document);
+    assert_eq!(type_named("Sheet1"), ModuleType::Document);
+    // The form shows that the stream was read.
+    assert_eq!(type_named("UserForm1"), ModuleType::Form);
+    // The example declares no other module.
+    assert_eq!(type_named("Module1"), ModuleType::Document);
+}
+
+#[test]
+fn reads_module_properties_with_every_line_ending() {
+    for ending in ["\r\n", "\n\r", "\n", "\r"] {
+        let stream = format!("Name=\"x\"{ending}Class=Foo{ending}Module=Bar{ending}");
+        assert_eq!(type_of(&stream, "Foo"), ModuleType::Class, "{ending:?}");
+        assert_eq!(type_of(&stream, "Bar"), ModuleType::Standard, "{ending:?}");
+    }
+}
+
 // Limits.
 
 #[test]
@@ -351,6 +589,29 @@ fn reads_no_further_than_the_most_bytes() {
     assert!(!parse_project(&outside, Some(1252)).protected);
 }
 
+#[test]
+fn keeps_the_modules_of_the_first_declarations_only() {
+    let stream: String = (0..=MAX_MODULES)
+        .map(|index| format!("Class=m{index}\r\n"))
+        .collect();
+    let info = parse_project(stream.as_bytes(), Some(1252));
+    let type_of_index = |index: usize| info.module_type(&dir_module(&format!("m{index}"), false));
+    assert_eq!(type_of_index(0), ModuleType::Class);
+    assert_eq!(
+        type_of_index(MAX_MODULES.saturating_sub(1)),
+        ModuleType::Class
+    );
+    // The declaration after the limit is not kept: a module that nothing
+    // declares is a document.
+    assert_eq!(type_of_index(MAX_MODULES), ModuleType::Document);
+    // A name that is declared again takes no room.
+    let repeated = format!(
+        "{}Module=b\r\n",
+        "Class=a\r\n".repeat(MAX_MODULES.saturating_add(10))
+    );
+    assert_eq!(type_of(&repeated, "b"), ModuleType::Standard);
+}
+
 // Hostile input.
 
 #[test]
@@ -362,7 +623,11 @@ fn never_panics_on_damaged_streams() {
         let random = lcg.random_bytes();
         let _ = parse_project(&random, code_page);
         let damaged = lcg.damage(EXAMPLE.as_bytes(), (round % 8).saturating_add(1));
-        let _ = parse_project(&damaged, code_page);
+        let info = parse_project(&damaged, code_page);
+        // The names of the modules are as hostile as the stream.
+        let name = String::from_utf8_lossy(&random).into_owned();
+        let _ = info.module_type(&dir_module(&name, false));
+        let _ = info.module_type(&dir_module("ThisWorkbook", false));
     }
     for length in 0..EXAMPLE.len() {
         let _ = parse_project(EXAMPLE.as_bytes().get(..length).unwrap(), Some(1252));
