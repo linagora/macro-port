@@ -11,7 +11,7 @@ mod scan;
 use crate::report::Status;
 use crate::rules::ModuleType;
 
-pub use lexer::{Keyword, Token, TokenKind, tokenize};
+pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
     Attribute, Comment, LogicalKind, LogicalLine, MAX_LINES, SkipKind, SkippedLines, SourceLines,
     split_lines,
