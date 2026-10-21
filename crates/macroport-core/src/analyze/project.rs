@@ -23,6 +23,15 @@ const MAX_MODULE_SOURCE: usize = 8 * 1024 * 1024;
 /// 7 x 8 = 216 MB. The bytes of the file, which the caller holds, come on top.
 const MAX_PROJECT_SOURCE: usize = 32 * 1024 * 1024;
 
+/// The longest compiled part of a module, in bytes before its `TextOffset`,
+/// that is trivial: a module whose source is empty and whose compiled part is
+/// longer is suspected of having lost its source (SPEC M1 step 8).
+///
+/// SPEC gives 512, but the compiled part of an empty module that Excel writes
+/// is 819 or 827 bytes, so 512 would flag all of them. ADR-0005 has the
+/// measurements.
+const TRIVIAL_COMPILED_PART: u32 = 1024;
+
 /// A VBA project as the report shows it, with the source of its modules.
 pub(super) struct Project {
     pub(super) report: VbaProject,
@@ -37,6 +46,11 @@ impl Project {
             .iter()
             .flatten()
             .any(|source| holds_code(source))
+    }
+
+    /// Whether any module is suspected of having lost its source.
+    pub(super) fn has_source_missing(&self) -> bool {
+        (self.report.modules.iter()).any(|module| module.source_missing_suspected == Some(true))
     }
 }
 
@@ -230,8 +244,21 @@ fn holds_code(source: &str) -> bool {
     })
 }
 
+/// Whether a module has lost its source, as VBA stomping does (SPEC M1 step 8):
+/// its `source` is empty, or holds `Attribute` lines only, while its compiled
+/// part, the `compiled` bytes before its `TextOffset`, is not trivial.
+fn source_missing(compiled: u32, source: &str) -> bool {
+    let only_attributes = source.lines().all(|line| {
+        let word = line.split_whitespace().next().unwrap_or_default();
+        word.is_empty() || word.eq_ignore_ascii_case("attribute")
+    });
+    compiled > TRIVIAL_COMPILED_PART && only_attributes
+}
+
 /// The report of a module whose source is `source`, or could not be read. Its
 /// metrics and procedures are those of a module that has not been parsed.
+///
+/// Whether the source of the module is missing is unknown without a source.
 fn module_report(
     module: &DirModule,
     properties: &ProjectInfo,
@@ -242,7 +269,7 @@ fn module_report(
         module_type: properties.module_type(module),
         stream_name: Some(module.stream_name.clone()),
         source_available: source.is_some(),
-        source_missing_suspected: None,
+        source_missing_suspected: source.map(|source| source_missing(module.text_offset, source)),
         source_sha256: source.map(|source| sha256_hex(source.as_bytes())),
         metrics: Metrics::default(),
         declarations: None,
@@ -345,6 +372,30 @@ mod tests {
         }
         for source in ["Sub A()\nEnd Sub", "Const X = 1", "Remove = 1"] {
             assert!(holds_code(source), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn a_source_is_missing_when_it_is_empty_and_the_compiled_part_is_not_trivial() {
+        let attributes = "Attribute VB_Name = \"A\"\r\n\n  attribute VB_Base = \"0\"\n";
+        for source in ["", "\n \n", attributes] {
+            assert!(!source_missing(TRIVIAL_COMPILED_PART, source), "{source:?}");
+            assert!(
+                source_missing(TRIVIAL_COMPILED_PART + 1, source),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_source_with_anything_else_is_not_missing_whatever_the_compiled_part() {
+        for source in [
+            "Sub A()\nEnd Sub",
+            "' c",
+            "Option Explicit",
+            "Attributes = 1",
+        ] {
+            assert!(!source_missing(u32::MAX, source), "{source:?}");
         }
     }
 }
