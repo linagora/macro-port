@@ -12,6 +12,13 @@
 //! from left to right, and no lookahead that found nothing is made again.
 //! [`tokenize`] is the way in; the lazy reader behind it stays private.
 //!
+//! Three characters mean something else in another place, and the lexer
+//! settles them from the text around them. `!` is a type character (`n!`) or
+//! reaches a member (`rs!Name`). `#` is a type character (`x#`), the mark of a
+//! file number (`Print #1, x`) or the edge of a date (`#1/2/2000#`). `&` joins
+//! strings (`a & b`), is a type character (`n&`) or starts a hexadecimal or
+//! octal number (`&HFF`).
+//!
 //! [`LogicalLine::line_at`]: super::LogicalLine::line_at
 
 use super::scan::{
@@ -317,9 +324,10 @@ impl<'a> Lexer<'a> {
         )
     }
 
-    /// The kind and the length in bytes of the token that starts `rest`, the
-    /// text from its first character, which is not blank.
-    fn read(&mut self, rest: &str) -> (TokenKind, usize) {
+    /// The kind and the length in bytes of the token that starts at byte
+    /// `start`, a character that is not blank.
+    fn read(&mut self, start: usize) -> (TokenKind, usize) {
+        let rest = self.text.get(start..).unwrap_or_default();
         let c = rest.chars().next().unwrap_or_default();
         let char_at = |len: usize| rest.get(len..).and_then(|tail| tail.chars().next());
         match c {
@@ -342,7 +350,12 @@ impl<'a> Lexer<'a> {
             '.' => (TokenKind::Dot, 1),
             '!' => (TokenKind::Bang, 1),
             '#' => {
-                date_literal_len(rest).map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
+                // A date never starts after a name, as the line splitter reads
+                // it, and `#1, ` is a file number, not the start of one.
+                let date = (!follows_name(self.text, start) && !opens_file_number(rest))
+                    .then(|| date_literal_len(rest))
+                    .flatten();
+                date.map_or((TokenKind::Hash, 1), |len| (TokenKind::Date, len))
             }
             ',' => (TokenKind::Comma, 1),
             ';' => (TokenKind::Semicolon, 1),
@@ -418,7 +431,7 @@ impl Iterator for Lexer<'_> {
         let first = rest.chars().next()?;
         // `rest` is the end of the text, so it starts where its length says.
         let start = self.text.len().saturating_sub(rest.len());
-        let (kind, len) = self.read(rest);
+        let (kind, len) = self.read(start);
         // Every token covers its first character: the lexer always advances.
         let end = start.saturating_add(len.max(first.len_utf8()));
         self.at = end;
@@ -441,8 +454,8 @@ fn starts_operand(c: char) -> bool {
 /// Bytes of the type character that opens `tail`, the text that follows a
 /// name or a number: 0 or 1. `$`, `%` and `@` always are one. `!`, `&` and
 /// `#` are when what follows could not be an operand or a file number:
-/// `rs!Name` reaches a member, `a&b` joins strings and `Print#1` opens a file
-/// number.
+/// `rs!Name` reaches a member, `a&b` joins strings and `Print#1` and
+/// `Print#fn` open a file number.
 fn type_character_len(tail: &str) -> usize {
     let mut chars = tail.chars();
     let (Some(c), next) = (chars.next(), chars.next()) else {
@@ -452,10 +465,37 @@ fn type_character_len(tail: &str) -> usize {
         '$' | '%' | '@' => true,
         '!' => !next.is_some_and(|n| is_ident_start(n) || n == '[' || n == '_'),
         '&' => !next.is_some_and(starts_operand),
-        '#' => !next.is_some_and(|n| n.is_ascii_digit()),
+        '#' => !next.is_some_and(|n| n.is_ascii_digit() || is_ident_start(n)),
         _ => false,
     };
     usize::from(is_type_character)
+}
+
+/// Whether the character before byte `at` of `text` ends a name, or is a `)`
+/// or a `]`. The line splitter reads a `#` right after one as a type
+/// character, never as the start of a date, and so does the lexer.
+fn follows_name(text: &str, at: usize) -> bool {
+    text.get(..at)
+        .and_then(|read| read.chars().next_back())
+        .is_some_and(|c| is_ident_char(c) || c == ')' || c == ']')
+}
+
+/// Whether the `#` that starts `rest` opens a file number: a number or a name
+/// and then a `,` or a `;`, as in `Print #1, x` and `Input #fn; x`. A date
+/// goes on with something else, as `#Jan 1, 2000#` and `#1/2/2000#` do.
+fn opens_file_number(rest: &str) -> bool {
+    let after_hash = rest
+        .strip_prefix('#')
+        .unwrap_or_default()
+        .trim_start_matches(is_space);
+    let end = after_hash
+        .find(|c: char| !is_ident_char(c))
+        .unwrap_or(after_hash.len());
+    let after_number = after_hash.get(end..).unwrap_or_default();
+    end > 0
+        && after_number
+            .trim_start_matches(is_space)
+            .starts_with([',', ';'])
 }
 
 /// Bytes of the hexadecimal or octal number that starts `rest`, which starts

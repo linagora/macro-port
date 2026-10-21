@@ -444,6 +444,10 @@ fn a_hash_before_a_file_number_or_a_directive_is_no_date() {
             "Identifier[Close] Hash[#] Identifier[fileNumber]",
         ),
         (
+            "Print#fn, x",
+            "Identifier[Print] Hash[#] Identifier[fn] Comma[,] Identifier[x]",
+        ),
+        (
             "Print #1, #1/1/2000#",
             "Identifier[Print] Hash[#] Number[1] Comma[,] Date[#1/1/2000#]",
         ),
@@ -476,6 +480,53 @@ fn a_hash_right_after_a_name_is_its_type_character() {
             "CDbl(x#)",
             "Identifier[CDbl] LeftParen[(] Identifier[x#] RightParen[)]",
         ),
+    ]);
+}
+
+#[test]
+fn a_hash_after_a_name_or_a_closing_bracket_opens_no_date() {
+    check(&[
+        (
+            "x#1/2/2000#",
+            "Identifier[x] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        (
+            "f(1)#1/2/2000#",
+            "Identifier[f] LeftParen[(] Number[1] RightParen[)] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        (
+            "[a]#1/2/2000#",
+            "Identifier[[a]] Hash[#] Number[1] Slash[/] Number[2] Slash[/] Number[2000#]",
+        ),
+        ("x #1/2/2000#", "Identifier[x] Date[#1/2/2000#]"),
+    ]);
+}
+
+#[test]
+fn a_hash_before_a_file_number_and_a_separator_opens_no_date() {
+    check(&[
+        (
+            "Write #1, 1, 2#",
+            "Identifier[Write] Hash[#] Number[1] Comma[,] Number[1] Comma[,] Number[2#]",
+        ),
+        (
+            "Print #1, 5 - 3#",
+            "Identifier[Print] Hash[#] Number[1] Comma[,] Number[5] Minus[-] Number[3#]",
+        ),
+        (
+            "Print # 1; x",
+            "Identifier[Print] Hash[#] Number[1] Semicolon[;] Identifier[x]",
+        ),
+        (
+            "Print #fn ; x",
+            "Identifier[Print] Hash[#] Identifier[fn] Semicolon[;] Identifier[x]",
+        ),
+        (
+            "Write #1, #1/2/2000#, 5",
+            "Identifier[Write] Hash[#] Number[1] Comma[,] Date[#1/2/2000#] Comma[,] Number[5]",
+        ),
+        ("#Jan 1, 2000#", "Date[#Jan 1, 2000#]"),
+        ("#1/2/2000#", "Date[#1/2/2000#]"),
     ]);
 }
 
