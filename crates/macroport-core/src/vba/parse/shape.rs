@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! What a logical line is, as far as the structure of a module goes: the
-//! header of a procedure, the end of one, or any other statement.
+//! header of a procedure, the end of one, a conditional-compilation directive,
+//! or any other statement.
 
 use crate::report::{ProcedureKind, Visibility};
 use crate::vba::{Keyword, Token, TokenKind};
@@ -44,21 +45,61 @@ impl EndOf {
     }
 }
 
+/// A conditional-compilation directive.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Directive {
+    /// `#If`
+    If,
+    /// `#ElseIf`
+    ElseIf,
+    /// `#Else`
+    Else,
+    /// `#End If`
+    EndIf,
+}
+
 /// What a logical line of code is.
 pub(super) enum Shape {
     Header(Header),
     End(EndOf),
+    Directive(Directive),
     Statement,
 }
 
-/// What the statement `tokens`, cut from `text`, is.
+/// What the statement `tokens`, cut from `text`, is. A directive is told by its
+/// leading `#`, before anything else.
 pub(super) fn shape(tokens: &[Token], text: &str) -> Shape {
-    if let Some(header) = header(tokens, text) {
+    if let Some(directive) = directive(tokens) {
+        Shape::Directive(directive)
+    } else if let Some(header) = header(tokens, text) {
         Shape::Header(header)
     } else if let Some(end) = procedure_end(tokens) {
         Shape::End(end)
     } else {
         Shape::Statement
+    }
+}
+
+/// `#If`, `#ElseIf`, `#Else` or `#End If`.
+fn directive(tokens: &[Token]) -> Option<Directive> {
+    let [hash, word, rest @ ..] = tokens else {
+        return None;
+    };
+    if hash.kind != TokenKind::Hash {
+        return None;
+    }
+    match word.kind {
+        TokenKind::Keyword(Keyword::If) => Some(Directive::If),
+        TokenKind::Keyword(Keyword::ElseIf) => Some(Directive::ElseIf),
+        TokenKind::Keyword(Keyword::Else) => Some(Directive::Else),
+        TokenKind::Keyword(Keyword::End)
+            if rest
+                .first()
+                .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::If)) =>
+        {
+            Some(Directive::EndIf)
+        }
+        _ => None,
     }
 }
 
