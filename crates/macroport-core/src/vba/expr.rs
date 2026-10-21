@@ -134,6 +134,12 @@ fn binary(kind: TokenKind) -> Option<(u8, u8, Operator)> {
     Some((power, power.saturating_add(1), operator))
 }
 
+/// Whether `kind` is a binary operator: one that needs an operand on each
+/// side. `Not` is not, and `-` is: its unary use is the reader's business.
+pub(super) fn is_binary_operator(kind: TokenKind) -> bool {
+    binary(kind).is_some()
+}
+
 /// Whether a token of `kind` can start an expression. A type name, which `As`
 /// and `New` introduce, counts as one.
 fn starts_operand(kind: TokenKind) -> bool {
