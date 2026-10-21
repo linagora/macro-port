@@ -127,14 +127,29 @@ fn a_type_or_an_enum_runs_to_its_end_and_its_members_declare_nothing() {
 }
 
 #[test]
-fn the_members_of_a_type_are_read_as_members_whatever_they_look_like() {
-    let text = "Type T\n    Public As Long\n    Dim x\n    Const C = 1\n    Option Explicit\n\
-                    Declare Function F Lib \"x\" ()\n    #If X Then\n    End Sub\nEnd Type\n\
-                Enum E\n    End Type\n    A\nEnd Enum\n";
+fn the_lines_of_a_block_that_declare_nothing_are_its_members_whatever_they_look_like() {
+    // None of these is the header of a procedure, and none declares anything.
+    let text = "Type T\n    Public As Long\n    x = 1\n    Static s\n    End Sub\n    #If X Then\n\
+                End Type\nEnum E\n    End Type\n    A\nEnd Enum\n";
     let module = module_of(text);
-    assert_eq!(kinds(&module), [(Type, 1), (Enum, 10)]);
-    assert_eq!(ranges(&module), [(0, 9), (9, 13)]);
+    assert_eq!(kinds(&module), [(Type, 1), (Enum, 8)]);
+    assert_eq!(ranges(&module), [(0, 7), (7, 11)]);
     assert!(module.recoveries.is_empty());
+}
+
+#[test]
+fn a_member_that_reads_word_as_is_a_member_whatever_the_word() {
+    // Excel exports `Type As Long` as a member of a `Type` (corpus sample 13-06,
+    // line 105). Each of these would declare something, or open a procedure,
+    // anywhere else.
+    let text = "Type T\n    Type As Long\n    Event As Long\n    Declare As Long\n\
+                Const As Long\n    Sub As Long\n    Function As Long\nEnd Type\n\
+                Sub S()\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(kinds(&module), [(Type, 1)]);
+    assert_eq!(ranges(&module), [(0, 8)]);
+    assert_eq!(spans(&module), [("S", Sub, 9, 10)]);
+    assert!(!module.is_recovered());
 }
 
 #[test]
@@ -149,12 +164,93 @@ fn a_type_with_no_end_is_closed_by_the_next_procedure() {
 }
 
 #[test]
+fn a_block_with_no_end_is_closed_by_a_statement_that_declares_something() {
+    // A line that no `Type` or `Enum` can hold is read as what it is, and the
+    // block stops at the line before it.
+    let text = "Type T\n    a As Long\nPrivate Declare Function F Lib \"x\" ()\nPublic Const K = 1\n\
+                Dim v\nEnum E\n    A\nOption Explicit\nImplements I\nEvent Ev()\nType U\n\
+                End Type\n";
+    let module = module_of(text);
+    assert_eq!(
+        kinds(&module),
+        [
+            (Type, 1),
+            (declare("F", true), 3),
+            (Const, 4),
+            (Variable, 5),
+            (Enum, 6),
+            (DeclarationKind::Option(OptionKind::Explicit), 8),
+            (Implements, 9),
+            (Event, 10),
+            (Type, 11),
+        ]
+    );
+    let expected = [
+        (0, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 7),
+        (7, 8),
+        (8, 9),
+        (9, 10),
+        (10, 12),
+    ];
+    assert_eq!(ranges(&module), expected);
+    assert_eq!(module.recoveries, [unclosed(1), unclosed(6)]);
+}
+
+#[test]
+fn a_block_with_no_end_keeps_the_members_that_read_word_as() {
+    let module = module_of("Type T\n    Type As Long\n    Const As Long\nConst K = 1\n");
+    assert_eq!(kinds(&module), [(Type, 1), (Const, 4)]);
+    assert_eq!(ranges(&module), [(0, 3), (3, 4)]);
+    assert_eq!(module.recoveries, [unclosed(1)]);
+}
+
+#[test]
+fn a_block_opened_inside_a_block_with_no_end_ends_it() {
+    let module =
+        module_of("Type T\n    a As Long\nType U\n    b As Long\nEnd Type\nEnum E\nEnum F\n");
+    assert_eq!(kinds(&module), [(Type, 1), (Type, 3), (Enum, 6), (Enum, 7)]);
+    assert_eq!(ranges(&module), [(0, 2), (2, 5), (5, 6), (6, 7)]);
+    assert_eq!(module.recoveries, [unclosed(1), unclosed(6), unclosed(7)]);
+}
+
+#[test]
 fn an_enum_with_no_end_runs_to_the_end_of_the_module() {
     // The `End Type` does not end an `Enum`, and what follows is taken as
     // members: the block is closed where the module stops.
-    let module = module_of("Enum E\n    A\nEnd Type\nDim x\n");
+    let module = module_of("Enum E\n    A\nEnd Type\n    B\n");
     assert_eq!(kinds(&module), [(Enum, 1)]);
     assert_eq!(ranges(&module), [(0, 4)]);
+    assert_eq!(module.recoveries, [unclosed(1)]);
+}
+
+#[test]
+fn a_conditional_inside_a_block_is_a_member_and_leaves_the_if_blocks_balanced() {
+    let text = "Type T\n#If VBA7 Then\n    h As LongPtr\n#Else\n    h As Long\n#End If\nEnd Type\n\
+                #If X Then\nSub S()\n#Else\nSub S()\n#End If\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(
+        kinds(&module),
+        [(Type, 1), (DeclarationKind::Directive(Directive::If), 8)]
+    );
+    assert_eq!(ranges(&module), [(0, 7), (7, 8)]);
+    // `S` has two forms: the `#Else` was told to be its own.
+    assert_eq!(spans(&module), [("S", Sub, 9, 13)]);
+    assert!(!module.is_recovered());
+}
+
+#[test]
+fn the_conditionals_of_a_block_with_no_end_still_tell_the_forms_of_the_procedure_after_it() {
+    let text = "Enum E\n    A\n#If VBA7 Then\nPublic Sub S(h As LongPtr)\n#Else\n\
+                Public Sub S(h As Long)\n#End If\nEnd Sub\n";
+    let module = module_of(text);
+    assert_eq!(kinds(&module), [(Enum, 1)]);
+    assert_eq!(ranges(&module), [(0, 3)]);
+    assert_eq!(spans(&module), [("S", Sub, 4, 8)]);
+    assert!(!module.procedures[0].is_recovered());
     assert_eq!(module.recoveries, [unclosed(1)]);
 }
 

@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use super::shape::Directive;
+use super::shape::{Directive, name_at};
 use crate::vba::{Keyword, Token, TokenKind};
 
 /// What an `Option` statement sets.
@@ -78,7 +78,7 @@ pub struct Declaration {
 
 /// What the statement `tokens`, cut from `text`, declares, if it declares
 /// something. The headers of procedures and the directives are told before.
-pub(super) fn declaration(tokens: &[Token], text: &str) -> Option<DeclarationKind> {
+pub(super) fn declaration_kind(tokens: &[Token], text: &str) -> Option<DeclarationKind> {
     let scopes = tokens
         .iter()
         .take_while(|token| is_scope(token.kind))
@@ -90,9 +90,10 @@ pub(super) fn declaration(tokens: &[Token], text: &str) -> Option<DeclarationKin
             Some(DeclarationKind::Option(option(tokens.get(after), text)))
         }
         TokenKind::Keyword(Keyword::Implements) if scopes == 0 => Some(DeclarationKind::Implements),
-        TokenKind::Keyword(Keyword::Declare) => {
-            Some(declare(tokens.get(after..).unwrap_or_default(), text))
-        }
+        TokenKind::Keyword(Keyword::Declare) => Some(declare_statement(
+            tokens.get(after..).unwrap_or_default(),
+            text,
+        )),
         TokenKind::Keyword(Keyword::Const) => Some(DeclarationKind::Const),
         TokenKind::Keyword(Keyword::Type) => Some(DeclarationKind::Type),
         TokenKind::Keyword(Keyword::Enum) => Some(DeclarationKind::Enum),
@@ -115,15 +116,13 @@ pub(super) fn block_end(kind: &DeclarationKind) -> Option<Keyword> {
     }
 }
 
-/// Whether the statement `tokens` is an `End` that names `word`, such as
-/// `End Type`.
-pub(super) fn ends(tokens: &[Token], word: Keyword) -> bool {
-    matches!(
-        tokens,
-        [end, named, ..]
-            if end.kind == TokenKind::Keyword(Keyword::End)
-                && named.kind == TokenKind::Keyword(word)
-    )
+/// Whether the statement `tokens` reads `Word As ...`. A `Type` takes it for a
+/// member whatever `Word` is, a keyword included: Excel exports `Type As Long`
+/// as a member (corpus sample 13-06, line 105).
+pub(super) fn reads_as_member(tokens: &[Token]) -> bool {
+    tokens
+        .get(1)
+        .is_some_and(|token| token.kind == TokenKind::Keyword(Keyword::As))
 }
 
 /// The words that give a scope to a declaration, or open a variable one.
@@ -132,15 +131,6 @@ fn is_scope(kind: TokenKind) -> bool {
         kind,
         TokenKind::Keyword(Keyword::Public | Keyword::Private | Keyword::Global | Keyword::Dim)
     )
-}
-
-/// The name that the token at `at` spells, if it is a name.
-fn name_at(tokens: &[Token], at: usize, text: &str) -> String {
-    tokens
-        .get(at)
-        .filter(|token| token.kind == TokenKind::Identifier)
-        .map(|token| token.name(text).to_owned())
-        .unwrap_or_default()
 }
 
 /// What the `Option` statement sets, given the word that follows `Option`.
@@ -165,7 +155,7 @@ fn option(word: Option<&Token>, text: &str) -> OptionKind {
 
 /// The `Declare` statement, given the tokens that follow the word `Declare`:
 /// an optional `PtrSafe`, `Function` or `Sub`, and the name.
-fn declare(after: &[Token], text: &str) -> DeclarationKind {
+fn declare_statement(after: &[Token], text: &str) -> DeclarationKind {
     let ptr_safe = after
         .first()
         .is_some_and(|token| token.is_name(text, "ptrsafe"));

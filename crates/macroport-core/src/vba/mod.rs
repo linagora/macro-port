@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The VBA front end (SPEC M2): the text of a module becomes logical lines,
-//! which the lexer cuts into tokens and the parser reads into procedures. It
-//! only reads text. Nothing from an analysed file is ever executed or
-//! evaluated, constant folding apart.
+//! which the lexer cuts into tokens and the parser reads into procedures and
+//! declarations. It only reads text. Nothing from an analysed file is ever
+//! executed or evaluated, constant folding apart.
 
 mod expr;
 mod facts;
