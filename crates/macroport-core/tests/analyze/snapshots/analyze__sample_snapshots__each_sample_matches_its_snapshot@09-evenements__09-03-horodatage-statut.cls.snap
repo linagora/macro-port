@@ -10,7 +10,7 @@ traits: compile_error_suspected
 file: loc=32 logical_loc=19 procedures=1 cyclomatic=6 cyclomatic_total=6 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 09-03-horodatage-statut (document): loc=32 logical_loc=19 procedures=1 cyclomatic=6 cyclomatic_total=6 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Worksheet_Change private lines 9-32: loc=24 logical_loc=19 cyclomatic=6 max_nesting=4 parameters=1 goto_count=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  sub Worksheet_Change private lines 9-32: loc=24 logical_loc=19 cyclomatic=6 max_nesting=4 parameters=1 goto_count=0 external_dependencies=0 traits=compile_error_suspected entry_point=true event_handler=true possibly_unused=false calls=none apis=6
     api Cell.Column*1
     api Cell.Row*5
     api Cell.Value*2

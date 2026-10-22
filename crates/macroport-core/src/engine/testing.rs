@@ -158,6 +158,7 @@ pub(crate) fn module(
         controls: NameSet::default(),
         declarations: Vec::new(),
         procedures,
+        parse_recovered: false,
     }
 }
 
@@ -165,6 +166,12 @@ impl ModuleInput {
     /// Sets the lines outside the procedures.
     pub(crate) fn with_declarations(mut self, declarations: Vec<CodeLine>) -> Self {
         self.declarations = declarations;
+        self
+    }
+
+    /// Marks the module as one that the parser recovered in.
+    pub(crate) fn recovered(mut self) -> Self {
+        self.parse_recovered = true;
         self
     }
 
