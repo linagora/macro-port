@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The evaluator: runs a matcher over a procedure, a module or a project.
 
+use super::glob::glob_matches;
 use super::hit::Hit;
 use super::input::ProjectInput;
 use super::matchers;
 use super::unit::Unit;
-use crate::rules::{Matcher, TextMode};
+use crate::rules::{Families, Matcher, TextMode};
 
 /// Evaluates matchers over one project.
 ///
@@ -13,16 +14,34 @@ use crate::rules::{Matcher, TextMode};
 /// A module-scope or project-scope signal is evaluated once, not once per
 /// procedure: callers keep the result and give it to each procedure.
 ///
-/// Only `member` is implemented so far: the other matchers give no hit yet.
+/// `member`, `chain`, `call` and `progid` are implemented so far: the other
+/// matchers give no hit yet.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'p> {
     project: &'p ProjectInput,
+    /// The family rules, when the `*` ProgID is the one of the families.
+    families: Option<&'p Families>,
 }
 
 impl<'p> Evaluator<'p> {
-    /// An evaluator over `project`.
+    /// An evaluator over `project` for the security signals and the traits: a
+    /// `progid` pattern `*` matches any ProgID (SPEC section 7).
     pub fn new(project: &'p ProjectInput) -> Self {
-        Self { project }
+        Self {
+            project,
+            families: None,
+        }
+    }
+
+    /// An evaluator over `project` for the family signals: a `progid` pattern
+    /// `*` matches only a ProgID that no other `progid` pattern of `families`
+    /// matches, so that `win.other-com` counts the COM objects that no other
+    /// signal accounts for (SPEC section 7).
+    pub fn for_families(project: &'p ProjectInput, families: &'p Families) -> Self {
+        Self {
+            project,
+            families: Some(families),
+        }
     }
 
     /// The hits of `matcher` in the procedure `procedure` of the module
@@ -59,12 +78,15 @@ impl<'p> Evaluator<'p> {
         let mut hits = Vec::new();
         match matcher {
             Matcher::Member(names) => matchers::member(&units, names, &mut hits),
+            Matcher::Chain(patterns) => matchers::chain(&units, patterns, &mut hits),
+            Matcher::Call(names) => matchers::call(&units, names, &mut hits),
+            Matcher::ProgId(patterns) => {
+                let catch_all = |progid: &str| self.unclaimed(progid);
+                matchers::progid(&units, patterns, catch_all, &mut hits);
+            }
             // The other matchers arrive with the next changes. `text` is for
             // `regex`, and is unread until then.
-            Matcher::Chain(_)
-            | Matcher::Call(_)
-            | Matcher::ProgId(_)
-            | Matcher::ProcedureName(_)
+            Matcher::ProcedureName(_)
             | Matcher::ModuleType(_)
             | Matcher::Reference(_)
             | Matcher::Regex(_)
@@ -77,6 +99,14 @@ impl<'p> Evaluator<'p> {
         // Declarations and procedures interleave in the source.
         hits.sort_by_key(|hit| hit.place);
         hits
+    }
+
+    /// Whether a `progid` pattern `*` matches `progid`: always, except for the
+    /// families, where no other `progid` pattern may match it.
+    fn unclaimed(&self, progid: &str) -> bool {
+        self.families.is_none_or(|families| {
+            !claimed_patterns(families).any(|pattern| glob_matches(pattern, progid))
+        })
     }
 
     /// The runs of lines that `target` covers.
@@ -117,6 +147,21 @@ enum Target {
     Procedure { module: usize, procedure: usize },
     Module(usize),
     Project,
+}
+
+/// The `progid` patterns of the signals of `families`, but the catch-all `*`.
+fn claimed_patterns(families: &Families) -> impl Iterator<Item = &str> {
+    families
+        .families
+        .iter()
+        .flat_map(|family| &family.signals)
+        .filter_map(|signal| match &signal.matcher {
+            Matcher::ProgId(patterns) => Some(patterns),
+            _ => None,
+        })
+        .flatten()
+        .map(String::as_str)
+        .filter(|pattern| *pattern != matchers::ANY_PROGID)
 }
 
 #[cfg(test)]

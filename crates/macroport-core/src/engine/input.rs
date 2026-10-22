@@ -140,7 +140,8 @@ pub struct CodeLine {
     pub calls: Vec<CallSite>,
     /// The ProgID passed to `CreateObject` or `GetObject`, after constant
     /// folding, once per call. A call whose argument does not fold has none.
-    /// Read by `progid`.
+    /// Read by `progid`, which ignores a string that is not shaped like a
+    /// ProgID, such as the file name that `GetObject` takes.
     pub progids: Vec<String>,
 }
 

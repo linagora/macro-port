@@ -37,7 +37,8 @@ pub(super) enum Patterns {
 pub enum Matcher {
     /// Identifiers used as members (`.X`, `!X`) or standalone object names.
     Member(Vec<String>),
-    /// Member chain suffixes, such as `Workbooks.Open`.
+    /// Dot-separated member chains, such as `Workbooks.Open`, that the rule
+    /// engine finds anywhere in a chain, not only at its end.
     Chain(Vec<String>),
     /// Procedures, functions or statements invoked by name.
     Call(Vec<String>),
