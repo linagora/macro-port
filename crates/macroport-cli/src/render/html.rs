@@ -24,6 +24,7 @@
 //! `<base>` and forms.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use askama::Template;
 use askama::filters::Safe;
@@ -55,6 +56,8 @@ pub fn render(report: &Report, messages: &Messages) -> Result<String, askama::Er
         style: Safe(&style),
         data: Safe(data_block(report).map_err(askama::Error::custom)?),
         roots: report.scan.roots.as_deref().unwrap_or_default(),
+        counts: counts(report, messages),
+        distributions: distributions(report, messages),
     }
     .render()
 }
@@ -74,6 +77,94 @@ struct Page<'a> {
     data: Safe<String>,
     /// The paths that were scanned, none when the report does not say.
     roots: &'a [String],
+    counts: Vec<Count>,
+    distributions: Vec<Distribution>,
+}
+
+/// A number and what it counts.
+struct Count {
+    label: String,
+    value: u32,
+}
+
+/// The files counted by one of their properties.
+struct Distribution {
+    title: String,
+    rows: Vec<Count>,
+    /// What a full bar stands for.
+    max: u32,
+}
+
+/// The counts of the scan, then those of the summary that the report has.
+fn counts(report: &Report, messages: &Messages) -> Vec<Count> {
+    let scan = &report.scan;
+    let sums = report.summary.totals.as_ref();
+    [
+        ("html-files", Some(scan.files_total)),
+        ("html-files-with-macros", Some(scan.files_with_macros)),
+        ("html-files-failed", Some(scan.files_failed)),
+        ("html-modules", sums.and_then(|totals| totals.modules)),
+        ("html-procedures", sums.and_then(|totals| totals.procedures)),
+        (
+            "html-logical-loc",
+            sums.and_then(|totals| totals.logical_loc),
+        ),
+        (
+            "html-possibly-unused",
+            sums.and_then(|totals| totals.possibly_unused_procedures),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(id, value)| {
+        Some(Count {
+            label: messages.text(id),
+            value: value?,
+        })
+    })
+    .collect()
+}
+
+/// The files by status, by complexity level and by highest severity. A bar
+/// shows the share of the files of the scan.
+fn distributions(report: &Report, messages: &Messages) -> Vec<Distribution> {
+    let summary = &report.summary;
+    let files = report.scan.files_total;
+    vec![
+        distribution(
+            messages.text("html-by-status"),
+            &summary.by_status,
+            files,
+            |status| messages.status(*status),
+        ),
+        distribution(
+            messages.text("html-by-complexity"),
+            &summary.by_complexity,
+            files,
+            |level| messages.level(*level),
+        ),
+        distribution(
+            messages.text("html-by-severity"),
+            &summary.by_severity,
+            files,
+            |severity| messages.severity(*severity),
+        ),
+    ]
+}
+
+/// A row for each key of `counts`, in the order of the keys, named by `word`.
+fn distribution<K>(
+    title: String,
+    counts: &BTreeMap<K, u32>,
+    max: u32,
+    word: impl Fn(&K) -> String,
+) -> Distribution {
+    let rows = (counts.iter())
+        .map(|(key, value)| Count {
+            label: word(key),
+            value: *value,
+        })
+        .collect();
+    Distribution { title, rows, max }
 }
 
 /// The Content-Security-Policy of the page: the one inline style, no script,
