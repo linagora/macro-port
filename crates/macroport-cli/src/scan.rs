@@ -10,6 +10,7 @@
 mod analyse;
 mod walk;
 
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -20,10 +21,11 @@ use macroport_core::analyze::Options;
 use macroport_core::report::{Build, Lang, Report};
 use macroport_core::rules::{RuleSet, RulesSources};
 
-use crate::args::{AnalysisArgs, existing_path};
+use crate::args::{AnalysisArgs, Format, existing_path};
 use crate::clock::Clock;
 use crate::console::{self, say_on_stderr, say_on_stdout};
 use crate::i18n::Messages;
+use crate::reports;
 
 pub use analyse::{PANIC_CODE, Progress, UNREADABLE_CODE};
 pub use walk::{Candidate, EXTENSIONS, report_path, walk};
@@ -52,6 +54,17 @@ pub struct Args {
     /// Directory that the reports are written to, created if need be.
     #[arg(short, long, value_name = "DIR", default_value = DEFAULT_OUTPUT)]
     pub output: PathBuf,
+
+    /// Reports to write, separated by commas: `json` (report.json), `html`
+    /// (report.html) and `csv` (files.csv, procedures.csv and signals.csv).
+    #[arg(
+        long,
+        value_enum,
+        value_delimiter = ',',
+        value_name = "FORMAT",
+        default_value = "json,html,csv"
+    )]
+    pub format: Vec<Format>,
 
     /// How many files are analysed at the same time. The result is the same
     /// whatever the number. Defaults to the number of cores.
@@ -130,7 +143,7 @@ fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode
     })
     .map_err(|error| messages.text_with("cli-error-threads", &[("reason", &error.to_string())]))?;
 
-    write(&args.output, "report.json", &report, messages)?;
+    write_reports(&args.output, &args.format, &report, messages)?;
     print_summary(&report, &args.output, messages);
     Ok(if report.scan.files_failed > 0 {
         ExitCode::from(FAILED_FILES)
@@ -182,12 +195,23 @@ fn create_directory(directory: &Path, messages: &Messages) -> Result<(), String>
         .map_err(|error| path_error(messages, "cli-error-create", directory, &error))
 }
 
-/// Writes `report` as JSON to the file `name` of `directory`.
-fn write(directory: &Path, name: &str, report: &Report, messages: &Messages) -> Result<(), String> {
-    let json = report.to_json().map_err(|error| error.to_string())?;
-    let path = directory.join(name);
-    std::fs::write(&path, json)
-        .map_err(|error| path_error(messages, "cli-error-write", &path, &error))
+/// Writes the files of `report` in each of `formats` to `directory`.
+fn write_reports(
+    directory: &Path,
+    formats: &[Format],
+    report: &Report,
+    messages: &Messages,
+) -> Result<(), String> {
+    // A format that is asked for twice is written once.
+    let formats: BTreeSet<Format> = formats.iter().copied().collect();
+    for format in formats {
+        for document in reports::documents(format, report, messages)? {
+            let path = directory.join(document.name);
+            std::fs::write(&path, document.contents)
+                .map_err(|error| path_error(messages, "cli-error-write", &path, &error))?;
+        }
+    }
+    Ok(())
 }
 
 /// The message `id` about `path`, with the reason `error`.

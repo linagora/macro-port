@@ -9,5 +9,6 @@ pub mod clock;
 pub mod console;
 pub mod i18n;
 pub mod render;
+pub mod reports;
 pub mod scan;
 mod wire;
