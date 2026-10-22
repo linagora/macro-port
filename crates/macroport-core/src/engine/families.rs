@@ -6,10 +6,11 @@
 //! `families.yaml`, then scores the file:
 //!
 //! - A signal adds its weight once per hit, for at most
-//!   `max_hits_per_procedure` hits. A signal of module scope is matched over
-//!   the whole module, and one of project scope over the whole project; each
-//!   adds half its weight per hit to every procedure of the module or of the
-//!   project.
+//!   `max_hits_per_procedure` hits. The hits of a signal on one line count as
+//!   one, however many times the line matches (ADR-0008). A signal of module
+//!   scope is matched over the whole module, and one of project scope over the
+//!   whole project; each adds half its weight per hit to every procedure of the
+//!   module or of the project.
 //! - The families that scored come best first: by score, then by the number of
 //!   distinct signals that matched, then by family id. The first one is the
 //!   primary family when its score reaches `min_score`, else the procedure is
@@ -229,7 +230,7 @@ impl<'a> Scorer<'a> {
             let hits = self
                 .evaluator
                 .module_hits(module, &signal.matcher, signal.text);
-            let counted = hits.len().min(max_hits(signal));
+            let counted = one_per_line(hits.iter()).take(max_hits(signal)).count();
             if counted > 0 {
                 tallies.count(family, signal, counted);
             }
@@ -271,21 +272,36 @@ fn hits_inside(hits: &[Hit<'_>], at: Located<'_>) -> Range<usize> {
             .max(first)
 }
 
-/// The hits that a signal counts among `hits`: at most `cap`. The number is all
-/// that the score reads. The choice only decides what is cited, so those at the
-/// positions `inside` are counted first, for the procedure to cite its own
-/// lines before the declaration of the procedure stands in for the others.
+/// The hits that a signal counts among `hits`: one for each line it matches, and
+/// at most `cap`. The number is all that the score reads. The choice only
+/// decides what is cited, so those at the positions `inside` are counted first,
+/// for the procedure to cite its own lines before the declaration of the
+/// procedure stands in for the others.
 fn counted_hits<'h, 'a>(
     hits: &'h [Hit<'a>],
     inside: &Range<usize>,
     cap: usize,
 ) -> Vec<&'h Hit<'a>> {
     let part = |range: Range<usize>| hits.get(range).unwrap_or_default().iter();
-    part(inside.clone())
+    let ordered = part(inside.clone())
         .chain(part(0..inside.start))
-        .chain(part(inside.end..hits.len()))
-        .take(cap)
-        .collect()
+        .chain(part(inside.end..hits.len()));
+    one_per_line(ordered).take(cap).collect()
+}
+
+/// The first hit of each line among `hits`, in which the hits of a line follow
+/// one another (ADR-0008): a list sorted by place does, and so do sorted lists
+/// with no place in common, chained. A hit that has no place, as a reference has
+/// none, stands for itself.
+fn one_per_line<'h, 'a: 'h>(
+    hits: impl Iterator<Item = &'h Hit<'a>>,
+) -> impl Iterator<Item = &'h Hit<'a>> {
+    let mut previous = None;
+    hits.filter(move |hit| {
+        let new_line = hit.place.is_none() || hit.place != previous;
+        previous = hit.place;
+        new_line
+    })
 }
 
 /// The evidence of a hit counted for the procedure `at`: the line of a hit in
