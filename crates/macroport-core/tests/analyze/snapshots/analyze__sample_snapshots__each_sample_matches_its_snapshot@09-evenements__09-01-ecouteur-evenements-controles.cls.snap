@@ -10,43 +10,126 @@ traits: none
 file: loc=326 logical_loc=188 procedures=37 cyclomatic=9 cyclomatic_total=56 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 09-01-ecouteur-evenements-controles (class): loc=326 logical_loc=188 procedures=37 cyclomatic=9 cyclomatic_total=56 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=7 option_explicit=true option_vba_support=false
-  sub AddEventListener public lines 63-96: loc=34 logical_loc=22 cyclomatic=7 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CheckIfHoveredControl private lines 103-108: loc=6 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CheckIfFocusedControl private lines 111-120: loc=10 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ToCollection private lines 123-137: loc=15 logical_loc=12 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Emitter_EmittedEvent private lines 145-164: loc=20 logical_loc=16 cyclomatic=9 max_nesting=2 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Form_Click private lines 169-171: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Form_DblClick private lines 173-175: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Form_MouseMove private lines 177-180: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Form_MouseDown private lines 182-184: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Form_MouseUp private lines 186-188: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_Click private lines 194-196: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_DblClick private lines 198-200: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_MouseMove private lines 202-205: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_MouseUp private lines 207-210: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_MouseDown private lines 212-214: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_KeyUp private lines 216-219: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CommandButton_KeyDown private lines 221-223: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Label_Click private lines 229-231: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Label_DblClick private lines 233-235: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Label_MouseMove private lines 237-240: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Label_MouseDown private lines 242-244: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Label_MouseUp private lines 246-248: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Frame_Click private lines 254-256: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Frame_DblClick private lines 258-260: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Frame_MouseMove private lines 262-265: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Frame_MouseDown private lines 267-270: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Frame_MouseUp private lines 272-274: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_Click private lines 280-282: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_DblClick private lines 284-286: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_MouseMove private lines 288-291: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_MouseUp private lines 293-296: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_MouseDown private lines 298-300: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_KeyUp private lines 302-305: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Textbox_KeyDown private lines 307-309: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub ComboBox_Click private lines 315-317: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub ComboBox_DblClick private lines 319-321: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub ComboBox_MouseMove private lines 323-326: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddEventListener public lines 63-96: loc=34 logical_loc=22 cyclomatic=7 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+    api Err.Raise*1
+    api MSForms.UserForm*1
+    api this.control*1
+  sub CheckIfHoveredControl private lines 103-108: loc=6 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+    api Emitter.EmitEvent*1
+    api this.control*1
+    api this.IsHoveredControl*2
+  sub CheckIfFocusedControl private lines 111-120: loc=10 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+    api Emitter.EmitEvent*1
+    api Emitter.SetFocusToControl*1
+    api this.control*2
+    api this.control.ActiveControl*1
+    api this.IsFocusedControl*2
+  function ToCollection private lines 123-137: loc=15 logical_loc=12 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Err.Raise*1
+    api ToCollection.Add*1
+  sub Emitter_EmittedEvent private lines 145-164: loc=20 logical_loc=16 cyclomatic=9 max_nesting=2 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api control.name*3
+    api Emitter.EmitEvent*2
+    api this.control*2
+    api this.control.name*3
+    api this.IsFocusedControl*4
+    api this.IsHoveredControl*2
+  sub Form_Click private lines 169-171: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Form_DblClick private lines 173-175: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Form_MouseMove private lines 177-180: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Form_MouseDown private lines 182-184: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Form_MouseUp private lines 186-188: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_Click private lines 194-196: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_DblClick private lines 198-200: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_MouseMove private lines 202-205: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_MouseUp private lines 207-210: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfFocusedControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_MouseDown private lines 212-214: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_KeyUp private lines 216-219: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfFocusedControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub CommandButton_KeyDown private lines 221-223: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Label_Click private lines 229-231: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Label_DblClick private lines 233-235: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Label_MouseMove private lines 237-240: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Label_MouseDown private lines 242-244: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Label_MouseUp private lines 246-248: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Frame_Click private lines 254-256: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Frame_DblClick private lines 258-260: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Frame_MouseMove private lines 262-265: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Frame_MouseDown private lines 267-270: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfFocusedControl apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Frame_MouseUp private lines 272-274: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_Click private lines 280-282: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_DblClick private lines 284-286: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_MouseMove private lines 288-291: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_MouseUp private lines 293-296: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfFocusedControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_MouseDown private lines 298-300: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_KeyUp private lines 302-305: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfFocusedControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub Textbox_KeyDown private lines 307-309: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub ComboBox_Click private lines 315-317: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub ComboBox_DblClick private lines 319-321: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
+  sub ComboBox_MouseMove private lines 323-326: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CheckIfHoveredControl,ToCollection apis=2
+    api Emitter.EmitEvent*1
+    api this.control*1
 parse:
   declaration Option(Explicit) line 16
   declaration Option(Compare) line 17

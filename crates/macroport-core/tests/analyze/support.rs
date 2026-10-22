@@ -7,6 +7,7 @@ use macroport_core::analyze::{Extraction, Options, analyze, analyze_modules, ext
 use macroport_core::report::{FileReport, Lang, ModuleReport, ProcedureReport, Report, Signal};
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity};
 use macroport_core::vba::ModuleSource;
+use macroport_testkit::linear::assert_linear_time;
 use macroport_testkit::{corpus, report_problems};
 use sha2::{Digest, Sha256};
 
@@ -125,6 +126,16 @@ pub fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
 /// The report of `modules` as a text file, checked against the report schema.
 pub fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
     checked(analyze_modules(modules, "Book.bas", &options()))
+}
+
+/// Analyses the module that `text` gives for a quarter of `size`, then the one it
+/// gives for `size`, and fails if the time grows faster than the size
+/// (`macroport_testkit::linear`).
+pub fn analyse_in_linear_time(what: &str, size: usize, text: impl Fn(usize) -> String) {
+    let modules = |size| vec![source("Module1", ModuleType::Standard, &text(size))];
+    assert_linear_time(what, size, modules, |modules| {
+        analyze_modules(modules.clone(), "Module1.bas", &options())
+    });
 }
 
 /// The modules of the VBA project of `file`.

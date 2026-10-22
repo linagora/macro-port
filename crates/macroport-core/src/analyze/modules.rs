@@ -21,30 +21,49 @@
 //! be read of a file is judged whatever else went wrong with it, and when the
 //! extraction raised a container indicator, so that its signal is made.
 //!
-//! The entry points and the call graph are not read yet: what depends on them is
-//! left out, since a missing value is not a zero (see [`input`](super::input)).
-//! The ProgIDs of the statements reach the file alone: the external dependencies
-//! of the file count them, with its references and its `Declare` statements.
-//! Those of the procedures are another field of the kind: their count would fall
-//! short, so the report leaves it out, and the rule engine reads what is known of
-//! it, a value that the report leaves out counting as 0 for it.
+//! The entry points are not read yet: what depends on them is left out, since a
+//! missing value is not a zero (see [`input`](super::input)). The calls do not
+//! depend on them: the call graph is fed, and the `calls` of the procedures
+//! follow from it (ADR-0012), as their `apis` do from the statements
+//! (ADR-0011). The ProgIDs of the statements reach the file alone: the external
+//! dependencies of the file count them, with its references and its `Declare`
+//! statements. Those of the procedures are another field of the kind: their
+//! count would fall short, so the report leaves it out, and the rule engine
+//! reads what is known of it, a value that the report leaves out counting as 0
+//! for it.
 //!
 //! The statements of a module are read twice for now: by the adapter, which keeps
 //! what the rule engine reads of them, and by the `statements` submodule, which
-//! keeps what the file shows of them: its ProgIDs, and the statements nested too
-//! deep to be read in full. Such a statement is no failure: the module is read,
-//! the status of the file does not follow, and the file lists one error for the
-//! module (`vba.statement.too_deep`). It is one of the three causes of the
-//! predicate `parse_recovered` (SPEC M2 item 6), with the recoveries of the parser
-//! and the blocks that do not match, and the rule engine gives the traits of the
-//! predicate to the procedures and to the file that have one.
+//! hands the facts of each to the stages that keep something of them for the
+//! report: the ProgIDs of the file, the lists of APIs of the procedures, the call
+//! graph and the count of the statements nested too deep to be read in full. Such
+//! a statement is no failure: the module is read, the status of the file does not
+//! follow, and the file lists one error for the module (`vba.statement.too_deep`).
+//! It is one of the three causes of the predicate `parse_recovered` (SPEC M2 item
+//! 6), with the recoveries of the parser and the blocks that do not match, and
+//! the rule engine gives the traits of the predicate to the procedures and to the
+//! file that have one. Nor is a list of APIs that passes a bound: the procedure
+//! has no `apis`, and the file lists one error for the module that holds such
+//! procedures (`vba.apis.left_out`).
+//!
+//! The call graph knows a procedure by its name in the whole project, so it
+//! answers only once every module is read, and only if every module was. One
+//! that has no source, that a budget or the room of the rule engine refuses or
+//! whose source is suspected to be lost leaves it unable to say what any
+//! procedure calls, and then the `calls` of all the procedures of the file are
+//! left out (ADR-0012); the module has its own error or signal, and the file says
+//! nothing more. A bound of the graph leaves lists out too, one that is too long
+//! to keep among them, and then the file lists one error for the procedures that
+//! have none (`vba.calls.left_out`).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
+mod apis;
 mod statements;
 mod text;
 mod text_file;
 
+use self::apis::{FileApis, MAX_API_MIB, MAX_APIS};
 use self::statements::{ExternalProgids, Statements, TooDeep};
 use super::apply::apply;
 use super::input::{Adapted, Measured, Room, adapt};
@@ -52,14 +71,14 @@ use super::metrics::{count, project_metrics};
 use super::{Extraction, Failure, Options, about_module, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
-    Declarations, FileError, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport,
-    Status,
+    ApiUse, Declarations, FileError, FileReport, Metrics, ModuleReport, Orientation,
+    ProcedureReport, Status,
 };
 use crate::rules::RuleSet;
 use crate::vba::{
-    Declaration, DeclarationKind, MAX_NESTING, OptionKind, ParsedModule, Procedure,
-    ProcedureMeasure, SourceLines, VbaError, file_metrics, measure_procedure, module_metrics,
-    parse, split_lines,
+    CallGraph, Declaration, DeclarationKind, MAX_NESTING, ModuleId, OptionKind, ParsedModule,
+    Procedure, ProcedureLinks, ProcedureMeasure, SourceLines, VbaError, file_metrics,
+    measure_procedure, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -72,6 +91,14 @@ const UNCLASSIFIED: &str = "unclassified";
 /// The code of the error that tells of the statements of a module that are
 /// nested too deep to be read in full. It is no failure.
 const TOO_DEEP: &str = "vba.statement.too_deep";
+
+/// The code of the error that tells of the procedures of a module whose list of
+/// APIs is left out, since it passed a bound. It is no failure.
+const APIS_LEFT_OUT: &str = "vba.apis.left_out";
+
+/// The code of the error that tells of the procedures whose list of calls is
+/// left out, since the call graph passed a bound. It is no failure.
+const CALLS_LEFT_OUT: &str = "vba.calls.left_out";
 
 /// The most lines that the modules of one file may total, once read.
 /// [`split_lines`] bounds one module, and the sources of a project may total
@@ -170,6 +197,15 @@ struct Front<'r> {
     /// `CreateObject` and `GetObject`, those that count as external
     /// dependencies.
     external_progids: ExternalProgids,
+    /// The functions that the lists of APIs name, and the room that the modules
+    /// read so far have left them.
+    file_apis: FileApis,
+    /// The calls of the procedures of the modules read so far. It has a place
+    /// for each module of the file, read or not, in the order of the report.
+    graph: CallGraph,
+    /// Whether a module of the file was not read. The graph then says nothing of
+    /// what the procedures call, and the module has its own error or signal.
+    unread: bool,
     /// What the front end tells of the modules that it read: errors of the file
     /// that are no failure.
     warnings: Vec<FileError>,
@@ -187,6 +223,9 @@ impl<'r> Front<'r> {
             inputs: Vec::new(),
             measured: Vec::new(),
             external_progids: ExternalProgids::default(),
+            file_apis: FileApis::new(rules),
+            graph: CallGraph::new(),
+            unread: false,
             warnings: Vec::new(),
             failures: Vec::new(),
         }
@@ -205,7 +244,8 @@ impl<'r> Front<'r> {
     /// what the engine reads of it is kept. A module that was not read, or that
     /// does not fit in the room of the engine, is kept all the same, empty, so
     /// that the modules of the engine are those of the report, in the same
-    /// order.
+    /// order, and it takes its place in the call graph as one that was not read
+    /// ([`Front::skip`]).
     ///
     /// [`analyse`]: Self::analyse
     fn keep(&mut self, module: &mut ModuleReport, analysed: Option<Result<Analysis, VbaError>>) {
@@ -214,13 +254,33 @@ impl<'r> Front<'r> {
         let adapted = match filled {
             Some(Ok(adapted)) => adapted,
             Some(Err(error)) => {
-                (self.failures).push(Failure::from(error).in_module(&module.name));
+                self.fail(&module.name, error);
                 Adapted::unread(&module.name, module.module_type)
             }
-            None => Adapted::unread(&module.name, module.module_type),
+            None => {
+                self.skip();
+                Adapted::unread(&module.name, module.module_type)
+            }
         };
         self.inputs.push(adapted.input);
         self.measured.push(adapted.measured);
+    }
+
+    /// Keeps, for the file, why the module called `name` was not read, and
+    /// gives the module its place in the call graph as one that was not read
+    /// ([`Front::skip`]).
+    fn fail(&mut self, name: &str, error: VbaError) {
+        self.skip();
+        self.failures.push(Failure::from(error).in_module(name));
+    }
+
+    /// Gives the call graph the place of a module that was not read, so that it
+    /// has a place for each module of the file, in the order of the report. Such
+    /// a module may declare and call any procedure, so the graph then says
+    /// nothing of what the procedures call (ADR-0012).
+    fn skip(&mut self) -> ModuleId {
+        self.unread = true;
+        self.graph.skip_module()
     }
 
     /// Reads the next module. One that crosses the budget of lines is read
@@ -249,13 +309,17 @@ impl<'r> Front<'r> {
     }
 
     /// Puts what `analysis` shows of a module into its report: its procedures
-    /// with their spans and metrics, the metrics of the module, and its
+    /// with their spans, metrics and APIs, the metrics of the module, and its
     /// declarations. What the rule engine decides is left for
     /// [`seal`](Self::seal). What its statements show goes to the file: the
-    /// ProgIDs, and a warning for the statements that nest too deep to be read.
-    /// Fails, and leaves the report and the file alone, when what the engine
-    /// reads of the module does not fit in the room that is left: the module is
-    /// not read, and its statements tell the file nothing.
+    /// ProgIDs, the calls (the graph tells them in [`Front::seal`], once every
+    /// module is read), a warning for the statements that nest too deep to be
+    /// read, and one for the procedures whose list of APIs passed a bound.
+    /// Fails, and leaves the report, the graph and the file alone, when what the
+    /// engine reads of the module does not fit in the room that is left: the
+    /// module is not read, and its statements tell the file nothing. The caller
+    /// then gives the module its place in the call graph as one that was not
+    /// read ([`Front::fail`]).
     ///
     /// Three things show that code did not parse cleanly (the predicate
     /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
@@ -270,11 +334,20 @@ impl<'r> Front<'r> {
         analysis: &Analysis,
     ) -> Result<Adapted, VbaError> {
         let mut adapted = adapt(&module.name, module.module_type, analysis, &mut self.room)?;
-        let statements = Statements::read(analysis, &mut self.external_progids);
+        let id = self.place_in_graph(module, analysis);
+        let mut statements = Statements::read(
+            analysis,
+            &mut self.external_progids,
+            &mut self.file_apis,
+            &mut self.graph,
+            id,
+        );
         mark_too_deep(&mut adapted.input, &statements);
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
-        module.procedures = found
-            .map(|(procedure, measure)| procedure_report(procedure, measure))
+        module.procedures = (found.enumerate())
+            .map(|(index, (procedure, measure))| {
+                procedure_report(procedure, measure, statements.take_apis(index))
+            })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
         let procedure_metrics = analysis.measures.iter().map(|measure| &measure.metrics);
@@ -286,16 +359,34 @@ impl<'r> Front<'r> {
         if let Some(deep) = statements.too_deep {
             self.warnings.push(too_deep_error(&module.name, deep));
         }
+        if let Some(left_out) = LeftOut::of(&module.procedures) {
+            self.warnings
+                .push(apis_left_out_error(&module.name, left_out));
+        }
         Ok(adapted)
+    }
+
+    /// Gives `module` its place in the call graph. One whose source is
+    /// suspected to be lost has procedures that are compiled, out of sight, and
+    /// the graph cannot tell what they call: it takes the module for one that
+    /// was not read. No procedure is given as started by the host: the rule
+    /// engine decides that, and the calls do not depend on it.
+    fn place_in_graph(&mut self, module: &ModuleReport, analysis: &Analysis) -> ModuleId {
+        if module.source_missing_suspected == Some(true) {
+            return self.skip();
+        }
+        (self.graph).add_module(module.module_type, &analysis.module.procedures, &[])
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
     /// the file follow from those of its modules and of their procedures and
-    /// from the ProgIDs of their statements, the rule engine decides the
-    /// families, the signals, the traits and the level, the errors of the front
-    /// end join those of the extraction, and the status follows from the
-    /// procedures. `indicators` are the ids of the container indicators that
-    /// extraction raised: the engine makes their signals.
+    /// from the ProgIDs of their statements, the calls of the procedures follow
+    /// from the call graph (with an error for the lists that a bound of the graph
+    /// leaves out), the rule engine decides the families, the signals, the
+    /// traits and the level, the errors of the front end join those of the
+    /// extraction, and the status follows from the procedures. `indicators` are
+    /// the ids of the container indicators that extraction raised: the engine
+    /// makes their signals.
     ///
     /// The engine runs when a module was read, whatever the status of the file:
     /// a file of which some modules could not be read is judged on the others.
@@ -315,10 +406,13 @@ impl<'r> Front<'r> {
             inputs,
             measured,
             external_progids,
+            graph,
+            unread,
             warnings,
             failures,
             ..
         } = self;
+        let links = graph.resolve();
         let project = ProjectInput {
             references: (file.vba_project.as_ref())
                 .and_then(|project| project.references.clone())
@@ -347,9 +441,29 @@ impl<'r> Front<'r> {
                 }
             };
         }
+        let mut calls_left_out = None;
+        if let Some(project) = file.vba_project.as_mut() {
+            put_calls(&mut project.modules, links);
+            // A module that was not read is why the lists are left out, and it has
+            // its own error or signal: the file says nothing more of them.
+            calls_left_out = CallsLeftOut::of(&project.modules).filter(|_| !unread);
+        }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(failures.into_iter().map(|failure| failure.error));
         errors.extend(warnings);
+        errors.extend(calls_left_out.as_ref().map(calls_left_out_error));
+    }
+}
+
+/// Puts the calls that the call graph found into the procedures of `modules`.
+/// `links` has the modules of the file in their order, and for each of them its
+/// procedures in theirs. A procedure that the graph has no answer for keeps its
+/// `calls` as `None`.
+fn put_calls(modules: &mut [ModuleReport], links: Vec<Vec<ProcedureLinks>>) {
+    for (module, links) in modules.iter_mut().zip(links) {
+        for (procedure, links) in module.procedures.iter_mut().zip(links) {
+            procedure.calls = links.calls;
+        }
     }
 }
 
@@ -384,6 +498,100 @@ fn too_deep_error(module: &str, deep: TooDeep) -> FileError {
     FileError {
         code: TOO_DEEP.to_owned(),
         message: about_module(module, &message),
+    }
+}
+
+/// The procedures of a module whose list of APIs is left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LeftOut {
+    /// How many there are.
+    count: u32,
+    /// The line where the first starts.
+    first_line: u32,
+}
+
+impl LeftOut {
+    /// The procedures among `procedures` that have no `apis`, if there are any.
+    fn of(procedures: &[ProcedureReport]) -> Option<Self> {
+        let mut left_out = (procedures.iter()).filter(|procedure| procedure.apis.is_none());
+        let first = left_out.next()?;
+        Some(Self {
+            count: count(left_out.count()).saturating_add(1),
+            first_line: first.start_line,
+        })
+    }
+}
+
+/// The error of the file that tells of the procedures of the module `module`
+/// whose list of APIs is left out, and why.
+fn apis_left_out_error(module: &str, left_out: LeftOut) -> FileError {
+    let LeftOut { count, first_line } = left_out;
+    let (procedures, start, lists) = if count == 1 {
+        ("procedure uses", "it starts", "its list is")
+    } else {
+        ("procedures use", "the first starts", "their lists are")
+    };
+    let message = format!(
+        "{count} {procedures} more APIs than a report lists (at most {MAX_APIS} names for a \
+         procedure and {MAX_API_MIB} MiB of names for the procedures of a file); {start} at line \
+         {first_line}, and {lists} left out, since a short list would read as a whole one"
+    );
+    FileError {
+        code: APIS_LEFT_OUT.to_owned(),
+        message: about_module(module, &message),
+    }
+}
+
+/// The procedures of a file whose list of calls is left out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CallsLeftOut {
+    /// How many there are.
+    count: u32,
+    /// The module of the first.
+    module: String,
+    /// The line where the first starts.
+    first_line: u32,
+}
+
+impl CallsLeftOut {
+    /// The procedures among those of `modules` that have no `calls`, if there are
+    /// any.
+    fn of(modules: &[ModuleReport]) -> Option<Self> {
+        let procedures = modules.iter().flat_map(|module| {
+            (module.procedures.iter()).map(move |procedure| (&module.name, procedure))
+        });
+        let mut left_out = procedures.filter(|(_, procedure)| procedure.calls.is_none());
+        let (module, first) = left_out.next()?;
+        Some(Self {
+            count: count(left_out.count()).saturating_add(1),
+            module: module.clone(),
+            first_line: first.start_line,
+        })
+    }
+}
+
+/// The error of the file that tells of the procedures whose list of calls is left
+/// out, and why.
+fn calls_left_out_error(left_out: &CallsLeftOut) -> FileError {
+    let CallsLeftOut {
+        count,
+        module,
+        first_line,
+    } = left_out;
+    let (procedures, start) = if *count == 1 {
+        ("procedure has", "it starts")
+    } else {
+        ("procedures have", "the first starts")
+    };
+    let message = format!(
+        "{count} {procedures} no list of calls ({start} at line {first_line} of module \
+         {module}): the project has more names, references or calls than the call graph keeps, \
+         or a procedure calls more procedures than a list holds, and a short list would read as \
+         a whole one"
+    );
+    FileError {
+        code: CALLS_LEFT_OUT.to_owned(),
+        message,
     }
 }
 
@@ -424,10 +632,15 @@ fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasur
     )
 }
 
-/// The report of a procedure, as far as its structure and its measure show it.
-/// The fields that the rule engine decides hold what a procedure that no rule
-/// has scored has, until [`apply`] writes the findings.
-fn procedure_report(procedure: &Procedure, measure: &ProcedureMeasure) -> ProcedureReport {
+/// The report of a procedure, as far as its structure, its measure and its
+/// statements show it, with the `apis` that it uses, unless its list passed a
+/// bound. The fields that the rule engine decides hold what a procedure that no
+/// rule has scored has, until [`apply`] writes the findings.
+fn procedure_report(
+    procedure: &Procedure,
+    measure: &ProcedureMeasure,
+    apis: Option<Vec<ApiUse>>,
+) -> ProcedureReport {
     ProcedureReport {
         name: procedure.name.clone(),
         kind: procedure.kind,
@@ -439,7 +652,7 @@ fn procedure_report(procedure: &Procedure, measure: &ProcedureMeasure) -> Proced
         end_line: procedure.end_line,
         metrics: measure.metrics.clone(),
         calls: None,
-        apis: None,
+        apis,
         primary_family: UNCLASSIFIED.to_owned(),
         secondary_families: None,
         families: Vec::new(),
@@ -476,11 +689,56 @@ fn declarations_report(declarations: &[Declaration]) -> Declarations {
 
 #[cfg(test)]
 mod tests {
+    use super::text::{text_extraction, text_module};
     use super::*;
     use crate::rules::{ModuleType, RulesSources};
 
     fn rules() -> RuleSet {
         RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
+    }
+
+    /// A module that calls `B`, and one that declares it.
+    const CALLER: &str = "Sub A()\n    B\nEnd Sub\n";
+    const CALLED: &str = "Public Sub B()\nEnd Sub\n";
+
+    /// The report of the standard module `name` as extraction gives it.
+    fn standard(name: &str, text: &str) -> ModuleReport {
+        text_module(name, ModuleType::Standard, text)
+    }
+
+    /// The file that `finish` makes of the modules of these reports and these
+    /// sources.
+    fn finished(reports: Vec<ModuleReport>, sources: Vec<Option<String>>) -> FileReport {
+        let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+        let extraction = text_extraction("Book.bas", 0, String::new(), reports, sources);
+        finish(extraction, &Options::new(&rules))
+    }
+
+    /// The `calls` of the procedures of each module of `file`.
+    fn calls_of(file: &FileReport) -> Vec<Vec<Option<Vec<String>>>> {
+        let project = file.vba_project.as_ref().expect("a VBA project");
+        (project.modules.iter())
+            .map(|module| {
+                (module.procedures.iter())
+                    .map(|procedure| procedure.calls.clone())
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Whether `file` tells of procedures whose list of calls is left out.
+    fn tells_of_calls_left_out(file: &FileReport) -> bool {
+        (file.errors.iter().flatten()).any(|error| error.code == CALLS_LEFT_OUT)
+    }
+
+    /// The calls of the procedure `A` of `CALLER`, and of `B` of `CALLED`, when
+    /// every module is read: `A` calls `B`.
+    fn read_in_full() -> Vec<Vec<Option<Vec<String>>>> {
+        vec![
+            vec![Some(vec!["B".to_owned()])],
+            Vec::new(),
+            vec![Some(Vec::new())],
+        ]
     }
 
     #[test]
@@ -617,6 +875,208 @@ mod tests {
         assert!(
             one.message
                 .ends_with("and a name that stands alone counts as a call")
+        );
+    }
+
+    #[test]
+    fn the_procedures_without_apis_are_counted_with_the_line_of_the_first() {
+        let analysis = Analysis::of("Sub A()\nEnd Sub\nSub B()\nEnd Sub\nSub C()\nEnd Sub\n")
+            .expect("a short module");
+        let report = |index: usize, apis| {
+            let procedure = analysis.module.procedures.get(index).expect("a procedure");
+            let measure = analysis.measures.get(index).expect("a measure");
+            procedure_report(procedure, measure, apis)
+        };
+        let all = [
+            report(0, Some(Vec::new())),
+            report(1, None),
+            report(2, None),
+        ];
+
+        let expected = LeftOut {
+            count: 2,
+            first_line: 3,
+        };
+        assert_eq!(LeftOut::of(&all), Some(expected));
+        assert_eq!(LeftOut::of(&all[..1]), None);
+        assert_eq!(LeftOut::of(&[]), None);
+    }
+
+    #[test]
+    fn the_error_for_lists_of_apis_left_out_names_the_module_the_count_the_line_and_the_bounds() {
+        let error =
+            |count, first_line| apis_left_out_error("Module1", LeftOut { count, first_line });
+        let bounds = format!("{MAX_APIS} names for a procedure and {MAX_API_MIB} MiB of names");
+
+        let one = error(1, 7);
+        let two = error(2, 9);
+
+        assert_eq!(one.code, "vba.apis.left_out");
+        let first = format!(
+            "module Module1: 1 procedure uses more APIs than a report lists (at most {bounds}"
+        );
+        assert!(one.message.starts_with(&first), "{}", one.message);
+        assert!(
+            one.message
+                .contains("); it starts at line 7, and its list is left out")
+        );
+        let second = "module Module1: 2 procedures use more APIs than a report lists";
+        assert!(two.message.starts_with(second), "{}", two.message);
+        assert!(
+            two.message
+                .contains("); the first starts at line 9, and their lists are left out")
+        );
+    }
+
+    #[test]
+    fn the_call_graph_keeps_a_place_for_each_module_whether_it_was_read_or_not() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        let two = "Sub A()\nEnd Sub\nSub B()\nEnd Sub\n";
+        let one = "Sub C()\nEnd Sub\n";
+        let (mut first, mut last) = (standard("First", two), standard("Last", one));
+        let refused = VbaError::new(Status::TooLarge, "vba.too_many_lines", "too many");
+
+        front.read(&mut first, Some(two));
+        front.fail("Refused", refused);
+        front.skip();
+        front.read(&mut last, Some(one));
+
+        // The failure is the only thing kept for the file: a module that has no
+        // source is no failure of the front end, and the extraction tells of it.
+        assert_eq!(front.failures.len(), 1);
+        let places: Vec<_> = front.graph.resolve().iter().map(Vec::len).collect();
+        assert_eq!(places, [2, 0, 0, 1]);
+    }
+
+    #[test]
+    fn a_module_that_the_budget_refuses_leaves_no_procedure_a_list_of_calls() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        front.budget = 3;
+        let (mut caller, mut called) = (standard("First", CALLER), standard("Last", CALLED));
+
+        front.read(&mut caller, Some(CALLER));
+        front.read(&mut called, Some(CALLED));
+
+        assert_eq!(front.failures.len(), 1);
+        let links = front.graph.resolve();
+        // The refused module has its place, and nothing is said of the other.
+        assert_eq!(links.iter().map(Vec::len).collect::<Vec<_>>(), [1, 0]);
+        assert_eq!(links[0][0].calls, None);
+    }
+
+    #[test]
+    fn a_module_without_source_leaves_the_calls_of_the_file_unknown() {
+        let reports = || {
+            vec![
+                standard("First", CALLER),
+                standard("Middle", ""),
+                standard("Last", CALLED),
+            ]
+        };
+        let sources = |middle: Option<&str>| {
+            vec![
+                Some(CALLER.to_owned()),
+                middle.map(str::to_owned),
+                Some(CALLED.to_owned()),
+            ]
+        };
+
+        // With a source, empty as it is, the module in the middle changes nothing.
+        let read = finished(reports(), sources(Some("")));
+        assert_eq!(calls_of(&read), read_in_full());
+        assert!(!tells_of_calls_left_out(&read));
+        // Without one, it may hold any procedure. Extraction tells of the module,
+        // and the file says nothing more of the lists.
+        let unread = finished(reports(), sources(None));
+        assert_eq!(calls_of(&unread), [vec![None], Vec::new(), vec![None]]);
+        assert!(!tells_of_calls_left_out(&unread));
+    }
+
+    #[test]
+    fn a_module_suspected_of_having_lost_its_source_leaves_the_calls_of_the_file_unknown() {
+        let reports = |suspected| {
+            let mut middle = standard("Middle", "");
+            middle.source_missing_suspected = Some(suspected);
+            vec![standard("First", CALLER), middle, standard("Last", CALLED)]
+        };
+        // What is left of a stomped module is `Attribute` lines and blank ones.
+        let left = "Attribute VB_Name = \"Middle\"\n\n";
+        let sources = vec![
+            Some(CALLER.to_owned()),
+            Some(left.to_owned()),
+            Some(CALLED.to_owned()),
+        ];
+
+        let seen = finished(reports(false), sources.clone());
+        let lost = finished(reports(true), sources);
+
+        // Its compiled procedures are out of sight, and may call and be called.
+        // The signal of the lost source tells of the module, and the file says
+        // nothing more of the lists.
+        assert_eq!(calls_of(&seen), read_in_full());
+        assert_eq!(calls_of(&lost), [vec![None], Vec::new(), vec![None]]);
+        assert!(!tells_of_calls_left_out(&seen) && !tells_of_calls_left_out(&lost));
+    }
+
+    #[test]
+    fn the_procedures_without_calls_are_counted_with_the_module_and_the_line_of_the_first() {
+        let analysis = Analysis::of("Sub A()\nEnd Sub\nSub B()\nEnd Sub\nSub C()\nEnd Sub\n")
+            .expect("a short module");
+        let report = |index: usize, calls| {
+            let procedure = analysis.module.procedures.get(index).expect("a procedure");
+            let measure = analysis.measures.get(index).expect("a measure");
+            ProcedureReport {
+                calls,
+                ..procedure_report(procedure, measure, None)
+            }
+        };
+        let (mut first, mut last) = (standard("First", ""), standard("Last", ""));
+        first.procedures = vec![report(0, Some(Vec::new())), report(1, None)];
+        last.procedures = vec![report(2, None)];
+
+        let expected = CallsLeftOut {
+            count: 2,
+            module: "First".to_owned(),
+            first_line: 3,
+        };
+        assert_eq!(
+            CallsLeftOut::of(&[first.clone(), last.clone()]),
+            Some(expected)
+        );
+        assert_eq!(
+            CallsLeftOut::of(&[first.clone()]).map(|left| left.count),
+            Some(1)
+        );
+        first.procedures.truncate(1);
+        assert_eq!(CallsLeftOut::of(&[first]), None);
+        assert_eq!(CallsLeftOut::of(&[]), None);
+    }
+
+    #[test]
+    fn the_error_for_lists_of_calls_left_out_names_the_count_the_module_and_the_line() {
+        let error = |count, first_line| {
+            let module = "Module1".to_owned();
+            calls_left_out_error(&CallsLeftOut {
+                count,
+                module,
+                first_line,
+            })
+        };
+
+        let one = error(1, 7);
+        let two = error(2, 9);
+
+        assert_eq!(one.code, "vba.calls.left_out");
+        let first = "1 procedure has no list of calls (it starts at line 7 of module Module1):";
+        assert!(one.message.starts_with(first), "{}", one.message);
+        let second =
+            "2 procedures have no list of calls (the first starts at line 9 of module Module1):";
+        assert!(two.message.starts_with(second), "{}", two.message);
+        assert!(
+            one.message
+                .ends_with("and a short list would read as a whole one")
         );
     }
 }
