@@ -10,7 +10,13 @@ traits: none
 file: loc=33 logical_loc=13 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 04-01-count-unique-dictionary (standard): loc=33 logical_loc=13 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub CountUnique public lines 7-33: loc=27 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CountUnique public lines 7-33: loc=27 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api dict_vals.Add*1
+    api dict_vals.count*1
+    api dict_vals.Exists*1
+    api Intersect*1
+    api rng_data.Parent.UsedRange*1
+    api rng_val.Value*2
 parse:
   procedure sub CountUnique public static=false parameters=0 lines 7-33 recoveries=none unbalanced_blocks=false
   recoveries: none

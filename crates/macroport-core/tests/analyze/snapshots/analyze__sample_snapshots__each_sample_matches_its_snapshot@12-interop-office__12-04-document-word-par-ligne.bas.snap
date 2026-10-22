@@ -10,7 +10,16 @@ traits: none
 file: loc=31 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=1
 module 12-04-document-word-par-ligne (standard): loc=31 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub ControlWord default lines 9-31: loc=23 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ControlWord default lines 9-31: loc=23 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
+    api appWD.ActiveDocument.Close*1
+    api appWD.ActiveDocument.SaveAs*1
+    api appWD.Documents.Add*1
+    api appWD.Quit*1
+    api appWD.Selection.Paste*1
+    api appWD.Visible*1
+    api CreateObject:Word.Application.12*1
+    api Range.End.Row*1
+    api Worksheets.Rows.Copy*1
 parse:
   procedure sub ControlWord default static=false parameters=0 lines 9-31 recoveries=none unbalanced_blocks=false
   recoveries: none
