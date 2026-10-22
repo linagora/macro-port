@@ -1,0 +1,29 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/12-interop-office/12-02-mailing-outlook-html-signature.bas
+---
+families/12-interop-office/12-02-mailing-outlook-html-signature.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 forms=0 declare_count=0
+module 12-02-mailing-outlook-html-signature (standard): loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub GenerateInfoToCreateEmail default lines 18-53: loc=36 logical_loc=27 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SendEmail private lines 54-112: loc=59 logical_loc=33 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetBoiler default lines 113-121: loc=9 logical_loc=8 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  declaration Variable line 9
+  declaration Variable line 10
+  declaration Variable line 11
+  declaration Variable line 12
+  declaration Variable line 13
+  declaration Variable line 14
+  declaration Variable line 15
+  declaration Variable line 16
+  procedure sub GenerateInfoToCreateEmail default static=false parameters=0 lines 18-53 recoveries=none unbalanced_blocks=false
+  procedure sub SendEmail private static=false parameters=0 lines 54-112 recoveries=none unbalanced_blocks=false
+  procedure function GetBoiler default static=false parameters=1 lines 113-121 recoveries=none unbalanced_blocks=false
+  recoveries: none
