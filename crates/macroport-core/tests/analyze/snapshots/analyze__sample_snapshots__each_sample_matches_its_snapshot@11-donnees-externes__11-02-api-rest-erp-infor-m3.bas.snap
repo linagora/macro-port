@@ -1,0 +1,40 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/11-donnees-externes/11-02-api-rest-erp-infor-m3.bas
+---
+families/11-donnees-externes/11-02-api-rest-erp-infor-m3.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=108 logical_loc=81 procedures=2 cyclomatic=5 cyclomatic_total=7 max_nesting=4 forms=0 declare_count=0 external_dependencies=2
+module 11-02-api-rest-erp-infor-m3 (standard): loc=108 logical_loc=81 procedures=2 cyclomatic=5 cyclomatic_total=7 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub UploadLineOIS100Confirm default lines 9-98: loc=90 logical_loc=70 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=18
+    api Application.ScreenUpdating*2
+    api CreateObject:MSXML2.DOMDocument.6.0*1
+    api CreateObject:MSXML2.XMLHTTP.6.0*1
+    api Encoding.Base64Encode*1
+    api HttpClient.Open*1
+    api HttpClient.responseText*1
+    api HttpClient.send*1
+    api HttpClient.setRequestHeader*3
+    api HttpClient.Status*2
+    api HttpClient.statusText*1
+    api UCase*1
+    api XmlDoc.DocumentElement.FirstChild.Text*2
+    api XmlDoc.DocumentElement.nodeName*1
+    api XmlDoc.LoadXML*1
+    api xSheet.Cells*3
+    api xSheet.Range*5
+    api xSheet.Range.Replace*4
+    api xSheet.Range.Value*4
+  sub ClearLogsConfirm default lines 99-108: loc=10 logical_loc=10 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=3
+    api Sheet3.Range.ClearContents*1
+    api Sheet3.Range.End.Row*1
+    api Sheet3.Rows.Count*1
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub UploadLineOIS100Confirm default static=false parameters=0 lines 9-98 recoveries=none unbalanced_blocks=false
+  procedure sub ClearLogsConfirm default static=false parameters=0 lines 99-108 recoveries=none unbalanced_blocks=false
+  recoveries: none
