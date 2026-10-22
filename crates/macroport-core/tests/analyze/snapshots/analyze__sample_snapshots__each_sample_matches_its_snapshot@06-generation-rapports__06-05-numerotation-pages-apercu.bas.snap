@@ -10,7 +10,7 @@ traits: none
 file: loc=34 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 06-05-numerotation-pages-apercu (standard): loc=34 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub PrintSheets default lines 7-34: loc=28 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  sub PrintSheets default lines 7-34: loc=28 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=12
     api ActiveSheet.DisplayAutomaticPageBreaks*1
     api ActiveSheet.HPageBreaks.Count*1
     api ActiveSheet.HPageBreaks.Location.Offset.Value*1
