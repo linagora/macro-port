@@ -10,7 +10,7 @@ traits: none
 file: loc=39 logical_loc=20 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 02-05-open-folder-files-and-copy (standard): loc=39 logical_loc=20 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Rand_OpenFilesAndCopy default lines 7-39: loc=33 logical_loc=20 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
+  sub Rand_OpenFilesAndCopy default lines 7-39: loc=33 logical_loc=20 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=10
     api Application.ScreenUpdating*1
     api Dir*2
     api sht_data.UsedRange.Copy*1

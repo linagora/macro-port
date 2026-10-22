@@ -4,10 +4,11 @@
 //! Extraction (SPEC M1) says what kind of file it is, whether it can be read,
 //! and what the modules of its VBA project are, with their source. The front
 //! end (SPEC M2, the `modules` submodule) then reads the source of each module
-//! into procedures and sizes, and the stages after it (M3) fill what is left
-//! empty. [`extract`] runs the extraction alone and also hands back the source
-//! of each module, which the report does not carry. [`analyze_modules`] starts
-//! at the front end, with modules that the caller already has as text.
+//! into procedures and metrics, and the rule engine (M3) scores the project:
+//! the families, the security signals, the traits and the complexity level.
+//! [`extract`] runs the extraction alone and also hands back the source of each
+//! module, which the report does not carry. [`analyze_modules`] starts at the
+//! front end, with modules that the caller already has as text.
 //!
 //! A ZIP archive is read as an OOXML package, and a compound file as a BIFF8
 //! workbook (`.xls`) unless it is an encrypted package, which is not opened.
@@ -31,8 +32,9 @@
 //! sheets, `sec.vbaproject-in-xlsx` for a VBA project in a package that the
 //! extension declares as `.xlsx` or `.xltx`, `sec.suspicious-archive` for a
 //! failure with that status, and `sec.source-missing` for a module suspected of
-//! having lost its source. The `signals` and the `max_severity` of the report
-//! are those of these indicators until the security stage makes them.
+//! having lost its source. Extraction leaves the `signals` and the
+//! `max_severity` of the report out: the rule engine makes the signal of each
+//! indicator, with the severity that the rules give it, once the file is read.
 //!
 //! Nothing here executes or evaluates anything from the file, and nothing
 //! panics on its content: every failure is a status and an error code in the
@@ -54,16 +56,20 @@
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
+//! | `vba.too_much_code` | `too_large` | a module would take the statements of the file past what the rule engine may read |
 //! | `vba.statement.too_deep` | `unchanged` | a module has statements nested too deep to be read in full; the rest of each is read flat |
 //! | `vba.apis.left_out` | `unchanged` | procedures of a module use more APIs than a list holds, or than the lists of the file may take together; their `apis` are left out |
-//! | `vba.calls.left_out` | `unchanged` | procedures of the file have no list of calls, since the call graph passed a bound or a procedure calls more procedures than a list holds; their `calls` are left out |
+//! | `vba.calls.left_out` | `unchanged` | procedures of the file have no list of calls, since the call graph passed a bound or a procedure calls more procedures than a list holds; their `calls` are left out, and their `possibly_unused` too when the graph passed a bound |
 //!
 //! The message of an error about a module starts with `module <name>:`. That of
 //! `vba.calls.left_out` is about the file, and names the module of the first
 //! procedure.
 
+mod apply;
 mod detect;
 mod indicators;
+mod input;
+mod metrics;
 mod modules;
 mod project;
 
@@ -94,12 +100,12 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 /// What the caller decides about an analysis.
 #[derive(Debug, Clone, Copy)]
 pub struct Options<'a> {
-    /// The rules. Extraction reads the container indicators from them, with
-    /// their severity, and the front end takes from them the traits that the
-    /// parser, the metrics and the statements decide
-    /// (`compile_error_suspected`), and the functions that a list of `apis`
-    /// names when a statement calls one by its bare name (those of the `call`
-    /// matchers, ADR-0011): other rules can give other lists.
+    /// The rules that the engine applies to the modules once they are read:
+    /// the families, the security signals (the container indicators included,
+    /// with their severity), the traits and the levels. Extraction does not read
+    /// them. The front end reads from them only the functions that a list of
+    /// `apis` names when a statement calls one by its bare name (those of the
+    /// `call` matchers, ADR-0011): other rules can give other lists.
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and
@@ -135,9 +141,8 @@ pub struct Extraction {
     /// them (macro sheets, then a VBA project in a package declared without
     /// macros), then `sec.suspicious-archive`, then `sec.source-missing`, which
     /// are judged once the whole file is read. `file.signals` and
-    /// `file.max_severity` have the signals they make, for the rules that list
-    /// them. The security stage will make the signals itself from these ids,
-    /// and take over.
+    /// `file.max_severity` are left out: the security stage makes the signals
+    /// from these ids, with the severity that the rules give them.
     pub indicators: Vec<&'static str>,
 }
 
@@ -173,7 +178,7 @@ pub fn extract(bytes: &[u8], path: &str, options: &Options<'_>) -> Extraction {
     } else {
         read(bytes, &detect::extension(path))
     };
-    reading.into_extraction(path, size, sha256_hex(bytes), options.rules)
+    reading.into_extraction(path, size, sha256_hex(bytes))
 }
 
 /// The report of a file above [`Options::max_file_size`], given its `size` and
@@ -183,9 +188,8 @@ pub fn extract(bytes: &[u8], path: &str, options: &Options<'_>) -> Extraction {
 /// want to hold such a file in memory can read its size from the file system,
 /// hash it as it streams it, and ask for this report instead.
 pub fn too_large(path: &str, size: u64, sha256: String, options: &Options<'_>) -> FileReport {
-    let reading = too_large_reading(path, options);
-    reading
-        .into_extraction(path, size, sha256, options.rules)
+    too_large_reading(path, options)
+        .into_extraction(path, size, sha256)
         .file
 }
 
@@ -362,14 +366,8 @@ impl Reading {
 
     /// The extraction of the file `path`, of `size` bytes and the hash
     /// `sha256`. Everything the stages after extraction fill is left empty,
-    /// but the signals of the container indicators, as `rules` list them.
-    fn into_extraction(
-        mut self,
-        path: &str,
-        size: u64,
-        sha256: String,
-        rules: &RuleSet,
-    ) -> Extraction {
+    /// the signals of the container indicators included.
+    fn into_extraction(mut self, path: &str, size: u64, sha256: String) -> Extraction {
         let status = self.status();
         if (self.failures.iter()).any(|failure| failure.status == Status::SuspiciousArchive) {
             self.raise(indicators::SUSPICIOUS_ARCHIVE);
@@ -377,8 +375,6 @@ impl Reading {
         if self.has_source_missing() {
             self.raise(indicators::SOURCE_MISSING);
         }
-        let signals = indicators::signals(rules, &self.indicators);
-        let max_severity = indicators::max_severity(&signals);
         let (vba_project, sources) = match self.project {
             Some(project) => (Some(project.report), project.sources),
             None => (None, Vec::new()),
@@ -396,8 +392,8 @@ impl Reading {
             complexity_level: None,
             primary_family: None,
             families: None,
-            max_severity,
-            signals: (!signals.is_empty()).then_some(signals),
+            max_severity: None,
+            signals: None,
             traits: None,
             orientation: Orientation,
             workbook_encrypted: self.workbook_encrypted,
