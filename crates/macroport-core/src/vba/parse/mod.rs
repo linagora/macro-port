@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The structural parser (SPEC M2 items 3 and 6): the logical lines of a
-//! module become procedures with their spans, and the places where the code
-//! does not parse are recorded. It reads one logical line at a time, through
-//! [`tokenize`], and keeps no token of a line once the line is read.
+//! module become procedures with their spans and declarations, and the places
+//! where the code does not parse are recorded. It reads one logical line at a
+//! time, through [`tokenize`], and keeps no token of a line once the line is
+//! read.
 //!
 //! A module is never refused. A procedure whose end is missing is closed where
 //! its code stops, and the parser goes on. A procedure with a recovery is the
@@ -18,23 +19,45 @@
 //! `Public Sub S(h As LongPtr)`, `#Else`, `Public Sub S(h As Long)`, `#End If`,
 //! and then the body, which the two forms share. The `#If` of a form may stand
 //! in a branch of another. The name, the kind and the parameters are the ones
-//! of the first form; a form that names nothing is recovered all the same.
+//! of the first form; a form that names nothing is recovered all the same. The
+//! opener of a `Type` or an `Enum` has forms in the same way, and the `End` is
+//! shared too, as in `#If VBA7 Then`, `Private Type T`, `h As LongPtr`,
+//! `#Else`, `Private Type T`, `h As Long`, `#End If`, `End Type`.
 //!
 //! The statements outside any procedure that declare or set something are
 //! listed in [`ParsedModule::declarations`], in source order: `Option`,
 //! `Declare`, `Const`, variables, `Type`, `Enum`, `Implements`, `Event`,
 //! `WithEvents` and the conditional-compilation directives. A `Type` or an
 //! `Enum` is one declaration up to its `End`, and its members declare nothing.
-//! Any other statement outside a procedure, such as the `Set` of a sample cut
-//! from a longer macro, is neither a declaration nor an error.
+//! One that has no `End` stops where a line that cannot be a member begins, the
+//! header of a procedure or a statement that declares something, and the
+//! module is recovered. A line that reads `Word As ...` or `Word(...) As ...`
+//! is a member whatever `Word` is, as in `Type As Long` and
+//! `Type(0 To 3) As Byte`. Any other statement outside a procedure, such as the
+//! `Set` of a sample cut from a longer macro, is neither a declaration nor an
+//! error, unless it cannot be read.
+//!
+//! A statement cannot be read when its tokens fail a check that valid code
+//! never fails: a character that is no token, or a string that never closes; a
+//! parenthesis that nothing matches; a last token that leaves the statement
+//! unfinished, an operator, a `.` or a `!`; a first token that starts no
+//! statement, such as a literal, a `,` or a word that only continues one
+//! (`Then`, `As`...); or, in a statement that starts with a name, a `To`,
+//! `Then`, `In` or `Step` outside parentheses, which is a line of prose. It is
+//! recorded as [`RecoveryKind::Unparseable`], once for a physical line that
+//! holds several of them; a statement that passes the checks is not claimed to
+//! be valid. The members of a `Type` or an `Enum`, the labels, the comments and
+//! the directives are not checked.
 
 mod declaration;
 mod shape;
+mod unreadable;
 
 use std::ops::Range;
 
-use self::declaration::{block_end, declaration, ends};
-use self::shape::{EndOf, Header, Shape, shape};
+use self::declaration::{block_end, declaration_kind, reads_as_member};
+use self::shape::{EndOf, Header, Shape, end_word, shape};
+use self::unreadable::unreadable;
 use super::{Keyword, LogicalKind, LogicalLine, SourceLines, Token, TokenKind, tokenize};
 use crate::report::{ProcedureKind, Visibility};
 
@@ -61,12 +84,18 @@ pub enum RecoveryKind {
     /// `End Property` outside a procedure.
     StrayTerminator,
     /// A block that has no end. So far: a `Type` or an `Enum` with no
-    /// `End Type` or `End Enum` before the header of a procedure or the end of
-    /// the module. Found at its opener.
+    /// `End Type` or `End Enum` before the header of a procedure, a statement
+    /// that declares something, or the end of the module. Found at its opener.
     UnclosedBlock,
-    /// A statement that does not parse as what it starts like. So far: the
-    /// header of a procedure that names nothing, such as `Sub (a, b)` or
-    /// `Sub 123()`. Found at the statement.
+    /// A statement that cannot be read. Either the header of a procedure that
+    /// names nothing, such as `Sub (a, b)` or `Sub 123()`, found at its
+    /// keyword; or a statement whose tokens fail a check that valid code never
+    /// fails, found at the token that fails it: a character that is no token,
+    /// a string that never closes, a parenthesis that nothing matches, an
+    /// operator, a `.` or a `!` that ends the statement, a first token that
+    /// starts no statement, or a line of prose (a name followed by `To`,
+    /// `Then`, `In` or `Step`). A statement that passes is not claimed to be
+    /// valid.
     Unparseable,
 }
 
@@ -115,6 +144,12 @@ impl Procedure {
     pub fn is_recovered(&self) -> bool {
         !self.recoveries.is_empty()
     }
+
+    /// Whether the other modules can call the procedure: it is `Public`, or
+    /// the header says no visibility, which means the same.
+    pub fn is_public(&self) -> bool {
+        matches!(self.visibility, Visibility::Public | Visibility::Default)
+    }
 }
 
 /// What the parser makes of a module.
@@ -123,8 +158,9 @@ pub struct ParsedModule {
     /// The procedures in source order, their lines never overlapping. A
     /// logical line that is in none of them stands outside any procedure.
     pub procedures: Vec<Procedure>,
-    /// The declarations outside any procedure, in source order. A directive
-    /// between the forms of a procedure is a line of the procedure.
+    /// The declarations outside any procedure, in source order, all of them:
+    /// unlike the recoveries, they are not capped. A directive between the forms
+    /// of a procedure is a line of the procedure.
     pub declarations: Vec<Declaration>,
     /// What the parser stepped over outside any procedure, the first
     /// [`MAX_RECOVERIES`].
@@ -146,11 +182,53 @@ pub fn parse(source: &SourceLines) -> ParsedModule {
         source,
         module: ParsedModule::default(),
         open: None,
-        body: None,
+        block: None,
         open_ifs: Vec::new(),
     };
     parser.run();
     parser.module
+}
+
+/// Where the forms of a header stand. The header of a procedure and the opener
+/// of a block come in a form for each branch of an `#If`, and what follows is
+/// shared.
+struct Forms {
+    /// The logical line of the latest header: the first one, or the last of the
+    /// other forms read.
+    latest: usize,
+    /// Another form of the header is expected: an `#Else` or an `#ElseIf` came
+    /// after the latest header, in the `#If` that holds it, and no header has
+    /// followed yet.
+    expected: bool,
+}
+
+impl Forms {
+    /// The forms of the header on the logical line `first`.
+    fn new(first: usize) -> Self {
+        Self {
+            latest: first,
+            expected: false,
+        }
+    }
+
+    /// Takes the header on the logical line `index` as the latest form.
+    fn take(&mut self, index: usize) {
+        self.latest = index;
+        self.expected = false;
+    }
+
+    /// An `#Else` or an `#ElseIf` of the `#If` on the logical line `frame`.
+    /// When the latest header lies inside that `#If`, the header that follows
+    /// is another form.
+    fn else_of(&mut self, frame: usize) {
+        self.expected |= self.latest > frame;
+    }
+
+    /// The `#End If` of the `#If` on the logical line `frame`. When the latest
+    /// header lies inside it, the forms of the header are all read.
+    fn end_if_of(&mut self, frame: usize) {
+        self.expected &= self.latest <= frame;
+    }
 }
 
 /// A procedure that is being read.
@@ -158,9 +236,8 @@ struct Open {
     header: Header,
     /// The logical line of the header.
     first: usize,
-    /// The logical line of the latest header: the first one, or the last of the
-    /// other forms read.
-    latest: usize,
+    /// Where the other forms of the header stand.
+    forms: Forms,
     /// The physical line of the keyword of the header.
     start_line: u32,
     /// The last logical line of code read, and the physical line it ends on:
@@ -168,10 +245,6 @@ struct Open {
     last: usize,
     last_line: u32,
     recoveries: Vec<Recovery>,
-    /// Another form of the header is expected: an `#Else` or an `#ElseIf` came
-    /// after the latest header, in the `#If` that holds it, and no header has
-    /// followed yet.
-    form_expected: bool,
 }
 
 impl Open {
@@ -184,11 +257,10 @@ impl Open {
             start_line,
             header,
             first: index,
-            latest: index,
+            forms: Forms::new(index),
             last: index,
             last_line: line.end_line,
             recoveries: Vec::new(),
-            form_expected: false,
         };
         if open.header.name.is_empty() {
             open.recover(RecoveryKind::Unparseable, start_line);
@@ -205,8 +277,7 @@ impl Open {
     /// Reads `header`, on the logical line `index`, as another form of the
     /// procedure. A form that names nothing is recovered like a first one.
     fn form(&mut self, index: usize, line: &LogicalLine, header: &Header) {
-        self.form_expected = false;
-        self.latest = index;
+        self.forms.take(index);
         self.touch(index, line);
         if header.name.is_empty() {
             self.recover(
@@ -216,24 +287,9 @@ impl Open {
         }
     }
 
-    /// An `#Else` or an `#ElseIf` of the `#If` on the logical line `frame`.
-    /// When the latest header lies inside that `#If`, the header that follows
-    /// is another form of the procedure.
-    fn else_of(&mut self, frame: usize) {
-        self.form_expected |= self.latest > frame;
-    }
-
-    /// The `#End If` of the `#If` on the logical line `frame`. When the latest
-    /// header lies inside it, the forms of the header are all read.
-    fn end_if_of(&mut self, frame: usize) {
-        self.form_expected &= self.latest <= frame;
-    }
-
-    /// Records a recovery, unless the procedure has [`MAX_RECOVERIES`] already.
+    /// Records a recovery in the procedure.
     fn recover(&mut self, kind: RecoveryKind, line: u32) {
-        if self.recoveries.len() < MAX_RECOVERIES {
-            self.recoveries.push(Recovery { line, kind });
-        }
+        record(&mut self.recoveries, Recovery { line, kind });
     }
 
     /// The procedure, ending with the logical line `last` on the physical line
@@ -254,7 +310,7 @@ impl Open {
 }
 
 /// A `Type` or an `Enum` whose members are being read, outside any procedure.
-struct Body {
+struct OpenBlock {
     /// `DeclarationKind::Type` or `DeclarationKind::Enum`.
     kind: DeclarationKind,
     /// The word after the `End` that closes it.
@@ -262,11 +318,20 @@ struct Body {
     /// The logical line of its opener, and the physical line it starts on.
     first: usize,
     line: u32,
+    /// Where the other forms of its opener stand.
+    forms: Forms,
     /// The last logical line of code read in it.
     last: usize,
 }
 
-impl Body {
+impl OpenBlock {
+    /// Adds the logical line `index`, made of `tokens`, to the block as a
+    /// member, and tells whether it is the `End` that closes the block.
+    fn add(&mut self, index: usize, tokens: &[Token]) -> bool {
+        self.last = index;
+        end_word(tokens) == Some(self.closer)
+    }
+
     /// The declaration that the block makes, up to the line read last.
     fn into_declaration(self) -> Declaration {
         Declaration {
@@ -283,7 +348,7 @@ struct Parser<'a> {
     open: Option<Open>,
     /// The `Type` or the `Enum` being read, if there is one. Never together
     /// with a procedure: the header of a procedure ends it.
-    body: Option<Body>,
+    block: Option<OpenBlock>,
     /// The logical lines of the `#If` directives that are not closed yet.
     open_ifs: Vec<usize>,
 }
@@ -303,99 +368,122 @@ impl Parser<'_> {
             }
         }
         self.close_unended();
-        self.close_unended_body();
+        self.close_unended_block();
     }
 
     /// Reads a line of code: a member of the `Type` or the `Enum` being read, a
     /// procedure header, an end, a directive, or a statement.
     fn code(&mut self, index: usize, line: &LogicalLine, tokens: &[Token]) {
         let found = shape(tokens, &line.text);
-        if self.member(index, &found, tokens) {
+        let declared = match found {
+            Shape::Statement => declaration_kind(tokens, &line.text),
+            _ => None,
+        };
+        if self.take_member(index, &found, declared.as_ref(), tokens) {
             return;
         }
         match found {
-            Shape::Header(header) => self.header(index, line, header),
-            Shape::End(end) => self.end(index, line, end),
+            // The header is checked once it has opened its procedure, or been
+            // read as a form of it, so that the recovery is the procedure's.
+            Shape::Header(header) => {
+                self.header(index, line, header);
+                self.record_if_unreadable(line, tokens);
+            }
+            // The end is checked before it closes the procedure.
+            Shape::End(end) => {
+                self.record_if_unreadable(line, tokens);
+                self.end(index, line, end);
+            }
             Shape::Directive(directive) => {
                 self.directive(index, directive);
                 self.touch(index, line);
-                self.declare(DeclarationKind::Directive(directive), index, line, tokens);
+                self.declare(DeclarationKind::Directive(directive), index, line);
             }
             Shape::Statement => {
+                self.record_if_unreadable(line, tokens);
                 self.touch(index, line);
-                if let Some(kind) = declaration(tokens, &line.text) {
-                    self.declare(kind, index, line, tokens);
+                if let Some(kind) = declared {
+                    self.declare(kind, index, line);
                 }
             }
         }
     }
 
-    /// Takes the line as part of the `Type` or the `Enum` being read, if there
-    /// is one: a member, or the `End` that closes the block. Whether it did.
-    /// The header of a procedure is neither: the block has no end, and the
-    /// header is read as what it is.
-    fn member(&mut self, index: usize, found: &Shape, tokens: &[Token]) -> bool {
-        if self.body.is_none() {
+    /// Takes the line as a member of the `Type` or the `Enum` being read, if
+    /// there is one, and tells whether it did. The `End` that closes the block
+    /// is its last member. A line that cannot be a member, the header of a
+    /// procedure or a statement that `declared` something, is not taken: it
+    /// ends a block that has no end, and is read as what it is. Unless it
+    /// reads `Word As ...` or `Word(...) As ...`, which is a member whatever
+    /// `Word` is, or opens a block of the kind of this one where another form
+    /// of the opener is expected: that is a member too, and the `End` is shared.
+    fn take_member(
+        &mut self,
+        index: usize,
+        found: &Shape,
+        declared: Option<&DeclarationKind>,
+        tokens: &[Token],
+    ) -> bool {
+        let Some(block) = self.block.as_mut() else {
             return false;
-        }
-        if matches!(found, Shape::Header(_)) {
-            self.close_unended_body();
-            return false;
-        }
-        if let Some(body) = self.body.as_mut() {
-            body.last = index;
-            if ends(tokens, body.closer) {
-                self.close_body();
+        };
+        if (declared.is_some() || matches!(found, Shape::Header(_))) && !reads_as_member(tokens) {
+            if block.forms.expected && declared.and_then(block_end) == Some(block.closer) {
+                block.forms.take(index);
+            } else {
+                self.close_unended_block();
+                return false;
             }
+        }
+        let closes = block.add(index, tokens);
+        if let Shape::Directive(directive) = found {
+            // A member like the others, but the `#If` blocks must follow it, or
+            // the forms of a procedure after it would not be told.
+            self.directive(index, *directive);
+        }
+        if closes {
+            self.close_block();
         }
         true
     }
 
     /// Lists the declaration `kind` that the statement makes, if it stands
     /// outside any procedure. A `Type` or an `Enum` only opens its block.
-    fn declare(
-        &mut self,
-        kind: DeclarationKind,
-        index: usize,
-        line: &LogicalLine,
-        tokens: &[Token],
-    ) {
+    fn declare(&mut self, kind: DeclarationKind, index: usize, line: &LogicalLine) {
         if self.open.is_some() {
             return;
         }
-        let start = tokens
-            .first()
-            .map_or(line.line, |token| line.line_at(token.start));
         match block_end(&kind) {
             Some(closer) => {
-                self.body = Some(Body {
+                self.block = Some(OpenBlock {
                     kind,
                     closer,
                     first: index,
-                    line: start,
+                    line: line.line,
+                    forms: Forms::new(index),
                     last: index,
                 });
             }
             None => self.module.declarations.push(Declaration {
                 kind,
-                line: start,
+                line: line.line,
                 lines: index..index.saturating_add(1),
             }),
         }
     }
 
     /// Lists the block being read, up to the line read last.
-    fn close_body(&mut self) {
-        if let Some(body) = self.body.take() {
-            self.module.declarations.push(body.into_declaration());
+    fn close_block(&mut self) {
+        if let Some(block) = self.block.take() {
+            self.module.declarations.push(block.into_declaration());
         }
     }
 
     /// Closes the block being read, if there is one, where its members stop.
-    fn close_unended_body(&mut self) {
-        if let Some(line) = self.body.as_ref().map(|body| body.line) {
+    fn close_unended_block(&mut self) {
+        if let Some(line) = self.block.as_ref().map(|block| block.line) {
             self.recover_in_module(RecoveryKind::UnclosedBlock, line);
-            self.close_body();
+            self.close_block();
         }
     }
 
@@ -408,8 +496,19 @@ impl Parser<'_> {
 
     /// Records a recovery outside any procedure.
     fn recover_in_module(&mut self, kind: RecoveryKind, line: u32) {
-        if self.module.recoveries.len() < MAX_RECOVERIES {
-            self.module.recoveries.push(Recovery { line, kind });
+        record(&mut self.module.recoveries, Recovery { line, kind });
+    }
+
+    /// Records the statement of `line`, made of `tokens`, when it cannot be
+    /// read: in the procedure being read, or in the module when there is none.
+    fn record_if_unreadable(&mut self, line: &LogicalLine, tokens: &[Token]) {
+        let Some(offset) = unreadable(tokens, &line.text) else {
+            return;
+        };
+        let line = line.line_at(offset);
+        match self.open.as_mut() {
+            Some(open) => open.recover(RecoveryKind::Unparseable, line),
+            None => self.recover_in_module(RecoveryKind::Unparseable, line),
         }
     }
 
@@ -418,7 +517,7 @@ impl Parser<'_> {
     /// procedure, and the body is shared. Elsewhere the procedure still open
     /// has no end, and this header opens another one.
     fn header(&mut self, index: usize, line: &LogicalLine, header: Header) {
-        if let Some(open) = self.open.as_mut().filter(|open| open.form_expected) {
+        if let Some(open) = self.open.as_mut().filter(|open| open.forms.expected) {
             open.form(index, line, &header);
             return;
         }
@@ -426,20 +525,32 @@ impl Parser<'_> {
         self.open = Some(Open::new(header, index, line));
     }
 
+    /// The forms of the header of the procedure being read, or else of the
+    /// opener of the block being read. The two are never open together.
+    fn forms(&mut self) -> Option<&mut Forms> {
+        match (self.open.as_mut(), self.block.as_mut()) {
+            (Some(open), _) => Some(&mut open.forms),
+            (None, Some(block)) => Some(&mut block.forms),
+            (None, None) => None,
+        }
+    }
+
     /// A conditional-compilation directive, on the logical line `index`. The
-    /// `#If` blocks that hold the header of the procedure being read tell
-    /// whether the next header is another form of it.
+    /// `#If` blocks that hold the header of the procedure being read, or the
+    /// opener of the block being read, tell whether the next one is another
+    /// form of it.
     fn directive(&mut self, index: usize, directive: Directive) {
         match directive {
             Directive::If => self.open_ifs.push(index),
             Directive::ElseIf | Directive::Else => {
-                if let (Some(&frame), Some(open)) = (self.open_ifs.last(), self.open.as_mut()) {
-                    open.else_of(frame);
+                let frame = self.open_ifs.last().copied();
+                if let (Some(frame), Some(forms)) = (frame, self.forms()) {
+                    forms.else_of(frame);
                 }
             }
             Directive::EndIf => {
-                if let (Some(frame), Some(open)) = (self.open_ifs.pop(), self.open.as_mut()) {
-                    open.end_if_of(frame);
+                if let (Some(frame), Some(forms)) = (self.open_ifs.pop(), self.forms()) {
+                    forms.end_if_of(frame);
                 }
             }
             Directive::Const => {}
@@ -468,6 +579,17 @@ impl Parser<'_> {
             let procedure = open.into_procedure(last, last_line);
             self.module.procedures.push(procedure);
         }
+    }
+}
+
+/// Adds `recovery` to `list`, unless the list holds [`MAX_RECOVERIES`] already,
+/// or `recovery` is an `Unparseable` that ends the list already: a physical line
+/// that holds several statements, or a header that names nothing and cannot be
+/// read either, is recorded once.
+fn record(list: &mut Vec<Recovery>, recovery: Recovery) {
+    let repeated = recovery.kind == RecoveryKind::Unparseable && list.last() == Some(&recovery);
+    if list.len() < MAX_RECOVERIES && !repeated {
+        list.push(recovery);
     }
 }
 

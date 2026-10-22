@@ -2,8 +2,8 @@
 //! The VBA project of a compound file: its `dir` stream, its `PROJECT` stream,
 //! then the source of each module (SPEC M1, MS-OVBA).
 
-use super::{Failure, sha256_hex};
-use crate::container::{CfbFile, ContainerError};
+use super::{DEFAULT_MAX_FILE_SIZE, Failure, sha256_hex};
+use crate::container::{CfbFile, MAX_STREAM_SIZE};
 use crate::ovba::{
     DirModule, MAX_PROJECT_STREAM, ProjectInfo, module_source, parse_compressed_dir, parse_project,
 };
@@ -19,9 +19,10 @@ const MAX_MODULE_SOURCE: usize = 8 * 1024 * 1024;
 /// are left. Charging the reads that fail bounds the output that a project
 /// decompresses as well as the memory it keeps: whatever the number of modules
 /// and the streams they name, that output is a small multiple of this limit.
-/// What a stream costs apart from its output is not charged: the copy that
-/// each module makes of it, and the scan of the chunks that give little or no
-/// output.
+/// What a stream costs apart from its output is not charged here: the copy
+/// that each module makes of it, and the scan of the chunks that give little
+/// or no output. [`MAX_PROJECT_READ`] bounds them, as far as they follow the
+/// length of the stream.
 ///
 /// SPEC M1 keeps the peak memory of a file under 256 MB. Reading a project
 /// adds the `vbaProject.bin` of a package and the stream being read (64 MB
@@ -29,6 +30,39 @@ const MAX_MODULE_SOURCE: usize = 8 * 1024 * 1024;
 /// the working set of [`module_source`], seven times its cap: 64 + 64 + 32 +
 /// 7 x 8 = 216 MB. The bytes of the file, which the caller holds, come on top.
 const MAX_PROJECT_SOURCE: usize = 32 * 1024 * 1024;
+
+/// The most bytes that a project may read from its streams in all: the `dir`
+/// and `PROJECT` streams and the stream of each module, each counted at the
+/// length its directory entry gives, every time it is read. The `dir` stream
+/// may name one stream for every module, and a read copies the whole stream
+/// and decodes the part after the text offset, however little that gives:
+/// 2,000 modules (`MAX_MODULES`) that name a stream of 64 MiB
+/// ([`MAX_STREAM_SIZE`]) would copy 2,000 x 64 MiB = 125 GiB. A stream is
+/// counted before it is read, so a read that fails after it copied bytes is
+/// counted too.
+///
+/// The streams of an honest compound file take distinct sectors, and an honest
+/// project names each of its streams once, so it reads at most the bytes of its
+/// compound file: the file itself for an `.xls`, 200 MiB by default
+/// ([`DEFAULT_MAX_FILE_SIZE`]), or the VBA part of a package, 64 MiB at most.
+/// This limit is the larger of the two, so with the default limit of file size
+/// that project is never refused. The project above is stopped after three
+/// reads of the largest stream: 3 x 64 = 192 MiB, and a fourth would make
+/// 256 MiB.
+///
+/// A stream above [`MAX_STREAM_SIZE`] is refused by the container before it
+/// reads a byte: it is not counted, and keeps its status, `too_large`. What the
+/// streams decode to is bounded apart, by [`MAX_PROJECT_SOURCE`].
+///
+/// The length is the file's claim, and what a read costs may not follow it:
+/// `cfb` 0.15.0 walks the whole sector chain of a stream of the mini stream
+/// at least twice per read, and the chain of a stream that claims 100 bytes
+/// can be millions of mini sectors long. That cost is not bounded here.
+const MAX_PROJECT_READ: u64 = DEFAULT_MAX_FILE_SIZE;
+
+// One stream of the longest length that the container reads must fit, or an
+// honest project would be refused.
+const _: () = assert!(MAX_PROJECT_READ >= MAX_STREAM_SIZE);
 
 /// The longest compiled part of a module, in bytes before its `TextOffset`,
 /// that is trivial: a module whose source is empty and whose compiled part is
@@ -61,18 +95,59 @@ impl Project {
     }
 }
 
-/// The storage of a compound file that holds a VBA project.
+/// What the streams of a project may still be read for (see
+/// [`MAX_PROJECT_READ`]).
+struct StreamMeter {
+    /// The bytes that the streams may still take.
+    left: u64,
+}
+
+impl StreamMeter {
+    fn new() -> Self {
+        Self {
+            left: MAX_PROJECT_READ,
+        }
+    }
+
+    /// Takes the `len` bytes of a stream that is about to be read from what is
+    /// left. A stream that is longer than what is left is not taken, and must
+    /// not be read: the failure is suspicious.
+    fn charge(&mut self, len: u64) -> Result<(), Failure> {
+        let left = self.left.checked_sub(len).ok_or_else(|| {
+            Failure::new(
+                Status::SuspiciousArchive,
+                "ovba.project.streams_too_large",
+                format!("the streams of the project add up to more than {MAX_PROJECT_READ} bytes"),
+            )
+        })?;
+        self.left = left;
+        Ok(())
+    }
+}
+
+/// The storage of a compound file that holds a VBA project, and what its
+/// streams may still be read for.
 struct Storage<'a, 'b> {
     compound: &'a mut CfbFile<'b>,
     /// Where it is in the compound file: empty for the root.
     path: &'a str,
+    meter: StreamMeter,
 }
 
 impl Storage<'_, '_> {
     /// The stream at `path` below the storage, if it holds one: `PROJECT`, or
     /// `VBA/dir` for a stream of the `VBA` storage.
-    fn stream(&mut self, path: &str) -> Result<Option<Vec<u8>>, ContainerError> {
-        self.compound.read_stream(&format!("{}/{path}", self.path))
+    ///
+    /// The length that the directory gives the stream is counted before it is
+    /// read, whether the read succeeds or fails: a stream that would take the
+    /// project past [`MAX_PROJECT_READ`] is not read.
+    fn stream(&mut self, path: &str) -> Result<Option<Vec<u8>>, Failure> {
+        let path = format!("{}/{path}", self.path);
+        // The container refuses a stream above its cap before it reads a byte:
+        // that costs nothing, and the failure is its own.
+        let len = (self.compound.stream_len(&path)).filter(|&len| len <= MAX_STREAM_SIZE);
+        self.meter.charge(len.unwrap_or_default())?;
+        Ok(self.compound.read_stream(&path)?)
     }
 }
 
@@ -90,6 +165,7 @@ pub(super) fn read(
     let mut storage = Storage {
         compound,
         path: storage_path,
+        meter: StreamMeter::new(),
     };
     let Some(dir) = storage.stream("VBA/dir")? else {
         return Err(Failure::new(
@@ -139,8 +215,8 @@ fn read_properties(
 ) -> ProjectInfo {
     let stream = match storage.stream("PROJECT") {
         Ok(stream) => stream.unwrap_or_default(),
-        Err(error) => {
-            failures.push(error.into());
+        Err(failure) => {
+            failures.push(failure);
             Vec::new()
         }
     };
@@ -165,8 +241,9 @@ fn oversized(stream: &[u8]) -> Option<Failure> {
 struct Allowance {
     /// The bytes that the modules may still take.
     left: usize,
-    /// A module decompressed past its limit. The `dir` stream may name one
-    /// stream for every module, so the modules after it are not read.
+    /// A module went past a limit: it decompressed past its own, or its
+    /// stream took the project past [`MAX_PROJECT_READ`]. The `dir` stream may
+    /// name one stream for every module, so the modules after it are not read.
     stopped: bool,
 }
 
@@ -192,7 +269,7 @@ impl Allowance {
             return Err(Failure::new(
                 Status::SuspiciousArchive,
                 "ovba.module.not_read",
-                "the module is not read: an earlier one decompressed past its limit",
+                "the module is not read: an earlier one went past a limit",
             ));
         }
         let max_source = (self.left / 3).min(MAX_MODULE_SOURCE);
@@ -427,6 +504,47 @@ mod tests {
             (last.status, last.error.code.as_str()),
             (Status::SuspiciousArchive, "ovba.decompress.too_large")
         );
+    }
+
+    #[test]
+    fn streams_are_taken_from_what_is_left_down_to_the_last_byte() {
+        let mut meter = StreamMeter { left: 100 };
+
+        assert!(meter.charge(40).is_ok());
+        assert_eq!(meter.left, 60);
+        assert!(meter.charge(60).is_ok());
+        assert_eq!(meter.left, 0);
+
+        // An empty stream, or none, costs nothing, whatever is left.
+        assert!(meter.charge(0).is_ok());
+        assert_eq!(meter.left, 0);
+    }
+
+    #[test]
+    fn a_stream_longer_than_what_is_left_is_suspicious_and_is_not_taken() {
+        let mut meter = StreamMeter { left: 100 };
+        assert!(meter.charge(70).is_ok());
+
+        let failure = meter.charge(31).expect_err("a failure");
+
+        let found = (failure.status, failure.error.code.as_str());
+        let expected = (Status::SuspiciousArchive, "ovba.project.streams_too_large");
+        assert_eq!(found, expected);
+        // That stream is not read, so a shorter one may still be.
+        assert_eq!(meter.left, 30);
+        assert!(meter.charge(30).is_ok());
+    }
+
+    #[test]
+    fn modules_that_name_the_largest_stream_are_stopped_after_three_reads() {
+        let mut meter = StreamMeter::new();
+
+        let reads = (0..MAX_MODULES)
+            .take_while(|_| meter.charge(MAX_STREAM_SIZE).is_ok())
+            .count();
+
+        // 3 x 64 MiB are under the 200 MiB of the limit, and 4 x 64 MiB are not.
+        assert_eq!(reads, 3);
     }
 
     #[test]

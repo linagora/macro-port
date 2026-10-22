@@ -1,0 +1,52 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/11-donnees-externes/11-04-classe-sql-server-adodb.cls
+---
+families/11-donnees-externes/11-04-classe-sql-server-adodb.cls
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
+module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let ServerName default lines 46-48: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get DatabaseName default lines 50-52: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let DatabaseName default lines 54-56: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get UserName default lines 58-60: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let UserName default lines 62-64: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get Password default lines 66-68: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let Password default lines 70-72: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get DSN default lines 74-87: loc=14 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get isReady default lines 95-124: loc=30 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function StringFormat private lines 146-159: loc=14 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function SQL_CopyToSheet public lines 187-237: loc=51 logical_loc=30 cyclomatic=5 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddQueryTable public lines 286-383: loc=98 logical_loc=55 cyclomatic=6 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RunSQLAndExportNewWorkbook public lines 422-531: loc=110 logical_loc=72 cyclomatic=8 max_nesting=2 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 27
+  declaration Option(Compare) line 28
+  declaration Option(Base) line 29
+  declaration Variable line 31
+  declaration Variable line 32
+  declaration Const line 34
+  declaration Variable line 37
+  declaration Variable line 38
+  declaration Variable line 39
+  declaration Variable line 40
+  procedure property_get ServerName default static=false parameters=0 lines 42-44 recoveries=none unbalanced_blocks=false
+  procedure property_let ServerName default static=false parameters=1 lines 46-48 recoveries=none unbalanced_blocks=false
+  procedure property_get DatabaseName default static=false parameters=0 lines 50-52 recoveries=none unbalanced_blocks=false
+  procedure property_let DatabaseName default static=false parameters=1 lines 54-56 recoveries=none unbalanced_blocks=false
+  procedure property_get UserName default static=false parameters=0 lines 58-60 recoveries=none unbalanced_blocks=false
+  procedure property_let UserName default static=false parameters=1 lines 62-64 recoveries=none unbalanced_blocks=false
+  procedure property_get Password default static=false parameters=0 lines 66-68 recoveries=none unbalanced_blocks=false
+  procedure property_let Password default static=false parameters=1 lines 70-72 recoveries=none unbalanced_blocks=false
+  procedure property_get DSN default static=false parameters=0 lines 74-87 recoveries=none unbalanced_blocks=false
+  procedure property_get isReady default static=false parameters=1 lines 95-124 recoveries=none unbalanced_blocks=false
+  procedure function StringFormat private static=false parameters=2 lines 146-159 recoveries=none unbalanced_blocks=false
+  procedure function SQL_CopyToSheet public static=false parameters=2 lines 187-237 recoveries=none unbalanced_blocks=false
+  procedure sub AddQueryTable public static=false parameters=5 lines 286-383 recoveries=none unbalanced_blocks=false
+  procedure sub RunSQLAndExportNewWorkbook public static=false parameters=3 lines 422-531 recoveries=none unbalanced_blocks=false
+  recoveries: none

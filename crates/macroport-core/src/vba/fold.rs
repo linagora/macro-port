@@ -7,9 +7,10 @@
 //! one; or known values joined with `&` or `+`. Everything else is unknown,
 //! and nothing is guessed about it: arithmetic, `Mid`, `Replace`, `vbCrLf`, a
 //! variable, a number joined to a string, and `ChrB`, which makes a one-byte
-//! string that only another byte completes into a character. Folding never
-//! runs anything and reads no state but the text of the statement and the
-//! constants of the module.
+//! string that only another byte completes into a character (the reader
+//! counts its calls all the same, as it counts those of `Chr` and `ChrW`).
+//! Folding never runs anything and reads no state but the text of the
+//! statement and the constants of the module.
 //!
 //! The expression reader ([`super::expr`]) walks the expressions; this module
 //! holds what it folds with.
@@ -36,13 +37,18 @@ const UTF16_MAX: u32 = 65_535;
 /// times its own text: enough for a short statement to join a few constants.
 const BUDGET_FLOOR: usize = 1024;
 
-/// The functions of the closed set that make or change a string.
+/// The functions that the reader knows by name: those of the closed set that
+/// make or change a string, and `ChrB`, which is outside the set and folds
+/// nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Folding {
     /// `Chr`: the character of an ASCII code.
     Chr,
     /// `ChrW`: the character of a UTF-16 code unit.
     ChrW,
+    /// `ChrB`: a byte. The string it makes is half a character when the
+    /// next byte is not there, so it is known by name and never folded.
+    ChrB,
     /// `StrReverse`
     StrReverse,
     /// `LCase`
@@ -58,6 +64,7 @@ impl Folding {
         [
             ("chr", Self::Chr),
             ("chrw", Self::ChrW),
+            ("chrb", Self::ChrB),
             ("strreverse", Self::StrReverse),
             ("lcase", Self::LCase),
             ("ucase", Self::UCase),
@@ -67,9 +74,16 @@ impl Folding {
         .map(|(_, found)| found)
     }
 
+    /// Whether the function makes a character out of a number: the three that
+    /// obfuscated code builds a string with, one code at a time.
+    pub(super) fn makes_character(self) -> bool {
+        matches!(self, Self::Chr | Self::ChrW | Self::ChrB)
+    }
+
     /// What the function makes of `argument`, if it is one it folds: a whole
-    /// number for `Chr` and `ChrW`, a string for the others. A string it makes
-    /// out of another is paid for out of `budget`, by the length of the other.
+    /// number for `Chr` and `ChrW`, a string for the others but `ChrB`, which
+    /// folds nothing. A string it makes out of another is paid for out of
+    /// `budget`, by the length of the other.
     pub(super) fn apply(self, argument: &Value, budget: &mut Budget) -> Option<String> {
         match (self, argument) {
             (Self::Chr, Value::Number(code)) => character(*code, ASCII_MAX).map(String::from),
@@ -83,6 +97,7 @@ impl Folding {
             (Self::UCase, Value::Text(text)) => budget
                 .take(text.len())
                 .then(|| map_case(text, char::to_uppercase)),
+            // `ChrB`, and a function given an argument that is not its kind.
             _ => None,
         }
     }
@@ -107,14 +122,31 @@ pub(super) enum Value {
 /// literal of megabytes stays unresolved after a few levels instead of
 /// copying it at each one, and so does a constant that a statement of a few
 /// bytes repeats into megabytes, or that other constants double along a chain
-/// of declarations.
-#[derive(Debug, Clone, Copy)]
+/// of declarations. The same measure, summed over the statements a reader has
+/// read, bounds what they copy of the object of a `With` block, with a cap on
+/// what one statement leaves to the next.
+#[derive(Debug, Default, Clone, Copy)]
 pub(super) struct Budget(usize);
 
 impl Budget {
     /// The budget of a statement whose text is `text`.
     pub(super) fn for_text(text: &str) -> Self {
-        Self(text.len().saturating_mul(4).saturating_add(BUDGET_FLOOR))
+        let mut budget = Self::default();
+        budget.earn(BUDGET_FLOOR, text);
+        budget
+    }
+
+    /// Adds `floor` and four times the length of `text`.
+    pub(super) fn earn(&mut self, floor: usize, text: &str) {
+        self.0 = self
+            .0
+            .saturating_add(floor)
+            .saturating_add(text.len().saturating_mul(4));
+    }
+
+    /// Drops what is left beyond `limit`.
+    pub(super) fn keep_at_most(&mut self, limit: usize) {
+        self.0 = self.0.min(limit);
     }
 
     /// Takes `bytes` out of the budget. False, and nothing taken, when fewer
@@ -311,11 +343,29 @@ mod tests {
     fn a_function_of_the_set_is_found_by_name_in_any_letter_case() {
         assert_eq!(Folding::named("CHRW"), Some(Folding::ChrW));
         assert_eq!(Folding::named("strreverse"), Some(Folding::StrReverse));
-        // `ChrB` is not in the set, and the reader strips the `$` before it
-        // asks.
-        for name in ["ChrB", "Chr$", "Asc", "Chrx", ""] {
+        assert_eq!(Folding::named("cHRb"), Some(Folding::ChrB));
+        // The reader strips the `$` before it asks.
+        for name in ["Chr$", "Asc", "Chrx", ""] {
             assert_eq!(Folding::named(name), None, "{name}");
         }
+    }
+
+    #[test]
+    fn three_functions_make_a_character_and_chrb_folds_nothing() {
+        let made: Vec<_> = ["Chr", "ChrW", "ChrB", "StrReverse", "LCase", "UCase"]
+            .into_iter()
+            .filter_map(Folding::named)
+            .map(Folding::makes_character)
+            .collect();
+        assert_eq!(made, [true, true, true, false, false, false]);
+        let mut budget = Budget::for_text("");
+        for argument in [Value::Number(65), Value::Text("A".into()), Value::Unknown] {
+            assert_eq!(Folding::ChrB.apply(&argument, &mut budget), None);
+        }
+        assert_eq!(
+            Folding::Chr.apply(&Value::Number(65), &mut budget),
+            Some("A".into())
+        );
     }
 
     #[test]
@@ -325,6 +375,11 @@ mod tests {
         assert!(!budget.take(1));
         assert!(Budget::for_text("ab").take(BUDGET_FLOOR + 8));
         assert!(!Budget::for_text("ab").take(BUDGET_FLOOR + 9));
+        // It earns on top of what is left (a floor and four times the text),
+        // and the limit drops what lies beyond it.
+        budget.earn(10, "abc");
+        budget.keep_at_most(5);
+        assert!(budget.take(5) && !budget.take(1));
     }
 
     #[test]

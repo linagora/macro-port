@@ -1,0 +1,23 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/03-nettoyage-transformation/03-06-rtv-report-cleanup-and-compare.bas
+---
+families/03-nettoyage-transformation/03-06-rtv-report-cleanup-and-compare.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
+module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub EditRTVfile default lines 10-104: loc=95 logical_loc=56 cyclomatic=9 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EditTable private lines 105-205: loc=101 logical_loc=75 cyclomatic=6 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub editPrintProperties private lines 207-237: loc=31 logical_loc=26 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RTV_ComparingTwoLists default lines 238-371: loc=134 logical_loc=102 cyclomatic=22 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub EditRTVfile default static=false parameters=0 lines 10-104 recoveries=none unbalanced_blocks=false
+  procedure sub EditTable private static=false parameters=0 lines 105-205 recoveries=none unbalanced_blocks=false
+  procedure sub editPrintProperties private static=false parameters=1 lines 207-237 recoveries=none unbalanced_blocks=false
+  procedure sub RTV_ComparingTwoLists default static=false parameters=0 lines 238-371 recoveries=none unbalanced_blocks=false
+  recoveries: none

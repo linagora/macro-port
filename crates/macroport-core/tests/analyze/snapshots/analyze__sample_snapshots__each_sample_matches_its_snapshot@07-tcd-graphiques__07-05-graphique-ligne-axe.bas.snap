@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/07-tcd-graphiques/07-05-graphique-ligne-axe.bas
+---
+families/07-tcd-graphiques/07-05-graphique-ligne-axe.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=28 logical_loc=14 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
+module 07-05-graphique-ligne-axe (standard): loc=28 logical_loc=14 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Chart default lines 7-28: loc=22 logical_loc=14 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub Chart default static=false parameters=0 lines 7-28 recoveries=none unbalanced_blocks=false
+  recoveries: none

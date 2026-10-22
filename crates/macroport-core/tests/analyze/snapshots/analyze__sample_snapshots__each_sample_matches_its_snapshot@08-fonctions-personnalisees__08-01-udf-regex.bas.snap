@@ -1,0 +1,38 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/08-fonctions-personnalisees/08-01-udf-regex.bas
+---
+families/08-fonctions-personnalisees/08-01-udf-regex.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
+module 08-01-udf-regex (standard): loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  function RegexReplace default lines 9-25: loc=17 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexContains default lines 28-40: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexFullMatch default lines 43-55: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexMatch default lines 58-70: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexMatchEnd default lines 73-85: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexMatches default lines 88-102: loc=15 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexFindAll default lines 105-125: loc=21 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexFindObject default lines 128-144: loc=17 logical_loc=11 cyclomatic=3 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexFind default lines 147-167: loc=21 logical_loc=15 cyclomatic=3 max_nesting=2 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexSplit default lines 170-219: loc=50 logical_loc=36 cyclomatic=7 max_nesting=3 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexSplitToString default lines 222-235: loc=14 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegexEscape default lines 238-242: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure function RegexReplace default static=false parameters=6 lines 9-25 recoveries=none unbalanced_blocks=false
+  procedure function RegexContains default static=false parameters=4 lines 28-40 recoveries=none unbalanced_blocks=false
+  procedure function RegexFullMatch default static=false parameters=4 lines 43-55 recoveries=none unbalanced_blocks=false
+  procedure function RegexMatch default static=false parameters=4 lines 58-70 recoveries=none unbalanced_blocks=false
+  procedure function RegexMatchEnd default static=false parameters=4 lines 73-85 recoveries=none unbalanced_blocks=false
+  procedure function RegexMatches default static=false parameters=5 lines 88-102 recoveries=none unbalanced_blocks=false
+  procedure function RegexFindAll default static=false parameters=6 lines 105-125 recoveries=none unbalanced_blocks=false
+  procedure function RegexFindObject default static=false parameters=5 lines 128-144 recoveries=none unbalanced_blocks=false
+  procedure function RegexFind default static=false parameters=6 lines 147-167 recoveries=none unbalanced_blocks=false
+  procedure function RegexSplit default static=false parameters=5 lines 170-219 recoveries=none unbalanced_blocks=false
+  procedure function RegexSplitToString default static=false parameters=6 lines 222-235 recoveries=none unbalanced_blocks=false
+  procedure function RegexEscape default static=false parameters=1 lines 238-242 recoveries=none unbalanced_blocks=false
+  recoveries: none

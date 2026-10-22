@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `CfbFile::open` on arbitrary bytes, then `read_stream` on the streams the
-//! analysis reads: the VBA project of a workbook (`.xls`) and that of an OOXML
-//! package (`vbaProject.bin`), the BIFF workbook, which is large enough to
-//! leave the mini stream, and the streams of an encrypted OOXML package.
+//! `CfbFile::open` on arbitrary bytes, then `stream_len` and `read_stream` on
+//! the streams the analysis reads: the VBA project of a workbook (`.xls`) and
+//! that of an OOXML package (`vbaProject.bin`), the BIFF workbook, which is
+//! large enough to leave the mini stream, and the streams of an encrypted OOXML
+//! package.
 
 #![no_main]
 
@@ -29,9 +30,14 @@ fuzz_target!(|data: &[u8]| {
         }
     };
     for path in STREAMS {
+        // The directory gives a length exactly where there is a stream.
+        let len = file.stream_len(path);
+        assert_eq!(len.is_some(), file.has_stream(path), "{path}");
         match file.read_stream(path) {
             Ok(Some(bytes)) => {
                 assert!(file.has_stream(path), "{path}");
+                // A read gives as many bytes as the directory says.
+                assert_eq!(len, Some(bytes.len() as u64), "{path}");
                 // The container does not change under a read.
                 assert_eq!(file.read_stream(path).ok().flatten(), Some(bytes), "{path}");
             }
