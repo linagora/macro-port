@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/01-mise-en-forme/01-03-percent-format-toggle.bas
+---
+families/01-mise-en-forme/01-03-percent-format-toggle.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=57 logical_loc=30 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=2 forms=0 declare_count=0
+module 01-03-percent-format-toggle (standard): loc=57 logical_loc=30 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub PercentToggle default lines 7-57: loc=51 logical_loc=30 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub PercentToggle default static=false parameters=0 lines 7-57 recoveries=none unbalanced_blocks=false
+  recoveries: none
