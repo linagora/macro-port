@@ -62,6 +62,12 @@ pub struct ModuleInput {
     pub declarations: Vec<CodeLine>,
     /// The procedures, in source order.
     pub procedures: Vec<ProcedureInput>,
+    /// `parse_recovered` holds for the module as a whole: the parser stepped
+    /// over something in it, in a procedure or outside any, as it does for a
+    /// stray `End Sub` that no procedure holds (`ParsedModule::is_recovered`).
+    /// Read by `parse_recovered` over a module or a project. Over one
+    /// procedure, only its own `ParserPredicates` count.
+    pub parse_recovered: bool,
 }
 
 /// A set of names that finds a name as the matchers compare names: whatever
