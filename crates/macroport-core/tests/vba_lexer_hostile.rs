@@ -17,9 +17,9 @@ use vba_lexer_common::tiling_problem;
 /// The length of the hostile texts, in bytes.
 const SIZE: usize = 1 << 18;
 
-/// Cuts the text that `make` gives for `size` bytes, and the one it gives for a
-/// quarter of `size`, and fails if cutting the first takes much more than four
-/// times as long as cutting the second. Checks that the tokens of the first
+/// Cuts the text that `make` gives for a quarter of `size` bytes, then the one
+/// it gives for `size`, and fails if the time grows faster than the length
+/// (`macroport_testkit::linear`). Checks that the tokens of the larger text
 /// tile it.
 fn assert_cut_in_linear_time(what: &str, size: usize, make: impl Fn(usize) -> String) {
     let tokens = assert_linear_time(what, size, &make, |text| tokenize(text));

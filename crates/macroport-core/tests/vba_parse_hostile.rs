@@ -18,17 +18,18 @@ use macroport_testkit::linear::assert_linear_time;
 /// The lines of the hostile modules: far more than a real module has.
 const LINES: usize = 50_000;
 
-/// Reads the module that `text` gives for `size`, and the one it gives for a
-/// quarter of `size`, and fails if reading the first takes much more than four
-/// times as long as reading the second. Gives the first module. The unit of
-/// `size` is the one that `text` takes: lines, or tokens.
+/// Reads the module that `text` gives for a quarter of `size`, then the one it
+/// gives for `size`, and fails if the time grows faster than the size
+/// (`macroport_testkit::linear`). Gives the larger module. The unit of `size`
+/// is the one that `text` takes: lines, or tokens. Splitting a text into lines
+/// is not part of the time.
 fn parse_in_linear_time(what: &str, size: usize, text: impl Fn(usize) -> String) -> ParsedModule {
-    let lines = |size| split_lines(&text(size)).expect("a text within the line limit");
+    let lines = |units| split_lines(&text(units)).expect("a text within the line limit");
     assert_linear_time(what, size, lines, parse)
 }
 
-/// `piece` repeated until it makes `tokens` tokens, and one piece more: past the
-/// most that a line can hold, when `tokens` is that.
+/// `piece` repeated until the text holds more than `tokens` tokens, by up to
+/// one piece: for `MAX_TOKENS`, a line just past the most that the lexer keeps.
 fn repeated(piece: &str, tokens: usize) -> String {
     let in_a_piece = tokenize(piece).len();
     let pieces = tokens.checked_div(in_a_piece).unwrap_or(tokens);

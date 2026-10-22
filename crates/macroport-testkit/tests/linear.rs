@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The check of linear time, on work that sleeps: it takes the time that it is
-//! told to, so the speed of the machine does not matter, and the margins are
-//! wide enough for a busy one.
+//! told to, so the speed of the machine does not matter. A busy machine can
+//! only wake a sleeper late, and each test says how late it can be before the
+//! verdict changes.
 
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -17,7 +18,8 @@ fn ms(n: usize) -> Duration {
 
 #[test]
 fn work_that_takes_four_times_as_long_on_four_times_the_input_passes() {
-    // 50 ms for the quarter, 200 ms for the whole.
+    // 50 ms for the quarter, 200 ms for the whole. The verdict changes only if
+    // the whole is measured at 400 ms or more, 200 ms late, in all 3 attempts.
     let made = assert_linear_time(
         "linear sleeps",
         200,
@@ -33,12 +35,14 @@ fn work_that_takes_four_times_as_long_on_four_times_the_input_passes() {
 
 #[test]
 fn work_that_takes_sixteen_times_as_long_on_four_times_the_input_fails_every_attempt() {
-    // 20 ms for the quarter, 320 ms for the whole: the square of the growth.
+    // 50 ms for the quarter, 800 ms for the whole: the square of the growth.
+    // One attempt that measures the quarter at over 100 ms, 50 ms late, passes
+    // the work and ends the check, so the test fails.
     let calls = Cell::new(0);
     let quadratic = |&n: &usize| {
         calls.set(calls.get() + 1);
         sleep(Duration::from_micros(
-            1250 * u64::try_from(n * n).expect("a small number"),
+            3125 * u64::try_from(n * n).expect("a small number"),
         ));
     };
     let caught = catch_unwind(AssertUnwindSafe(|| {
@@ -61,17 +65,18 @@ fn work_that_takes_sixteen_times_as_long_on_four_times_the_input_fails_every_att
 
 #[test]
 fn an_attempt_that_meets_a_busy_machine_is_made_again() {
-    // The second call is the first run on the large input: it takes 400 ms for
-    // the 100 that it needs, against the 25 of the small one. The next attempt
-    // is quiet.
+    // The second call is the first run on the large input: it takes 800 ms for
+    // the 200 that it needs, against the 50 of the small one. The next attempt
+    // is quiet. A small run measured at over 100 ms, 50 ms late, would pass the
+    // first attempt, and the test would fail on the count of calls.
     let calls = Cell::new(0);
     let work = |&n: &usize| {
         calls.set(calls.get() + 1);
-        sleep(ms(if calls.get() == 2 { 400 } else { n }));
+        sleep(ms(if calls.get() == 2 { 800 } else { n }));
         n
     };
-    let made = assert_linear_time("busy once", 100, |n| n, work);
-    assert_eq!(made, 100);
+    let made = assert_linear_time("busy once", 200, |n| n, work);
+    assert_eq!(made, 200);
     assert_eq!(calls.get(), 4);
 }
 

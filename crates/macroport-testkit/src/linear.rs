@@ -5,49 +5,55 @@
 //! machine does not change is how the time grows: an input four times as large
 //! takes about four times as long when the work is linear, and about sixteen
 //! times as long when it is quadratic. [`assert_linear_time`] times the same
-//! work on an input and on one four times as large, and fails when the larger
-//! takes [`MAX_RATIO`] times as long as the smaller, or more.
+//! work on an input and on one four times as large, and fails when, in each of
+//! [`ATTEMPTS`] attempts, the larger takes [`MAX_RATIO`] times as long as the
+//! smaller, or more.
 //!
-//! The core's tests read the clock through this module and not themselves: its
-//! `clippy.toml` keeps the clock out of the core, and out of its tests too.
+//! A test of the core that checks a time goes through this module and not
+//! through the clock: the `clippy.toml` of the core keeps the clock out of the
+//! core, and out of its tests too.
 
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-/// How many times more work the large input of a check makes than the small
+/// How many times as much work the large input of a check makes as the small
 /// one.
 pub const GROWTH: usize = 4;
 
 /// The ratio of the times from which the work is no longer called linear.
-/// Linear work gives about [`GROWTH`], with the cost of memory on top, and
-/// quadratic work its square, 16: 8 stands between them, with room on both
-/// sides for the noise of a machine.
+/// Linear work gives about [`GROWTH`], a little more when the larger input
+/// outgrows the caches, and quadratic work its square, 16: 8 stands between
+/// them, with room on both sides for the noise of a machine.
 pub const MAX_RATIO: u32 = 8;
 
-/// How many times the two runs are made, at most. Noise only ever makes a run
-/// longer, and for as long as the load lasts: one attempt in which the work
-/// shows linear time is enough, and the work is called more than linear when
-/// none does.
+/// The most times that the two runs are made. A rise of the load between them
+/// makes the work look worse than it is, and a busy spell lasts a while: an
+/// attempt that fails is made again, and the first that shows linear time ends
+/// the check. A fall of the load makes the work look better, and this rule
+/// gives that more than one chance: quadratic work gives twice [`MAX_RATIO`],
+/// so it passes only when the load swings by a factor of 2 between the two runs
+/// of an attempt.
 pub const ATTEMPTS: usize = 3;
 
-/// A run shorter than this counts for this long. Below it the clock and the
-/// scheduler decide the ratio and not the work, so a large run that takes less
-/// than [`MAX_RATIO`] times this passes whatever the small one took. Work that
-/// grows faster than linear and still ends that soon on the larger input is
-/// not worth a failure.
+/// What the small run counts for at least. Below it the clock and the scheduler
+/// decide the ratio and not the work: a large run under [`MAX_RATIO`] times
+/// this passes whatever the small one took, and work that grows faster than
+/// linear but ends that soon on the large input is not worth a failure.
 pub const FLOOR: Duration = Duration::from_millis(20);
 
-/// Whether two runs of the same work show linear time: `large`, the time on
-/// the input that makes [`GROWTH`] times the work of the one of `small`, is
-/// under [`MAX_RATIO`] times `small`, which counts for [`FLOOR`] at least.
+/// Whether two runs of the same work show linear time: the large run, on the
+/// input that makes [`GROWTH`] times as much work as the input of the small
+/// run, took less than [`MAX_RATIO`] times as long as the small run, which
+/// counts for [`FLOOR`] at least.
 pub fn is_linear(small: Duration, large: Duration) -> bool {
     large < small.max(FLOOR).saturating_mul(MAX_RATIO)
 }
 
-/// Runs `work` on the input that `make` gives for `size`, and on the one it
-/// gives for `size / GROWTH`, and starts again, up to [`ATTEMPTS`] times, until
-/// the two times show linear time (see [`is_linear`]). Gives what `work` made
-/// of the large input in that attempt, for the test to check.
+/// Runs `work` on the input that `make` gives for `size / GROWTH`, then on the
+/// one it gives for `size`, and does both again until the two times show
+/// linear time (see [`is_linear`]), in [`ATTEMPTS`] attempts at most: `work` is
+/// called up to twice that many times. Gives what `work` made of the large
+/// input in the attempt that passed, for the test to check.
 ///
 /// `make(n)` builds an input that makes `work` do about `n` units of work,
 /// whatever a unit is: lines, bytes, tokens. Both inputs are built before the
