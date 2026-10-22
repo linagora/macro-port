@@ -10,9 +10,9 @@ traits: none
 file: loc=100 logical_loc=44 procedures=2 cyclomatic=4 cyclomatic_total=8 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 04-04-compare-hr-snapshots (standard): loc=100 logical_loc=44 procedures=2 cyclomatic=4 cyclomatic_total=8 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub RunCompare default lines 7-29: loc=23 logical_loc=12 cyclomatic=4 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=compareSheets apis=1
+  sub RunCompare default lines 7-29: loc=23 logical_loc=12 cyclomatic=4 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=compareSheets apis=1
     api InputBox*3
-  sub compareSheets default lines 31-100: loc=70 logical_loc=32 cyclomatic=4 max_nesting=3 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
+  sub compareSheets default lines 31-100: loc=70 logical_loc=32 cyclomatic=4 max_nesting=3 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=13
     api ActiveWorkbook.Sheets.Cells*2
     api ActiveWorkbook.Sheets.Cells.Value*1
     api ActiveWorkbook.Sheets.Select*1

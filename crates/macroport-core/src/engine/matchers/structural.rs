@@ -5,6 +5,9 @@
 //! `long_hex_or_base64_literal` itself, from names, module types and string
 //! literals. The five others need the parse structure: the parser decides them
 //! (`ParserPredicates`) and the engine turns what it decided into hits.
+//! `parse_recovered` is also decided for a module as a whole
+//! (`ModuleInput::parse_recovered`), since the parser may recover outside any
+//! procedure.
 //!
 //! A list of predicates matches where any of them holds. An item that several
 //! of them hold for, be it a procedure, a statement or a literal, gives one
@@ -12,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{per_item, per_procedure, statement_hit};
+use super::{hit_at, per_item, per_procedure, statement_hit};
 use crate::engine::hit::Hit;
 use crate::engine::input::{ModuleInput, NameSet, ProcedureInput};
 use crate::engine::names::{fold_case, is_one_of, same_name, without_type_char};
@@ -54,12 +57,15 @@ const LONG_LITERAL_CHARS: usize = 200;
 /// of the list holds. A predicate about a procedure gives a hit at its
 /// declaration, one about statements a hit at each statement that the parser
 /// cites, and `long_hex_or_base64_literal` a hit for each literal it finds.
+/// `parse_recovered` gives a hit for each module that the parser recovered in as
+/// well.
 pub(in crate::engine) fn structural<'p>(
     units: &[Unit<'p>],
     predicates: &[StructuralPredicate],
     hits: &mut Vec<Hit<'p>>,
 ) {
     procedures(units, predicates, hits);
+    recovered_modules(units, predicates, hits);
     statements(units, predicates, hits);
     if predicates.contains(&StructuralPredicate::LongHexOrBase64Literal) {
         let fits = |literal: &String| is_long_encoded(literal);
@@ -76,6 +82,26 @@ fn procedures<'p>(units: &[Unit<'p>], predicates: &[StructuralPredicate], hits: 
             .any(|&predicate| holds(predicate, owner, procedure))
     };
     per_procedure(units, fits, hits);
+}
+
+/// A hit for each module that the parser recovered in, when `parse_recovered`
+/// is in the list. The recovery may be outside any procedure, as a stray
+/// `End Sub` is, so the module carries it and its hit is that of `module_type`:
+/// the first line, quoting the module name. The declarations of a module stand
+/// for it, so the unit of a procedure alone has no such hit.
+fn recovered_modules<'p>(
+    units: &[Unit<'p>],
+    predicates: &[StructuralPredicate],
+    hits: &mut Vec<Hit<'p>>,
+) {
+    if !predicates.contains(&StructuralPredicate::ParseRecovered) {
+        return;
+    }
+    for unit in units {
+        if unit.procedure.is_none() && unit.owner.parse_recovered {
+            hits.push(hit_at(unit.module, 1, &unit.owner.name));
+        }
+    }
 }
 
 /// Whether `predicate` holds for the whole of `procedure`, which is in the

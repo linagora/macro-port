@@ -10,51 +10,51 @@ traits: none
 file: loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 08-01-udf-regex (standard): loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  function RegexReplace default lines 9-25: loc=17 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  function RegexReplace default lines 9-25: loc=17 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=6 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=5
     api regex.Global*1
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
     api regex.Replace*1
-  function RegexContains default lines 28-40: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function RegexContains default lines 28-40: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=4
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
     api regex.Test*1
-  function RegexFullMatch default lines 43-55: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function RegexFullMatch default lines 43-55: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=4
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
     api regex.Test*1
-  function RegexMatch default lines 58-70: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function RegexMatch default lines 58-70: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=4
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
     api regex.Test*1
-  function RegexMatchEnd default lines 73-85: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function RegexMatchEnd default lines 73-85: loc=13 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=4
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
     api regex.Test*1
-  function RegexMatches default lines 88-102: loc=15 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  function RegexMatches default lines 88-102: loc=15 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=5
     api regex.Execute*1
     api regex.Global*1
     api regex.IgnoreCase*1
     api regex.multiline*1
     api regex.Pattern*1
-  function RegexFindAll default lines 105-125: loc=21 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexMatches apis=3
+  function RegexFindAll default lines 105-125: loc=21 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=6 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexMatches apis=3
     api Join*1
     api matches.Count*1
     api matches.Item*1
-  function RegexFindObject default lines 128-144: loc=17 logical_loc=11 cyclomatic=3 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexMatches apis=2
+  function RegexFindObject default lines 128-144: loc=17 logical_loc=11 cyclomatic=3 max_nesting=1 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexMatches apis=2
     api matches.Count*2
     api matches.Item*1
-  function RegexFind default lines 147-167: loc=21 logical_loc=15 cyclomatic=3 max_nesting=2 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexFindObject apis=4
+  function RegexFind default lines 147-167: loc=21 logical_loc=15 cyclomatic=3 max_nesting=2 parameters=6 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexFindObject apis=4
     api Join*1
     api match.SubMatches.Count*1
     api match.SubMatches.Item*1
     api match.Value*1
-  function RegexSplit default lines 170-219: loc=50 logical_loc=36 cyclomatic=7 max_nesting=3 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexMatches apis=7
+  function RegexSplit default lines 170-219: loc=50 logical_loc=36 cyclomatic=7 max_nesting=3 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexMatches apis=7
     api Len*1
     api match.FirstIndex*1
     api match.Length*1
@@ -62,9 +62,9 @@ module 08-01-udf-regex (standard): loc=242 logical_loc=146 procedures=12 cycloma
     api matches.Count*2
     api matches.Item.SubMatches.Count*1
     api Mid*2
-  function RegexSplitToString default lines 222-235: loc=14 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexSplit apis=1
+  function RegexSplitToString default lines 222-235: loc=14 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=6 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexSplit apis=1
     api Join*1
-  function RegexEscape default lines 238-242: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RegexReplace apis=0
+  function RegexEscape default lines 238-242: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=RegexReplace apis=0
 parse:
   procedure function RegexReplace default static=false parameters=6 lines 9-25 recoveries=none unbalanced_blocks=false
   procedure function RegexContains default static=false parameters=4 lines 28-40 recoveries=none unbalanced_blocks=false

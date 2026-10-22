@@ -22,7 +22,7 @@ use crate::rules::ModuleType;
 
 pub use aggregate::{file_metrics, module_metrics};
 pub use callgraph::{CallGraph, ModuleId, ProcedureLinks};
-pub(crate) use dependencies::is_external_progid;
+pub(crate) use dependencies::{count_progids, is_external_progid};
 pub use expr::MAX_NESTING;
 pub(crate) use expr::PROGID_FUNCTIONS;
 pub use facts::{CallSite, Facts, MAX_WITH_BLOCKS, MemberUse, StatementReader};
