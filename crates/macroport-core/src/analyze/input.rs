@@ -57,7 +57,8 @@ use crate::vba::{
 /// of it, more than a file may hold (`MAX_FILE_LINES`); a line of 88
 /// characters and thirteen names takes 1.5 KB and fills the room with 45,000.
 /// The worst input measured peaks at 177 MB (release, Linux/glibc): a module of
-/// 250,000 one-character lines, which the room refuses once it is full.
+/// 250,000 one-character lines, which the room refuses once it is full. The
+/// measures and the alternatives are in ADR-0009.
 const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
 
 /// What an allocation costs beyond the bytes it holds: its header, and the

@@ -69,7 +69,7 @@ const UNCLASSIFIED: &str = "unclassified";
 /// line may hold any number of names: the engine's input has a room of its own
 /// ([`Room`]). A budget of a million lines took 481 MB, measured on modules of
 /// one-character lines, in a release build on macOS, where the limit is 256 MB
-/// (ACCEPTANCE A2).
+/// (ACCEPTANCE A2). The measures and the alternatives are in ADR-0009.
 const MAX_FILE_LINES: u32 = 100_000;
 
 /// The most procedures that the modules of one file may report in all. A
