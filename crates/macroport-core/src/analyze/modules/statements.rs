@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The statements of a module, read once for what they show of the file (SPEC
-//! M2 items 3 and 4).
+//! The statements of a module, read once for what they show of the file and of
+//! the module (SPEC M2 items 3, 4 and 6).
 //!
 //! The parser and the metrics read the lines of a module for their structure.
 //! The facts of a statement ([`Facts`]) are what the other stages read: the
@@ -16,6 +16,10 @@
 //! its object to no statement of another. The constants of the module are
 //! declared before any run is read, since a procedure may use one that the
 //! module declares below it.
+//!
+//! [`Statements::read`] is the walk that `analyze` makes. It hands the ProgIDs
+//! to the set of the file and keeps what the statements show of the module: the
+//! ones that nest expressions too deep to be read in full.
 
 use std::collections::BTreeSet;
 use std::ops::Range;
@@ -39,10 +43,12 @@ pub(super) enum Place {
 
 /// Calls `visit` for every logical line of the module `analysis` holds, in
 /// source order, with where it lies, its position among the logical lines of the
-/// module, the line itself and the facts of its statement.
+/// module, the line itself and the facts of its statement. The facts are
+/// `visit`'s own: it keeps what it needs of them, and they are dropped with the
+/// call.
 pub(super) fn each_statement(
     analysis: &Analysis,
-    mut visit: impl FnMut(Place, usize, &LogicalLine, &Facts),
+    mut visit: impl FnMut(Place, usize, &LogicalLine, Facts),
 ) {
     let logical = &analysis.lines.logical;
     let runs = runs(logical.len(), &analysis.module.procedures);
@@ -56,7 +62,7 @@ pub(super) fn each_statement(
         let mut reader = StatementReader::new(&consts);
         for (position, line) in (range.start..).zip(slice(logical, &range)) {
             let facts = reader.read(line);
-            visit(place, position, line, &facts);
+            visit(place, position, line, facts);
         }
     }
 }
@@ -99,16 +105,6 @@ fn slice<'a>(lines: &'a [LogicalLine], range: &Range<usize>) -> &'a [LogicalLine
 pub(super) struct ExternalProgids(BTreeSet<String>);
 
 impl ExternalProgids {
-    /// Adds the classes that the statements of `analysis` pass to
-    /// `CreateObject` and `GetObject`.
-    pub(super) fn read(&mut self, analysis: &Analysis) {
-        each_statement(analysis, |_, _, _, facts| {
-            for progid in &facts.progids {
-                self.add(progid);
-            }
-        });
-    }
-
     /// Adds `progid`, a class that a statement passes to `CreateObject` or
     /// `GetObject`, if it counts as an external dependency and the set has room
     /// for it: it is full at [`MAX_PROGIDS`], whereupon a new class is not
@@ -125,10 +121,72 @@ impl ExternalProgids {
     }
 }
 
+/// What the statements of one module show of the module itself. What they show
+/// of the file, its ProgIDs, goes to the set that the caller gives.
+#[derive(Debug, Default)]
+pub(super) struct Statements {
+    /// The procedures of the module, by their position among them, that hold a
+    /// statement nested too deep to be read.
+    deep: BTreeSet<usize>,
+    /// The statements of the module that are nested too deep to be read, those
+    /// outside the procedures too. `None` if there is none.
+    pub(super) too_deep: Option<TooDeep>,
+}
+
+impl Statements {
+    /// Reads every statement of `analysis`. The classes that they pass to
+    /// `CreateObject` and `GetObject` join `progids`, the set of the file.
+    pub(super) fn read(analysis: &Analysis, progids: &mut ExternalProgids) -> Self {
+        let mut statements = Self::default();
+        each_statement(analysis, |place, _, line, facts| {
+            for progid in &facts.progids {
+                progids.add(progid);
+            }
+            if facts.too_deep {
+                statements.note_deep(place, line);
+            }
+        });
+        statements
+    }
+
+    /// Whether the procedure at `index` holds a statement nested too deep.
+    pub(super) fn is_deep(&self, index: usize) -> bool {
+        self.deep.contains(&index)
+    }
+
+    /// Takes note of a statement, the logical line `line` in `place`, that
+    /// nests expressions too deep to be read.
+    fn note_deep(&mut self, place: Place, line: &LogicalLine) {
+        if let Place::Procedure(index) = place {
+            self.deep.insert(index);
+        }
+        let seen = self.too_deep.get_or_insert(TooDeep {
+            count: 0,
+            first_line: line.line,
+        });
+        seen.count = seen.count.saturating_add(1);
+    }
+}
+
+/// The statements of a module that nest expressions deeper than the reader
+/// follows ([`MAX_NESTING`](crate::vba::MAX_NESTING) open at once). The reader
+/// reads the rest of such a statement flat: its strings are listed one by one
+/// and none is folded, its names are listed as members and calls, and no chain,
+/// no ProgID and no mark of obfuscation is found in it (those found before the
+/// cut stay).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TooDeep {
+    /// How many statements of the module do.
+    pub(super) count: u32,
+    /// The physical line where the first starts.
+    pub(super) first_line: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::report::{ProcedureKind, Visibility};
+    use crate::vba::MAX_NESTING;
 
     fn analysis(text: &str) -> Analysis {
         Analysis::of(text).expect("a short module")
@@ -222,7 +280,7 @@ mod tests {
     /// The ProgIDs that the statements of `text` give, as the file keeps them.
     fn progids(text: &str) -> Vec<String> {
         let mut found = ExternalProgids::default();
-        found.read(&analysis(text));
+        Statements::read(&analysis(text), &mut found);
         found.iter().cloned().collect()
     }
 
@@ -244,7 +302,7 @@ mod tests {
 
         each_statement(&analysis, |place, _, _, facts| {
             if place == Place::Procedure(1) {
-                chains.extend(facts.chains.clone());
+                chains.extend(facts.chains);
             }
         });
 
@@ -279,5 +337,44 @@ mod tests {
 
         assert_eq!(known.0.len(), MAX_PROGIDS);
         assert!(known.0.contains("vendor.class0") && !known.0.contains("other.class"));
+    }
+
+    /// A statement that nests groups past what the reader follows.
+    fn too_deep_statement() -> String {
+        let levels = MAX_NESTING + 1;
+        format!("x = {}1{}", "(".repeat(levels), ")".repeat(levels))
+    }
+
+    #[test]
+    fn the_statements_nested_too_deep_are_counted_by_module_and_by_procedure() {
+        let deep = too_deep_statement();
+        let text = format!("Sub A()\nEnd Sub\nSub B()\n    {deep}\n    {deep}\nEnd Sub\n{deep}\n");
+
+        let statements = Statements::read(&analysis(&text), &mut ExternalProgids::default());
+
+        assert_eq!([0, 1].map(|index| statements.is_deep(index)), [false, true]);
+        // No procedure lies at 2, whatever the module holds below the others.
+        assert!(!statements.is_deep(2));
+        // Two in `B`, the first at line 4 of the module (the second of `B`),
+        // and one below the procedures.
+        let expected = TooDeep {
+            count: 3,
+            first_line: 4,
+        };
+        assert_eq!(statements.too_deep, Some(expected));
+    }
+
+    #[test]
+    fn a_statement_nested_too_deep_below_the_procedures_marks_none_of_them() {
+        let text = format!("Sub A()\nEnd Sub\n{}\n", too_deep_statement());
+
+        let statements = Statements::read(&analysis(&text), &mut ExternalProgids::default());
+
+        assert!(!statements.is_deep(0));
+        let expected = TooDeep {
+            count: 1,
+            first_line: 3,
+        };
+        assert_eq!(statements.too_deep, Some(expected));
     }
 }
