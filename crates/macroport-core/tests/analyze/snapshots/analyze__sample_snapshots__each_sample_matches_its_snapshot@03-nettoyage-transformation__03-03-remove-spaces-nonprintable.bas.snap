@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/03-nettoyage-transformation/03-03-remove-spaces-nonprintable.bas
+---
+families/03-nettoyage-transformation/03-03-remove-spaces-nonprintable.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=36 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0
+module 03-03-remove-spaces-nonprintable (standard): loc=36 logical_loc=14 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub removeSpaceV2 default lines 8-36: loc=29 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub removeSpaceV2 default static=false parameters=0 lines 8-36 recoveries=none unbalanced_blocks=false
+  recoveries: none

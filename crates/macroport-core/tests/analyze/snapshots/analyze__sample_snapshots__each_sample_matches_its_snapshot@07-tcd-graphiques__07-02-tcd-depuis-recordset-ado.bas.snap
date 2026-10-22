@@ -1,0 +1,17 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/07-tcd-graphiques/07-02-tcd-depuis-recordset-ado.bas
+---
+families/07-tcd-graphiques/07-02-tcd-depuis-recordset-ado.bas
+status: no_macros
+container: text_module
+errors: none
+traits: none
+file: loc=63 logical_loc=40 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 forms=0 declare_count=0
+module 07-02-tcd-depuis-recordset-ado (standard): loc=63 logical_loc=40 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+parse:
+  declaration Variable line 7
+  declaration Variable line 8
+  declaration Variable line 9
+  recoveries: none
