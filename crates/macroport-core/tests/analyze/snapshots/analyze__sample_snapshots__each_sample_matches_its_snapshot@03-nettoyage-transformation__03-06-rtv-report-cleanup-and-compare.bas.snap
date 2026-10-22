@@ -10,7 +10,7 @@ traits: none
 file: loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub EditRTVfile default lines 10-104: loc=95 logical_loc=56 cyclomatic=9 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EditTable,editPrintProperties apis=20
+  sub EditRTVfile default lines 10-104: loc=95 logical_loc=56 cyclomatic=9 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EditTable,editPrintProperties apis=20
     api Application.ScreenUpdating*3
     api Debug.Print*1
     api delRange.Delete*1
@@ -31,7 +31,7 @@ module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 
     api ws.Range.WrapText*1
     api ws.Rows*2
     api ws.Rows.Count*1
-  sub EditTable private lines 105-205: loc=101 logical_loc=75 cyclomatic=6 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=38
+  sub EditTable private lines 105-205: loc=101 logical_loc=75 cyclomatic=6 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=38
     api ActiveWindow.FreezePanes*1
     api allBorders.Borders*1
     api allBorders.Borders.Color*1
@@ -70,7 +70,7 @@ module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 
     api ws.Range.value*10
     api ws.Rows*2
     api ws.Rows.Count*2
-  sub editPrintProperties private lines 207-237: loc=31 logical_loc=26 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=24
+  sub editPrintProperties private lines 207-237: loc=31 logical_loc=26 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=24
     api ActiveSheet.PageSetup.PrintArea*1
     api Application.InchesToPoints*6
     api Range.End.Row*1
@@ -95,7 +95,7 @@ module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 
     api ws.PageSetup.RightMargin*1
     api ws.PageSetup.TopMargin*1
     api ws.PageSetup.Zoom*1
-  sub RTV_ComparingTwoLists default lines 238-371: loc=134 logical_loc=102 cyclomatic=22 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=28
+  sub RTV_ComparingTwoLists default lines 238-371: loc=134 logical_loc=102 cyclomatic=22 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=28
     api ActiveWorkbook.Worksheets*2
     api Application.InputBox*4
     api Debug.Print*1

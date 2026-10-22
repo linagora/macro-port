@@ -10,7 +10,7 @@ traits: none
 file: loc=32 logical_loc=14 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 07-04-animation-sparklines (standard): loc=32 logical_loc=14 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub SparkAnimation default lines 7-32: loc=26 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub SparkAnimation default lines 7-32: loc=26 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api oSparkGroup.ModifySourceData*2
     api oSparkGroup.SourceData*1
     api Range.Offset.Address*1

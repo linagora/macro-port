@@ -10,10 +10,10 @@ traits: none
 file: loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 forms=1 declare_count=0 external_dependencies=1
 module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub Label2_Click private lines 27-29: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub MultiPage1_Change private lines 31-33: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub tbxNameFile_Change private lines 35-37: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub UserForm_Initialize private lines 42-63: loc=22 logical_loc=18 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=11
+  sub Label2_Click private lines 27-29: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub MultiPage1_Change private lines 31-33: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub tbxNameFile_Change private lines 35-37: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub UserForm_Initialize private lines 42-63: loc=22 logical_loc=18 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=11
     api Me.cbxSaveasType.List*1
     api Me.cbxSaveasType.ListIndex*1
     api Me.ckxAll.value*1
@@ -25,10 +25,10 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.lbxSheet.List*1
     api Me.lbxSheet.ListCount*1
     api Me.tbxNameFile.value*1
-  sub lbxSheet_AfterUpdate private lines 72-74: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  sub lbxSheet_AfterUpdate private lines 72-74: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api Me.lbCountSheet.Caption*1
     api Me.lbxSheet.ListCount*1
-  sub ckxShowOnly_Change private lines 76-154: loc=79 logical_loc=69 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=17
+  sub ckxShowOnly_Change private lines 76-154: loc=79 logical_loc=69 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=17
     api CreateObject:Scripting.Dictionary*2
     api dic.Add*1
     api dic.exists*4
@@ -46,7 +46,7 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.lbxSheet.ListCount*6
     api Me.lbxSheet.Selected*6
     api wb.Sheets*1
-  sub ckxShowSheetHidden_Change private lines 158-233: loc=76 logical_loc=63 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=17
+  sub ckxShowSheetHidden_Change private lines 158-233: loc=76 logical_loc=63 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=17
     api CreateObject:Scripting.Dictionary*2
     api dic.Add*1
     api dic.exists*4
@@ -64,7 +64,7 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.lbxSheet.ListCount*6
     api Me.lbxSheet.Selected*6
     api wb.Sheets*1
-  sub cbxSaveasType_Change private lines 235-288: loc=54 logical_loc=49 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  sub cbxSaveasType_Change private lines 235-288: loc=54 logical_loc=49 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
     api Me.cbCreateFolder.Visible*3
     api Me.cbOpenFile.Visible*3
     api Me.cbSelectFileToExport.Visible*3
@@ -77,7 +77,7 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.tbxDirectory.Visible*3
     api Me.tbxNameFile.value*2
     api Me.tbxNameFile.Visible*4
-  sub ckxExSeparate_Change private lines 290-331: loc=42 logical_loc=40 cyclomatic=9 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  sub ckxExSeparate_Change private lines 290-331: loc=42 logical_loc=40 cyclomatic=9 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
     api Me.cbCreateFolder.Visible*2
     api Me.cbOpenFile.Visible*2
     api Me.cbSelectFileToExport.Visible*2
@@ -90,8 +90,8 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.tbxDirectory.Visible*2
     api Me.tbxNameFile.value*2
     api Me.tbxNameFile.Visible*4
-  sub cbCancelExport_Click private lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub cbOkExport_Click private lines 345-393: loc=49 logical_loc=44 cyclomatic=11 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+  sub cbCancelExport_Click private lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub cbOkExport_Click private lines 345-393: loc=49 logical_loc=44 cyclomatic=11 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
     api Join*1
     api Len*1
     api Me.cbxSaveasType.ListIndex*2
@@ -100,15 +100,15 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.tbxDirectory*1
     api Me.tbxDirectory.value*5
     api Me.tbxNameFile.value*3
-  sub cbCreateFolder_Click private lines 394-402: loc=9 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub cbCreateFolder_Click private lines 394-402: loc=9 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Me.tbxDirectory.value*2
-  sub cbOpenFile_Click private lines 404-416: loc=13 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  sub cbOpenFile_Click private lines 404-416: loc=13 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
     api Application.FileDialog*1
     api Application.FileDialog.SelectedItems*1
     api Application.FileDialog.Show*1
     api Application.FileDialog.Title*1
     api Me.tbxDirectory.value*1
-  sub cbSelectFileToExport_Click private lines 417-441: loc=25 logical_loc=23 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  sub cbSelectFileToExport_Click private lines 417-441: loc=25 logical_loc=23 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
     api Application.ActiveWorkbook.Path*1
     api Application.FileDialog*1
     api Application.FileDialog.AllowMultiSelect*1
@@ -121,17 +121,17 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api fso.GetExtensionName*1
     api InStr*1
     api Me.tbxNameFile.value*1
-  sub ckxAll_Click private lines 442-454: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub ckxAll_Click private lines 442-454: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api Me.ckxAll.value*1
     api Me.ckxUnCheckAll.value*1
     api Me.lbxSheet.ListCount*1
     api Me.lbxSheet.Selected*1
-  sub ckxUnCheckAll_Click private lines 456-468: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub ckxUnCheckAll_Click private lines 456-468: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api Me.ckxAll.value*1
     api Me.ckxUnCheckAll.value*1
     api Me.lbxSheet.ListCount*1
     api Me.lbxSheet.Selected*1
-  sub UserForm_QueryClose private lines 470-474: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub UserForm_QueryClose private lines 470-474: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
 parse:
   declaration Option(Explicit) line 22
   declaration Variable line 23

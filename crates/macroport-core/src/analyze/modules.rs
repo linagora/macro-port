@@ -25,17 +25,16 @@
 //! missing value is not a zero (see [`input`](super::input)). The calls do not
 //! depend on them: the call graph is fed, and the `calls` of the procedures
 //! follow from it (ADR-0012), as their `apis` do from the statements
-//! (ADR-0011). The ProgIDs of the statements reach the file alone: the external
-//! dependencies of the file count them, with its references and its `Declare`
-//! statements. Those of the procedures are another field of the kind: their
-//! count would fall short, so the report leaves it out, and the rule engine
-//! reads what is known of it, a value that the report leaves out counting as 0
-//! for it.
+//! (ADR-0011). The external dependencies are not such a field either: the
+//! ProgIDs of the statements and the calls to the routines that a module
+//! declares are read, so the report counts them for the procedures and, when the
+//! file has a project, for the file.
 //!
 //! The statements of a module are read twice for now: by the adapter, which keeps
-//! what the rule engine reads of them, and by the `statements` submodule, which
-//! hands the facts of each to the stages that keep something of them for the
-//! report: the ProgIDs of the file, the lists of APIs of the procedures, the call
+//! what the rule engine reads of them, the ProgIDs of the procedures among it,
+//! and by the `statements` submodule, which hands the facts of each to the stages
+//! that keep something of them for the report: the ProgIDs of the file, whichever
+//! procedure holds them or none, the lists of APIs of the procedures, the call
 //! graph and the count of the statements nested too deep to be read in full. Such
 //! a statement is no failure: the module is read, the status of the file does not
 //! follow, and the file lists one error for the module (`vba.statement.too_deep`).
@@ -67,7 +66,7 @@ use self::apis::{FileApis, MAX_API_MIB, MAX_APIS};
 use self::statements::{ExternalProgids, Statements, TooDeep};
 use super::apply::apply;
 use super::input::{Adapted, Measured, Room, adapt};
-use super::metrics::{count, project_metrics};
+use super::metrics::{count, project_metrics, report_dependencies};
 use super::{Extraction, Failure, Options, about_module, readable_status};
 use crate::engine::{ModuleInput, ProjectInput, findings};
 use crate::report::{
@@ -311,15 +310,16 @@ impl<'r> Front<'r> {
     /// Puts what `analysis` shows of a module into its report: its procedures
     /// with their spans, metrics and APIs, the metrics of the module, and its
     /// declarations. What the rule engine decides is left for
-    /// [`seal`](Self::seal). What its statements show goes to the file: the
-    /// ProgIDs, the calls (the graph tells them in [`Front::seal`], once every
-    /// module is read), a warning for the statements that nest too deep to be
-    /// read, and one for the procedures whose list of APIs passed a bound.
-    /// Fails, and leaves the report, the graph and the file alone, when what the
-    /// engine reads of the module does not fit in the room that is left: the
-    /// module is not read, and its statements tell the file nothing. The caller
-    /// then gives the module its place in the call graph as one that was not
-    /// read ([`Front::fail`]).
+    /// [`seal`](Self::seal), and so are the dependencies of the procedures,
+    /// which need the routines that the other modules declare. What its
+    /// statements show goes to the file: the ProgIDs, the calls (the graph tells
+    /// them in [`Front::seal`], once every module is read), a warning for the
+    /// statements that nest too deep to be read, and one for the procedures whose
+    /// list of APIs passed a bound. Fails, and leaves the report, the graph and
+    /// the file alone, when what the engine reads of the module does not fit in
+    /// the room that is left: the module is not read, and its statements tell the
+    /// file nothing. The caller then gives the module its place in the call graph
+    /// as one that was not read ([`Front::fail`]).
     ///
     /// Three things show that code did not parse cleanly (the predicate
     /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
@@ -380,7 +380,8 @@ impl<'r> Front<'r> {
 
     /// Completes the report of a file once its modules are read: the metrics of
     /// the file follow from those of its modules and of their procedures and
-    /// from the ProgIDs of their statements, the calls of the procedures follow
+    /// from the ProgIDs of their statements, the procedures get their external
+    /// dependencies ([`report_dependencies`]), the calls of the procedures follow
     /// from the call graph (with an error for the lists that a bound of the graph
     /// leaves out), the rule engine decides the families, the signals, the
     /// traits and the level, the errors of the front end join those of the
@@ -426,6 +427,7 @@ impl<'r> Front<'r> {
         if has_project {
             file.metrics = Some(metrics.file.clone());
         }
+        report_dependencies(file, &metrics);
         let judged = measured.iter().any(|module| module.read);
         if judged || !indicators.is_empty() {
             let decided = findings::run(&project, rules, &metrics, indicators);

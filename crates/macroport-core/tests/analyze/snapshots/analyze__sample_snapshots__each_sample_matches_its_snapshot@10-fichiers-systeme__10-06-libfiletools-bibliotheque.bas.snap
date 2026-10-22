@@ -10,7 +10,7 @@ traits: none
 file: loc=3623 logical_loc=2932 procedures=75 cyclomatic=65 cyclomatic_total=559 max_nesting=7 forms=0 declare_count=36 external_dependencies=2
 module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 procedures=75 cyclomatic=65 cyclomatic_total=559 max_nesting=7 declare_count=36
   declarations: declare_count=36 with_events_count=0 option_explicit=true option_vba_support=false
-  function BrowseForFiles public lines 482-531: loc=50 logical_loc=36 cyclomatic=8 max_nesting=3 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BrowseFilesAPI apis=10
+  function BrowseForFiles public lines 482-531: loc=50 logical_loc=36 cyclomatic=8 max_nesting=3 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BrowseFilesAPI apis=10
     api app.FileDialog*1
     api BrowseForFiles.Add*1
     api filePicker.allowMultiSelect*1
@@ -21,7 +21,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api filePicker.SelectedItems*1
     api filePicker.Show*1
     api filePicker.Title*1
-  function BrowseFilesAPI private lines 538-631: loc=94 logical_loc=81 cyclomatic=12 max_nesting=5 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath apis=16
+  function BrowseFilesAPI private lines 538-631: loc=94 logical_loc=81 cyclomatic=12 max_nesting=5 parameters=5 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath apis=16
     api app.Hwnd*1
     api CommDlgExtendedError*1
     api GetOpenFileNameW*1
@@ -38,7 +38,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api ofName.nMaxFile*6
     api Replace*1
     api resultPaths.Add*3
-  function BrowseForFolder public lines 637-680: loc=44 logical_loc=42 cyclomatic=12 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetLocalPath apis=11
+  function BrowseForFolder public lines 637-680: loc=44 logical_loc=42 cyclomatic=12 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetLocalPath apis=11
     api app.Name*1
     api app.ThisDocument.Path*1
     api app.ThisWorkbook.Path*1
@@ -50,34 +50,34 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api Dir*1
     api Len*1
     api Right*1
-  function BuildPath public lines 685-687: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=1
+  function BuildPath public lines 685-687: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=1
     api Join*1
-  function ConvertText public lines 693-739: loc=47 logical_loc=45 cyclomatic=9 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EncodeFromUTF16LE,EncodeToUTF16LE,PageCodeToText apis=5
+  function ConvertText public lines 693-739: loc=47 logical_loc=45 cyclomatic=9 max_nesting=1 parameters=4 goto_count=0 external_dependencies=3 traits=none entry_point=- event_handler=- possibly_unused=- calls=EncodeFromUTF16LE,EncodeToUTF16LE,PageCodeToText apis=5
     api CLng*2
     api iconv*1
     api iconv_close*1
     api iconv_open*1
     api m_conversionDescriptors.Add*1
-  sub ClearConversionDescriptors public lines 741-749: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  sub ClearConversionDescriptors public lines 741-749: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api iconv_close*1
     api m_conversionDescriptors.Count*1
-  function PageCodeToText private lines 750-760: loc=11 logical_loc=16 cyclomatic=6 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function PageCodeToText private lines 750-760: loc=11 logical_loc=16 cyclomatic=6 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api StrConv*1
-  function EncodeToUTF16LE private lines 762-772: loc=11 logical_loc=7 cyclomatic=2 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function EncodeToUTF16LE private lines 762-772: loc=11 logical_loc=7 cyclomatic=2 max_nesting=0 parameters=2 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api MultiByteToWideChar*2
-  function EncodeFromUTF16LE private lines 773-786: loc=14 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  function EncodeFromUTF16LE private lines 773-786: loc=14 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api Len*2
     api WideCharToMultiByte*2
-  function CopyFile public lines 800-823: loc=24 logical_loc=20 cyclomatic=6 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=5
+  function CopyFile public lines 800-823: loc=24 logical_loc=20 cyclomatic=6 max_nesting=1 parameters=3 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=5
     api CopyFileW*1
     api Err.Clear*1
     api Err.Number*1
     api FileCopy*1
     api SetAttr*2
-  function CopyFolder public lines 833-867: loc=35 logical_loc=27 cyclomatic=10 max_nesting=3 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,CopyFile,CreateFolder,GetFiles,GetFolders,IsFolder apis=2
+  function CopyFolder public lines 833-867: loc=35 logical_loc=27 cyclomatic=10 max_nesting=3 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,CopyFile,CreateFolder,GetFiles,GetFolders,IsFolder apis=2
     api CStr*1
     api Replace*2
-  function CreateFolder public lines 872-911: loc=40 logical_loc=31 cyclomatic=7 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSO,IsFolder apis=7
+  function CreateFolder public lines 872-911: loc=40 logical_loc=31 cyclomatic=7 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSO,IsFolder apis=7
     api collFoldersToCreate.Add*2
     api Err.Number*2
     api GetFSO.CreateFolder*1
@@ -85,64 +85,64 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api Left*2
     api Len*1
     api MkDir*1
-  function DeleteFile public lines 916-936: loc=21 logical_loc=19 cyclomatic=5 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO,IsFile apis=6
+  function DeleteFile public lines 916-936: loc=21 logical_loc=19 cyclomatic=5 max_nesting=0 parameters=1 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO,IsFile apis=6
     api DeleteFileW*1
     api Err.Clear*2
     api Err.Number*2
     api GetFSO.DeleteFile*1
     api Kill*1
     api SetAttr*1
-  function DeleteFolder public lines 947-980: loc=34 logical_loc=26 cyclomatic=8 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DeleteBottomMostFolder,GetFSO,GetFolders,IsFolder apis=6
+  function DeleteFolder public lines 947-980: loc=34 logical_loc=26 cyclomatic=8 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DeleteBottomMostFolder,GetFSO,GetFolders,IsFolder apis=6
     api collFolders.Count*1
     api collFolders.Item*1
     api Err.Clear*1
     api Err.Number*2
     api GetFSO.DeleteFolder*1
     api RmDir*1
-  function DeleteBottomMostFolder private lines 986-1014: loc=29 logical_loc=26 cyclomatic=5 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,DeleteFile,GetFiles apis=6
+  function DeleteBottomMostFolder private lines 986-1014: loc=29 logical_loc=26 cyclomatic=5 max_nesting=1 parameters=1 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,DeleteFile,GetFiles apis=6
     api CStr*1
     api Err.Clear*1
     api Err.Number*2
     api Kill*1
     api RemoveDirectoryW*1
     api RmDir*2
-  function FixFileName public lines 1022-1036: loc=15 logical_loc=12 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  function FixFileName public lines 1022-1036: loc=15 logical_loc=12 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api Mid*2
     api Replace*2
-  function FixFileName public lines 1038-1061: loc=24 logical_loc=21 cyclomatic=7 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ForbiddenNameChars,IsReservedName apis=5
+  function FixFileName public lines 1038-1061: loc=24 logical_loc=21 cyclomatic=7 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ForbiddenNameChars,IsReservedName apis=5
     api InStr*1
     api Left*1
     api Len*1
     api Mid*1
     api Replace*1
-  function ForbiddenNameChars private lines 1069-1093: loc=25 logical_loc=22 cyclomatic=8 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  function ForbiddenNameChars private lines 1069-1093: loc=25 logical_loc=22 cyclomatic=8 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api collForbiddenChars.Add*3
     api collForbiddenChars.Remove*1
     api Split*1
-  function IsReservedName private lines 1100-1116: loc=17 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function IsReservedName private lines 1100-1116: loc=17 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api collReservedNames.Add*1
     api collReservedNames.Item*1
     api Err.Number*1
     api Split*1
-  function FixPathSeparators public lines 1127-1177: loc=51 logical_loc=44 cyclomatic=13 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RemoveDuplicatePS apis=6
+  function FixPathSeparators public lines 1127-1177: loc=51 logical_loc=44 cyclomatic=13 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=RemoveDuplicatePS apis=6
     api InStr*4
     api InStrRev*1
     api Left*3
     api Len*3
     api Mid*6
     api Replace*2
-  function RemoveDuplicatePS private lines 1182-1209: loc=28 logical_loc=26 cyclomatic=9 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function RemoveDuplicatePS private lines 1182-1209: loc=28 logical_loc=26 cyclomatic=9 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api InStr*1
     api Left*1
     api Len*1
     api Mid*2
-  function GetFileOwner public lines 1215-1249: loc=35 logical_loc=22 cyclomatic=6 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  function GetFileOwner public lines 1215-1249: loc=35 logical_loc=22 cyclomatic=6 max_nesting=1 parameters=1 goto_count=0 external_dependencies=3 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api GetFileSecurity*2
     api GetSecurityDescriptorOwner*1
     api LookupAccountSid*2
-  function GetFiles public lines 1260-1286: loc=27 logical_loc=19 cyclomatic=5 max_nesting=2 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddFilesTo,GetFolders apis=1
+  function GetFiles public lines 1260-1286: loc=27 logical_loc=19 cyclomatic=5 max_nesting=2 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddFilesTo,GetFolders apis=1
     api CStr*1
-  sub AddFilesTo private lines 1294-1343: loc=50 logical_loc=46 cyclomatic=8 max_nesting=4 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSOFolder apis=8
+  sub AddFilesTo private lines 1294-1343: loc=50 logical_loc=46 cyclomatic=8 max_nesting=4 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSOFolder apis=8
     api collTarget.Add*1
     api collTemp.Add*2
     api Dir*2
@@ -151,7 +151,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api fsoFolder.Files*1
     api InStr*1
     api Len*1
-  function GetFSOFolder private lines 1350-1390: loc=41 logical_loc=39 cyclomatic=7 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO,IsFolder apis=13
+  function GetFSOFolder private lines 1350-1390: loc=41 logical_loc=39 cyclomatic=7 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO,IsFolder apis=13
     api collNames.Add*2
     api collNames.Count*2
     api collNames.Remove*1
@@ -165,8 +165,8 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api Len*1
     api Mid*1
     api Right*1
-  function GetKnownFolderCLSID public lines 1404-1553: loc=150 logical_loc=149 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  function GetKnownFolderPath public lines 1572-1626: loc=55 logical_loc=47 cyclomatic=13 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetKnownFolderCLSID apis=7
+  function GetKnownFolderCLSID public lines 1404-1553: loc=150 logical_loc=149 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  function GetKnownFolderPath public lines 1572-1626: loc=55 logical_loc=47 cyclomatic=13 max_nesting=2 parameters=2 goto_count=0 external_dependencies=5 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetKnownFolderCLSID apis=7
     api CLSIDFromString*1
     api CopyMemory*1
     api CoTaskMemFree*1
@@ -174,8 +174,8 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api guids.data1*1
     api lstrlenW*1
     api SHGetKnownFolderPath*1
-  function GetFolders public lines 1636-1654: loc=19 logical_loc=12 cyclomatic=3 max_nesting=0 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddFoldersTo apis=0
-  sub AddFoldersTo private lines 1670-1740: loc=71 logical_loc=64 cyclomatic=14 max_nesting=3 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSOFolder,IsFolder apis=10
+  function GetFolders public lines 1636-1654: loc=19 logical_loc=12 cyclomatic=3 max_nesting=0 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddFoldersTo apis=0
+  sub AddFoldersTo private lines 1670-1740: loc=71 logical_loc=64 cyclomatic=14 max_nesting=3 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetFSOFolder,IsFolder apis=10
     api collFolders.Add*2
     api collTarget.Add*1
     api collTemp.Add*1
@@ -186,24 +186,24 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api fsoFolder.SubFolders*1
     api InStr*1
     api Len*1
-  function GetLocalPath public lines 1752-1771: loc=20 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetDriveInfo,GetOneDriveLocalPath apis=4
+  function GetLocalPath public lines 1752-1771: loc=20 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetDriveInfo,GetOneDriveLocalPath apis=4
     api GetDriveInfo.driveLetter*2
     api GetDriveInfo.driveName*1
     api InStr*1
     api Replace*1
-  function GetUNCPath private lines 1778-1784: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetDriveInfo apis=3
+  function GetUNCPath private lines 1778-1784: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetDriveInfo apis=3
     api GetDriveInfo.driveName*1
     api GetDriveInfo.shareName*2
     api Replace*1
-  function GetRelativePath public lines 1791-1838: loc=48 logical_loc=42 cyclomatic=11 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetLocalPath,IsFile apis=4
+  function GetRelativePath public lines 1791-1838: loc=48 logical_loc=42 cyclomatic=11 max_nesting=2 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetLocalPath,IsFile apis=4
     api InStr*3
     api Mid*4
     api Replace*1
     api Right*1
-  function GetRemotePath public lines 1844-1856: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetOneDriveWebPath,GetUNCPath apis=0
-  function GetSpecialFolderConstant public lines 1863-1919: loc=57 logical_loc=54 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  function GetSpecialFolderDomain public lines 1926-1938: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  function GetSpecialFolderPath public lines 1955-2001: loc=47 logical_loc=42 cyclomatic=14 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetSpecialFolderConstant,GetSpecialFolderDomain apis=8
+  function GetRemotePath public lines 1844-1856: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,GetOneDriveWebPath,GetUNCPath apis=0
+  function GetSpecialFolderConstant public lines 1863-1919: loc=57 logical_loc=54 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  function GetSpecialFolderDomain public lines 1926-1938: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  function GetSpecialFolderPath public lines 1955-2001: loc=47 logical_loc=42 cyclomatic=14 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetSpecialFolderConstant,GetSpecialFolderDomain apis=8
     api app.Name*1
     api app.Version*1
     api Environ*1
@@ -212,7 +212,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api Mid*1
     api Replace*2
     api Val*1
-  function GetDriveInfo private lines 2008-2049: loc=42 logical_loc=40 cyclomatic=9 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AlignDriveNameIfNeeded,GetFSO apis=12
+  function GetDriveInfo private lines 2008-2049: loc=42 logical_loc=40 cyclomatic=9 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AlignDriveNameIfNeeded,GetFSO apis=12
     api fsDrive.driveLetter*2
     api fsDrive.fileSystem*1
     api fsDrive.SerialNumber*1
@@ -225,18 +225,18 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api GetDriveInfo.fileSystem*1
     api GetDriveInfo.shareName*3
     api tempDrive.SerialNumber*1
-  function GetFSO private lines 2056-2065: loc=10 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function GetFSO private lines 2056-2065: loc=10 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api CreateObject:Scripting.FileSystemObject*1
-  function AlignDriveNameIfNeeded private lines 2073-2086: loc=14 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function AlignDriveNameIfNeeded private lines 2073-2086: loc=14 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api InStr*2
     api Left*1
     api Len*1
     api Right*1
-  function DecodeURL public lines 2089-2142: loc=54 logical_loc=53 cyclomatic=14 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  function DecodeURL public lines 2089-2142: loc=54 logical_loc=53 cyclomatic=14 max_nesting=4 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api CStr*1
     api Left*1
     api Len*1
-  function GetOneDriveLocalPath private lines 2151-2208: loc=58 logical_loc=54 cyclomatic=14 max_nesting=7 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,IsBetterMatch,IsFolder,ReadODProviders,StrCompLeft apis=14
+  function GetOneDriveLocalPath private lines 2151-2208: loc=58 logical_loc=54 cyclomatic=14 max_nesting=7 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,IsBetterMatch,IsFolder,ReadODProviders,StrCompLeft apis=14
     api collMatches.Add*1
     api collMatches.Count*1
     api InStr*1
@@ -251,14 +251,14 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api m_providers.arr.webPath*3
     api m_providers.pCount*1
     api Mid*2
-  function StrCompLeft private lines 2209-2217: loc=9 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  function StrCompLeft private lines 2209-2217: loc=9 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api Left*2
     api Len*4
-  function IsBetterMatch private lines 2218-2232: loc=15 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFolderEditable apis=3
+  function IsBetterMatch private lines 2218-2232: loc=15 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFolderEditable apis=3
     api currProvider.accountIndex*1
     api lastProvider.accountIndex*1
     api lastProvider.isMain*1
-  function GetOneDriveWebPath private lines 2238-2264: loc=27 logical_loc=24 cyclomatic=6 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,ReadODProviders,StrCompLeft apis=7
+  function GetOneDriveWebPath private lines 2238-2264: loc=27 logical_loc=24 cyclomatic=6 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators,ReadODProviders,StrCompLeft apis=7
     api Len*3
     api m_providers.arr*1
     api m_providers.arr.mountPoint*3
@@ -266,7 +266,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api m_providers.pCount*1
     api Mid*1
     api Replace*1
-  sub ReadODProviders private lines 2270-2412: loc=143 logical_loc=134 cyclomatic=30 max_nesting=5 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddBusinessProviders,AddPersonalProviders,ClearConversionDescriptors,CollectionToStrings,GetODCloudDirs,ReadODAccountsInfo,ReadSyncID,ValidateAccounts apis=30
+  sub ReadODProviders private lines 2270-2412: loc=143 logical_loc=134 cyclomatic=30 max_nesting=5 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddBusinessProviders,AddPersonalProviders,ClearConversionDescriptors,CollectionToStrings,GetODCloudDirs,ReadODAccountsInfo,ReadSyncID,ValidateAccounts apis=30
     api accountsInfo.arr*6
     api accountsInfo.arr.clientPath*4
     api accountsInfo.arr.datPath*2
@@ -297,21 +297,21 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api m_providers.lastCacheUpdate*4
     api m_providers.pCount*2
     api Replace*3
-  function GetODCloudDirs private lines 2418-2430: loc=13 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetCloudPath apis=2
+  function GetODCloudDirs private lines 2418-2430: loc=13 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetCloudPath apis=2
     api coll.Add*1
     api Dir*2
-  function GetCloudPath private lines 2431-2433: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=GetUserPath apis=0
-  function GetUserPath private lines 2434-2436: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function GetCloudPath private lines 2431-2433: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=GetUserPath apis=0
+  function GetUserPath private lines 2434-2436: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Environ*1
-  function CollectionToStrings private lines 2437-2452: loc=16 logical_loc=15 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  function CollectionToStrings private lines 2437-2452: loc=16 logical_loc=15 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api coll.Count*2
     api Split*1
-  function ReadSyncID private lines 2453-2459: loc=7 logical_loc=8 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadBytes apis=4
+  function ReadSyncID private lines 2453-2459: loc=7 logical_loc=8 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadBytes apis=4
     api InStr*1
     api Left*1
     api Split*1
     api StrConv*1
-  sub ValidateAccounts private lines 2461-2471: loc=11 logical_loc=8 cyclomatic=6 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
+  sub ValidateAccounts private lines 2461-2471: loc=11 logical_loc=8 cyclomatic=6 max_nesting=0 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
     api a1.accountName*1
     api a1.iniDateTime*3
     api a1.iniPath*1
@@ -321,7 +321,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api a2.iniPath*1
     api a2.isValid*2
     api FileDateTime*2
-  sub ReadODAccountsInfo private lines 2476-2526: loc=51 logical_loc=49 cyclomatic=9 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetODAccountDirs,GetTagValue,IsFile apis=22
+  sub ReadODAccountsInfo private lines 2476-2526: loc=51 logical_loc=49 cyclomatic=9 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetODAccountDirs,GetTagValue,IsFile apis=22
     api accountsInfo.arr*3
     api accountsInfo.arr.accountIndex*1
     api accountsInfo.arr.accountName*3
@@ -344,18 +344,18 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api InStrRev*1
     api Mid*1
     api Right*1
-  function GetODAccountDirs private lines 2531-2566: loc=36 logical_loc=34 cyclomatic=9 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetCloudPath,GetODSettingsDirs,IsFolder apis=4
+  function GetODAccountDirs private lines 2531-2566: loc=36 logical_loc=34 cyclomatic=9 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetCloudPath,GetODSettingsDirs,IsFolder apis=4
     api collFolders.Add*1
     api collSettings.Count*1
     api CStr*1
     api Dir*2
-  function GetODSettingsDirs private lines 2571-2583: loc=13 logical_loc=13 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetUserPath apis=2
+  function GetODSettingsDirs private lines 2571-2583: loc=13 logical_loc=13 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetUserPath apis=2
     api Environ*1
     api GetODSettingsDirs.Add*3
-  function AddProvider private lines 2588-2595: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  function AddProvider private lines 2588-2595: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api m_providers.arr*2
     api m_providers.pCount*5
-  sub AddBusinessProviders private lines 2600-2754: loc=155 logical_loc=155 cyclomatic=30 max_nesting=6 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddProvider,BuildPath,GetIniText,GetUrlNamespace,ReadNamespaces,ReadODDirs,SplitIniLine apis=29
+  sub AddBusinessProviders private lines 2600-2754: loc=155 logical_loc=155 cyclomatic=30 max_nesting=6 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddProvider,BuildPath,GetIniText,GetUrlNamespace,ReadNamespaces,ReadODDirs,SplitIniLine apis=29
     api aInfo.accountIndex*1
     api aInfo.clientPath*5
     api aInfo.hasDatFile*1
@@ -385,23 +385,23 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api oDirs.idToIndex*2
     api Split*2
     api tempColl.Count*1
-  function SplitIniLine private lines 2759-2790: loc=32 logical_loc=33 cyclomatic=7 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  function SplitIniLine private lines 2759-2790: loc=32 logical_loc=33 cyclomatic=7 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api InStr*3
     api Left*1
     api Len*1
     api Mid*2
-  function GetUrlNamespace private lines 2795-2801: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetTagValue apis=2
+  function GetUrlNamespace private lines 2795-2801: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetTagValue apis=2
     api Left*1
     api Len*1
-  function GetTagValue private lines 2806-2822: loc=17 logical_loc=14 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  function GetTagValue private lines 2806-2822: loc=17 logical_loc=14 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api InStr*2
     api Len*2
     api Mid*2
-  function GetIniText private lines 2827-2843: loc=17 logical_loc=16 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertText,ReadBytes apis=3
+  function GetIniText private lines 2827-2843: loc=17 logical_loc=16 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertText,ReadBytes apis=3
     api Err.Number*1
     api Mid*1
     api Replace*1
-  function ReadNamespaces private lines 2848-2869: loc=22 logical_loc=19 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetTagValue apis=7
+  function ReadNamespaces private lines 2848-2869: loc=22 logical_loc=19 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetIniText,GetTagValue apis=7
     api aInfo.clientPath*1
     api aInfo.folderPath*1
     api collFiles.Add*1
@@ -409,7 +409,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api CStr*1
     api Dir*2
     api Replace*2
-  sub AddPersonalProviders private lines 2874-2932: loc=59 logical_loc=56 cyclomatic=7 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddProvider,BuildPath,GetIniText,GetTagValue,GetUrlNamespace,ReadODDirs,SplitIniLine apis=18
+  sub AddPersonalProviders private lines 2874-2932: loc=59 logical_loc=56 cyclomatic=7 max_nesting=4 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddProvider,BuildPath,GetIniText,GetTagValue,GetUrlNamespace,ReadODDirs,SplitIniLine apis=18
     api aInfo.cID*1
     api aInfo.clientPath*1
     api aInfo.groupPath*1
@@ -428,13 +428,13 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api oDirs.dirCount*1
     api oDirs.idToIndex*1
     api Split*1
-  sub ReadODDirs private lines 2937-2945: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadDirsFromDB,ReadDirsFromDat apis=5
+  sub ReadODDirs private lines 2937-2945: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadDirsFromDB,ReadDirsFromDat apis=5
     api aInfo.datPath*1
     api aInfo.dbPath*1
     api aInfo.hasDatFile*1
     api aInfo.isPersonal*1
     api outdirs.dirCount*1
-  sub ReadDirsFromDat private lines 2950-3067: loc=118 logical_loc=115 cyclomatic=20 max_nesting=7 parameters=2 goto_count=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=Clamp,ConvertText apis=12
+  sub ReadDirsFromDat private lines 2950-3067: loc=118 logical_loc=115 cyclomatic=20 max_nesting=7 parameters=2 goto_count=1 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=Clamp,ConvertText apis=12
     api FileDateTime*1
     api InStr*2
     api outdirs.arrDirs*4
@@ -447,8 +447,8 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api outdirs.idToIndex.Add*1
     api Replace*1
     api StrConv*2
-  function Clamp private lines 3068-3076: loc=9 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub ReadDirsFromDB private lines 3081-3315: loc=235 logical_loc=223 cyclomatic=65 max_nesting=7 parameters=3 goto_count=21 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertText,IsFile apis=14
+  function Clamp private lines 3068-3076: loc=9 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub ReadDirsFromDB private lines 3081-3315: loc=235 logical_loc=223 cyclomatic=65 max_nesting=7 parameters=3 goto_count=21 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertText,IsFile apis=14
     api Err.Number*1
     api FileDateTime*1
     api Len*1
@@ -463,39 +463,39 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api outdirs.idToIndex.Add*1
     api Replace*1
     api StrConv*6
-  function IsFile public lines 3322-3355: loc=34 logical_loc=31 cyclomatic=6 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO apis=6
+  function IsFile public lines 3322-3355: loc=34 logical_loc=31 cyclomatic=6 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO apis=6
     api Err.Number*2
     api GetAttr*1
     api GetFSO.FileExists*4
     api Left*2
     api Len*1
     api Mid*1
-  function IsFolder public lines 3361-3394: loc=34 logical_loc=31 cyclomatic=6 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO apis=6
+  function IsFolder public lines 3361-3394: loc=34 logical_loc=31 cyclomatic=6 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFSO apis=6
     api Err.Number*2
     api GetAttr*1
     api GetFSO.FolderExists*4
     api Left*2
     api Len*1
     api Mid*1
-  function IsFolderEditable public lines 3399-3412: loc=14 logical_loc=13 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,IsFolder apis=3
+  function IsFolderEditable public lines 3399-3412: loc=14 logical_loc=13 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,IsFolder apis=3
     api Err.Number*1
     api MkDir*1
     api RmDir*1
-  function MoveFile public lines 3417-3443: loc=27 logical_loc=24 cyclomatic=7 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=4
+  function MoveFile public lines 3417-3443: loc=27 logical_loc=24 cyclomatic=7 max_nesting=2 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=4
     api Err.Clear*1
     api Err.Number*1
     api GetAttr*1
     api SetAttr*3
-  function MoveFolder public lines 3448-3485: loc=38 logical_loc=29 cyclomatic=9 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CopyFolder,DeleteFolder,GetFSO,IsFolder apis=2
+  function MoveFolder public lines 3448-3485: loc=38 logical_loc=29 cyclomatic=9 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CopyFolder,DeleteFolder,GetFSO,IsFolder apis=2
     api Err.Number*2
     api GetFSO.MoveFolder*1
-  function ParentFolder public lines 3490-3502: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=4
+  function ParentFolder public lines 3490-3502: loc=13 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=4
     api InStrRev*1
     api Left*1
     api Len*2
     api Mid*1
-  sub ReadBytes public lines 3507-3524: loc=18 logical_loc=18 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=0
-  sub CreateODDiagnosticsFile private lines 3529-3607: loc=79 logical_loc=74 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BrowseForFolder,BuildPath,IsFolderEditable,ReadODAccountsInfo,ReadODProviders,ValidateAccounts apis=16
+  sub ReadBytes public lines 3507-3524: loc=18 logical_loc=18 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=IsFile apis=0
+  sub CreateODDiagnosticsFile private lines 3529-3607: loc=79 logical_loc=74 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BrowseForFolder,BuildPath,IsFolderEditable,ReadODAccountsInfo,ReadODProviders,ValidateAccounts apis=16
     api accountsInfo.arr*3
     api accountsInfo.arr.accountName*1
     api accountsInfo.arr.cID*1
@@ -512,7 +512,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api m_providers.arr.syncID*1
     api m_providers.arr.webPath*1
     api m_providers.pCount*2
-  function GetMainBusinessURLs public lines 3612-3623: loc=12 logical_loc=11 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadODProviders apis=5
+  function GetMainBusinessURLs public lines 3612-3623: loc=12 logical_loc=11 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ReadODProviders apis=5
     api m_providers.arr.isBusiness*1
     api m_providers.arr.isMain*1
     api m_providers.arr.webPath*1

@@ -10,12 +10,12 @@ traits: none
 file: loc=39 logical_loc=22 procedures=2 cyclomatic=2 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 09-04-cellule-clignotante-ontime (standard): loc=39 logical_loc=22 procedures=2 cyclomatic=2 cyclomatic_total=3 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub StartBlinking private lines 14-28: loc=15 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub StartBlinking private lines 14-28: loc=15 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api Application.Goto*1
     api Application.OnTime*1
     api Range.Interior.ColorIndex*3
     api Range.Value*2
-  sub StopBlinking private lines 31-39: loc=9 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=StartBlinking apis=4
+  sub StopBlinking private lines 31-39: loc=9 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=StartBlinking apis=4
     api Application.OnTime*1
     api Err.Clear*1
     api Range.ClearContents*1

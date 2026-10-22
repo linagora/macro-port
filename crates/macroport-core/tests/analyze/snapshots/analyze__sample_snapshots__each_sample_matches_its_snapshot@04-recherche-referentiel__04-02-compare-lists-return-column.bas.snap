@@ -10,7 +10,7 @@ traits: none
 file: loc=148 logical_loc=99 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 04-02-compare-lists-return-column (standard): loc=148 logical_loc=99 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ComparingTwoLists default lines 12-148: loc=137 logical_loc=98 cyclomatic=19 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=32
+  sub ComparingTwoLists default lines 12-148: loc=137 logical_loc=98 cyclomatic=19 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=32
     api ActiveSheet.Name*4
     api Application.InputBox*4
     api Application.ScreenUpdating*3

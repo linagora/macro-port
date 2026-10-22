@@ -6,12 +6,16 @@
 //! file. What they leave out is the `external_dependencies` of a procedure, as
 //! `rules/complexity.yaml` defines it: the distinct ProgIDs it uses, and the
 //! distinct `Declare`d routines it calls. That needs the ProgIDs and the calls
-//! of its statements, so it is measured from the input of the rule engine,
-//! whatever the adapter has put in it: a ProgID that it does not hand to the
-//! engine yet does not count in the procedures. The file does not wait for it:
-//! it counts the ProgIDs that the walk of the `statements` submodule of
-//! `modules` collects, which [`file_metrics`] adds to its references and its
-//! `Declare` statements.
+//! of its statements, and the routines that the other modules declare, so it is
+//! measured from the input of the rule engine once every module is read
+//! ([`project_metrics`]), and [`report_dependencies`] gives it to the report.
+//! The count is as complete as the reading of the statements: a statement
+//! nested too deep is read flat from the point where it gets too deep, so a
+//! ProgID past that point is not counted, and the procedure that holds the
+//! statement is flagged as one that did not parse. The file does not count
+//! them again: the ProgIDs that [`file_metrics`] adds to its references and its
+//! `Declare` statements are those that the walk of the `statements` submodule
+//! of `modules` collects.
 //!
 //! [`measure_procedure`]: crate::vba::measure_procedure
 //! [`module_metrics`]: crate::vba::module_metrics
@@ -22,7 +26,7 @@ use std::collections::BTreeSet;
 use super::input::Measured;
 use crate::engine::findings::ProjectMetrics;
 use crate::engine::{NameSet, ProcedureInput, ProjectInput, comparable_key};
-use crate::report::Metrics;
+use crate::report::{FileReport, Metrics};
 use crate::vba::count_progids;
 
 /// A length as a metric: it saturates.
@@ -57,6 +61,23 @@ pub(super) fn project_metrics(
         })
         .collect();
     ProjectMetrics { procedures, file }
+}
+
+/// Writes into the report of `file` the dependencies that `metrics` counts for
+/// its procedures. The report of a procedure is made when its module is read,
+/// and a routine that it calls may be declared by a module read after it, so
+/// the count waits for the whole project. `metrics` has an entry for each
+/// module of the report, with no count for a module that was not read: its
+/// report is left as it is.
+pub(super) fn report_dependencies(file: &mut FileReport, metrics: &ProjectMetrics) {
+    let Some(project) = file.vba_project.as_mut() else {
+        return;
+    };
+    for (module, counts) in project.modules.iter_mut().zip(&metrics.procedures) {
+        for (procedure, counted) in module.procedures.iter_mut().zip(counts) {
+            procedure.metrics.external_dependencies = counted.external_dependencies;
+        }
+    }
 }
 
 /// The external dependencies of a procedure: the distinct ProgIDs it uses, and

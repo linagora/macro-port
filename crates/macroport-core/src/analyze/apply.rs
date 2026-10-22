@@ -15,8 +15,7 @@ use crate::report::FileReport;
 /// read keeps the report it had, since nothing was measured of it.
 ///
 /// The metrics of the report are not touched: the front end gave them, and the
-/// engine read the same ones, but for the dependencies that the report leaves
-/// out.
+/// engine read the same ones.
 ///
 /// `judged` tells whether a module was read. A file where none was has only the
 /// signals of its container indicators, and the severity they give it: its

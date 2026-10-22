@@ -113,6 +113,75 @@ fn the_event_handler_of_a_document_module_is_an_auto_exec_procedure() {
     assert!(signal_ids(first(&standard)).is_empty());
 }
 
+/// The lines and the snippets that the signal `signal_id` cites in the first
+/// procedure of a file.
+fn cited<'a>(file: &'a FileReport, signal_id: &str) -> Vec<(u32, &'a str)> {
+    let signals = first(file).signals.iter();
+    let found = signals.filter(|signal| signal.signal_id == signal_id);
+    let evidence = found.flat_map(|signal| signal.evidence.iter().flatten());
+    evidence
+        .map(|item| (item.line, item.snippet.as_deref().unwrap_or_default()))
+        .collect()
+}
+
+#[test]
+fn a_statement_that_builds_a_string_from_character_codes_raises_the_signal_of_obfuscation() {
+    // Three codes joined are a mark of obfuscation, and so is the reverse of a
+    // literal. Two codes are not.
+    let spelled =
+        "Sub Spell()\n    s = Chr(72) & Chr(105) & Chr(33)\n    t = Chr(72) & Chr(105)\nEnd Sub\n";
+    let reversed = "Sub Spell()\n    s = 1\n    t = StrReverse(\"cba\")\nEnd Sub\n";
+    let few = "Sub Spell()\n    t = Chr(72) & Chr(105)\nEnd Sub\n";
+
+    let spelling = report_of(spelled);
+    let reversing = report_of(reversed);
+    let two = report_of(few);
+
+    // Only the statement that shows the mark is cited, by its line in the file.
+    let id = "sec.chr-obfuscation";
+    assert_eq!(
+        cited(&spelling, id),
+        [(2, "s = Chr(72) & Chr(105) & Chr(33)")]
+    );
+    assert_eq!(cited(&reversing, id), [(3, "t = StrReverse(\"cba\")")]);
+    assert!(signal_ids(first(&two)).is_empty());
+    // The signal is medium: only a chain with an execution makes the file high.
+    let signal = &first(&spelling).signals[0];
+    assert_eq!(signal.severity, Severity::Medium);
+    assert_eq!(spelling.max_severity, Some(Severity::Medium));
+}
+
+#[test]
+fn a_statement_over_several_lines_is_cited_by_its_first_physical_line() {
+    let continued = [
+        "Sub Spell()",
+        "    x = 1",
+        "    s = Chr(72) & _",
+        "        Chr(105) & _",
+        "        Chr(33)",
+        "End Sub",
+        "",
+    ]
+    .join("\n");
+
+    let file = report_of(&continued);
+
+    // The lines count as the file shows them (SPEC section 5).
+    assert_eq!(
+        cited(&file, "sec.chr-obfuscation"),
+        [(3, "s = Chr(72) & Chr(105) & Chr(33)")]
+    );
+}
+
+#[test]
+fn a_mark_of_obfuscation_outside_any_procedure_raises_no_signal() {
+    // The engine cites the statements of procedures only.
+    let file =
+        report_of("Const Hidden = Chr(1) & Chr(2) & Chr(3)\nSub Run()\n    x = 1\nEnd Sub\n");
+
+    assert!(signals_of(&file).is_empty());
+}
+
 #[test]
 fn a_function_that_a_formula_could_call_is_classified_as_a_udf() {
     let udf = "Function Twice(x)\n    Twice = x * 2\nEnd Function\n";
@@ -135,10 +204,83 @@ fn a_procedure_is_judged_on_its_own_measures() {
     // Five logical lines, and one that is not: only the second is trivial.
     assert_eq!(trait_ids(&procedures[0].traits), Some(Vec::new()));
     assert_eq!(trait_ids(&procedures[1].traits), Some(vec!["trivial"]));
-    // The ProgIDs of the statements are not read yet, so the report leaves the
-    // count of the dependencies of a procedure out.
-    assert_eq!(procedures[0].metrics.external_dependencies, None);
-    assert_eq!(procedures[1].metrics.external_dependencies, None);
+    // Nothing external in either of them.
+    assert_eq!(procedures[0].metrics.external_dependencies, Some(0));
+    assert_eq!(procedures[1].metrics.external_dependencies, Some(0));
+}
+
+/// A procedure of three logical lines that creates an object, `argument` being
+/// the expression that `CreateObject` takes.
+fn creating(argument: &str) -> String {
+    format!("Sub Create()\n    Set o = CreateObject({argument})\nEnd Sub\n")
+}
+
+#[test]
+fn a_procedure_that_creates_an_object_has_a_dependency_and_is_not_trivial() {
+    let file = report_of(&creating("\"WScript.Shell\""));
+
+    let create = first(&file);
+    assert_eq!(create.metrics.external_dependencies, Some(1));
+    assert_eq!(trait_ids(&create.traits), Some(Vec::new()));
+    assert_eq!(
+        file.metrics.as_ref().and_then(|m| m.external_dependencies),
+        Some(1)
+    );
+}
+
+#[test]
+fn the_class_of_an_object_is_read_once_it_is_folded() {
+    let obfuscated = "Sub Create()\n    Set a = CreateObject(\"WScript.Shell\")\n    \
+                      Set b = CreateObject(\"wscr\" & \"ipt.\" & \"shell\")\n    \
+                      Set c = CreateObject(Prog)\nEnd Sub\nPrivate Const Prog = \"Wscript.Shell\"\n";
+
+    let file = report_of(obfuscated);
+
+    // Three ways to spell the one class, which counts once.
+    assert_eq!(first(&file).metrics.external_dependencies, Some(1));
+}
+
+#[test]
+fn a_class_that_every_machine_has_is_no_dependency() {
+    let dictionary = report_of(&creating("\"Scripting.Dictionary\""));
+    let unknown = report_of(&creating("cls"));
+
+    // The common classes are left out, and a class that is not a string that
+    // folds is none.
+    for file in [&dictionary, &unknown] {
+        assert_eq!(first(file).metrics.external_dependencies, Some(0));
+        assert_eq!(trait_ids(&first(file).traits), Some(vec!["trivial"]));
+    }
+}
+
+#[test]
+fn the_dependencies_of_a_file_count_the_distinct_classes_of_all_its_modules() {
+    let outlook = creating("\"Outlook.Application\"");
+    let again = "Sub Again()\n    Set o = CreateObject(\"outlook.application\")\n    \
+                 Set w = CreateObject(\"Word.Application\")\nEnd Sub\n";
+    let excel = creating("\"Excel.Sheet\"");
+
+    let two = report_of_modules(vec![
+        source("A", ModuleType::Standard, &outlook),
+        source("B", ModuleType::Standard, again),
+    ]);
+    let three = report_of_modules(vec![
+        source("A", ModuleType::Standard, &outlook),
+        source("B", ModuleType::Standard, again),
+        source("C", ModuleType::Standard, &excel),
+    ]);
+
+    let dependencies = |file: &FileReport| file.metrics.as_ref().map(|m| m.external_dependencies);
+    // Outlook, once though it is spelled in two ways, and Word.
+    assert_eq!(dependencies(&two), Some(Some(2)));
+    assert_eq!(two.complexity_level, Some(Level::Medium));
+    let procedures: Vec<_> = (modules(&two).iter())
+        .map(|module| module.procedures[0].metrics.external_dependencies)
+        .collect();
+    assert_eq!(procedures, [Some(1), Some(2)]);
+    // Three classes make the file high.
+    assert_eq!(dependencies(&three), Some(Some(3)));
+    assert_eq!(three.complexity_level, Some(Level::High));
 }
 
 #[test]
@@ -194,11 +336,43 @@ fn a_procedure_that_calls_a_declared_routine_has_a_dependency_and_is_not_trivial
     let file = report_of(&format!("{declare}{HELLO}{ticking}"));
 
     let procedures = &modules(&file)[0].procedures;
-    // Three logical lines each, and the engine counts the routine that the
-    // second one calls, though the report leaves the count out.
+    // Three logical lines each, and the second one calls a routine that the
+    // module declares.
     assert_eq!(trait_ids(&procedures[0].traits), Some(vec!["trivial"]));
     assert_eq!(trait_ids(&procedures[1].traits), Some(Vec::new()));
-    assert_eq!(procedures[1].metrics.external_dependencies, None);
+    assert_eq!(procedures[0].metrics.external_dependencies, Some(0));
+    assert_eq!(procedures[1].metrics.external_dependencies, Some(1));
+}
+
+#[test]
+fn a_routine_that_a_later_module_declares_is_a_dependency_of_the_procedures_before_it() {
+    let once = "Sub Once()\n    x = GetTickCount()\nEnd Sub\n";
+    let twice = "Sub Twice()\n    x = GetTickCount()\n    y = GetTickCount()\nEnd Sub\n";
+    let declare = "Public Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
+
+    let file = report_of_modules(vec![
+        source("Caller", ModuleType::Standard, &format!("{once}{twice}")),
+        source("Api", ModuleType::Standard, declare),
+    ]);
+
+    // The module that declares the routine was read after the one that calls
+    // it. `Once` has three logical lines, so only its dependency keeps it from
+    // being trivial.
+    let procedures = &modules(&file)[0].procedures;
+    assert_eq!(procedures[0].metrics.external_dependencies, Some(1));
+    assert_eq!(trait_ids(&procedures[0].traits), Some(Vec::new()));
+    // The routine counts once however many times it is called.
+    assert_eq!(procedures[1].metrics.external_dependencies, Some(1));
+}
+
+#[test]
+fn a_method_of_an_object_is_not_a_call_of_the_declared_routine() {
+    let declare = "Private Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
+    let timer = "Sub Tick()\n    x = clock.GetTickCount()\nEnd Sub\n";
+
+    let file = report_of(&format!("{declare}{timer}"));
+
+    assert_eq!(first(&file).metrics.external_dependencies, Some(0));
 }
 
 #[test]
@@ -233,6 +407,28 @@ fn the_modules_after_one_that_was_not_read_get_their_own_findings() {
     // The file is judged on what was read.
     assert_eq!(file.max_severity, Some(Severity::Medium));
     assert!(file.complexity_level.is_some());
+}
+
+#[test]
+fn a_module_that_was_not_read_does_not_shift_the_dependencies_of_the_others() {
+    let big = "a\n".repeat(MAX_LINES as usize + 1);
+    let outlook = creating("\"Outlook.Application\"");
+    let word = "Sub Create()\n    Set o = CreateObject(\"Word.Application\")\n    \
+                Set p = CreateObject(\"Excel.Sheet\")\nEnd Sub\n";
+
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, &outlook),
+        source("Big", ModuleType::Standard, &big),
+        source("Last", ModuleType::Standard, word),
+    ]);
+
+    let procedures: Vec<_> = (modules(&file).iter())
+        .map(|module| module.procedures.first())
+        .map(|procedure| procedure.map(|found| found.metrics.external_dependencies))
+        .collect();
+    assert_eq!(procedures, [Some(Some(1)), None, Some(Some(2))]);
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.external_dependencies, Some(3));
 }
 
 #[test]

@@ -10,7 +10,7 @@ traits: none
 file: loc=61 logical_loc=48 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 06-03-sommaire-classeur-pages (standard): loc=61 logical_loc=48 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub Create_TOC default lines 8-61: loc=54 logical_loc=47 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=19
+  sub Create_TOC default lines 8-61: loc=54 logical_loc=47 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=19
     api Application.DisplayAlerts*2
     api Application.ScreenUpdating*2
     api VBA.Array*1
