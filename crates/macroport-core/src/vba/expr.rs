@@ -95,7 +95,7 @@ const STANDARD_LIBRARY: [&str; 9] = [
 /// The functions that create an object of a class, each with the position of
 /// the argument that names the class: `CreateObject(Class, [ServerName])` and
 /// `GetObject([PathName], [Class])`, whose path is a file or a moniker.
-const PROGID_FUNCTIONS: [(&str, usize); 2] = [("CreateObject", 0), ("GetObject", 1)];
+pub(crate) const PROGID_FUNCTIONS: [(&str, usize); 2] = [("CreateObject", 0), ("GetObject", 1)];
 
 /// The name of that argument, for a call that gives it by name.
 const CLASS_ARGUMENT: &str = "Class";
