@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: compile_error_suspected
-file: loc=28 logical_loc=15 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0
+file: loc=28 logical_loc=15 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 10-01-boucle-dir-classeurs-dossier (standard): loc=28 logical_loc=15 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   sub LoopThroughFiles private lines 7-28: loc=22 logical_loc=15 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-

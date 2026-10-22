@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 forms=1 declare_count=0
+file: loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 forms=1 declare_count=0 external_dependencies=0
 module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   property_let FormDataEnabled public lines 45-53: loc=9 logical_loc=6 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

@@ -87,9 +87,11 @@ pub fn module_metrics<'a>(
 /// number of distinct ProgIDs among `progids`, plus the number of references of
 /// the project that every project of Excel does not have, plus one if any
 /// `Declare` statement exists (`rules/complexity.yaml`). `progids` are the
-/// strings that the code of the whole file passes to `CreateObject` and
-/// `GetObject`, after constant folding; a string that is not shaped like a
-/// ProgID, and `Scripting.Dictionary` and `VBScript.RegExp`, are not counted.
+/// classes that the statements of the whole file pass to `CreateObject` and
+/// `GetObject`, as [`Facts::progids`](super::Facts::progids) lists them after
+/// constant folding, never the path or the moniker that `GetObject` may take
+/// first; a string that is not shaped like a ProgID, and `Scripting.Dictionary`
+/// and `VBScript.RegExp`, are not counted.
 pub fn file_metrics<I>(project: &VbaProject, progids: I) -> Metrics
 where
     I: IntoIterator,
