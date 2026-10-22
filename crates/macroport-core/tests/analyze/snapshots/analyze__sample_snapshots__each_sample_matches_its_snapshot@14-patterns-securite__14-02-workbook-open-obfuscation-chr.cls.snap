@@ -1,0 +1,19 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/14-patterns-securite/14-02-workbook-open-obfuscation-chr.cls
+---
+families/14-patterns-securite/14-02-workbook-open-obfuscation-chr.cls
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=17 logical_loc=7 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 forms=0 declare_count=0 external_dependencies=1
+module 14-02-workbook-open-obfuscation-chr (document): loc=17 logical_loc=7 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub Workbook_Open private lines 12-17: loc=6 logical_loc=6 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=2
+    api CreateObject:WScript.Shell*1
+    api o.Run*1
+parse:
+  declaration Option(Explicit) line 9
+  procedure sub Workbook_Open private static=false parameters=0 lines 12-17 recoveries=none unbalanced_blocks=false
+  recoveries: none
