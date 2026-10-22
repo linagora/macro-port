@@ -18,24 +18,30 @@
 //! report of a module that no stage measured, and its failure gives the file its
 //! status.
 //!
-//! Only what the parser and the metrics show is filled so far: the spans of the
-//! procedures and their metrics (sizes, cyclomatic complexity, nesting,
-//! parameters and `GoTo`s), the metrics of the modules and of the file (their
-//! sizes, their counts and what their procedures add up to), the declarations
-//! of the modules (and the count of their `Declare` statements, a metric), and
-//! the trait that the recoveries of the parser and the blocks that do not match
-//! give. The other fields are left out until the stages that measure them run,
-//! since a missing value is not a zero. The external dependencies of a file are
-//! such a field: the ProgIDs of its statements are not read yet. The exceptions
-//! are three fields of a procedure that the schema requires and that only the
-//! rule engine can decide: until it runs, `primary_family` is `unclassified`,
-//! and `families` and `signals` are empty.
+//! Only what the parser, the metrics and the statements show is filled so far:
+//! the spans of the procedures and their metrics (sizes, cyclomatic complexity,
+//! nesting, parameters and `GoTo`s), the metrics of the modules and of the file
+//! (their sizes, their counts, what their procedures add up to, and the
+//! external dependencies of the file: the ProgIDs of its statements, its
+//! references and its `Declare` statements), the declarations of the modules
+//! (and the count of their `Declare` statements, a metric), and the trait that
+//! the recoveries of the parser and the blocks that do not match give. The other
+//! fields are left out until the stages that measure them run, since a missing
+//! value is not a zero: the external dependencies of a procedure are such a
+//! field. The exceptions are three fields of a procedure that the schema
+//! requires and that only the rule engine can decide: until it runs,
+//! `primary_family` is `unclassified`, and `families` and `signals` are empty.
+//!
+//! The statements of a module are read once, in the `statements` submodule,
+//! which hands the facts of each to the stages that want them.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
+mod statements;
 mod text;
 mod text_file;
 
+use self::statements::ExternalProgids;
 use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
     Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
@@ -128,6 +134,10 @@ struct Front {
     recovery_traits: Vec<String>,
     /// Whether `parse_recovered` holds for a module read so far.
     recovered: bool,
+    /// The ProgIDs that the statements of the modules read so far pass to
+    /// `CreateObject` and `GetObject`, those that count as external
+    /// dependencies.
+    external_progids: ExternalProgids,
     /// Why modules were not read, in the order they were met.
     failures: Vec<Failure>,
 }
@@ -139,6 +149,7 @@ impl Front {
             procedures_left: MAX_FILE_PROCEDURES,
             recovery_traits: recovery_traits(rules),
             recovered: false,
+            external_progids: ExternalProgids::default(),
             failures: Vec::new(),
         }
     }
@@ -185,8 +196,10 @@ impl Front {
 
     /// Puts what `analysis` shows of a module into its report: its procedures
     /// with their spans and metrics, the metrics of the module, and its
-    /// declarations.
+    /// declarations. The ProgIDs that its statements pass to `CreateObject` and
+    /// `GetObject` go to the file.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
+        self.external_progids.read(analysis);
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
         module.procedures = (found.enumerate())
             .map(|(index, (procedure, measure))| {
@@ -213,9 +226,9 @@ impl Front {
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file follow from those of its modules and of their procedures, the
-    /// errors of the front end join those of the extraction, and the status
-    /// follows from the procedures.
+    /// the file follow from those of its modules and of their procedures and
+    /// from the ProgIDs of their statements, the errors of the front end join
+    /// those of the extraction, and the status follows from the procedures.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
@@ -227,12 +240,7 @@ impl Front {
     /// container indicators.
     fn seal(self, file: &mut FileReport) {
         if let Some(project) = &file.vba_project {
-            file.metrics = Some(Metrics {
-                // The ProgIDs that the statements pass to `CreateObject` and
-                // `GetObject` are not read yet, so the count would fall short.
-                external_dependencies: None,
-                ..file_metrics(project, std::iter::empty::<&str>())
-            });
+            file.metrics = Some(file_metrics(project, self.external_progids.iter()));
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match self.failures.first() {

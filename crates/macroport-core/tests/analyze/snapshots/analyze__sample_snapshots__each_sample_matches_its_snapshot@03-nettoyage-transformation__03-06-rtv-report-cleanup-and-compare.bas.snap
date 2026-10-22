@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 forms=0 declare_count=0
+file: loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub EditRTVfile default lines 10-104: loc=95 logical_loc=56 cyclomatic=9 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
