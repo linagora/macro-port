@@ -10,7 +10,17 @@ traits: none
 file: loc=23 logical_loc=12 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 02-02-merge-all-sheets (standard): loc=23 logical_loc=12 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub MergeAllSheets default lines 7-23: loc=17 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub MergeAllSheets default lines 7-23: loc=17 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
+    api ActiveSheet.UsedRange*1
+    api cRng.Columns.Count*1
+    api cRng.Offset.Resize.Copy*1
+    api cRng.Rows.Count*1
+    api Sheets.Activate*2
+    api Sheets.Add.Name*1
+    api Sheets.Count*1
+    api Sheets.Range*1
+    api Sheets.Range.End*1
+    api Sheets.Range.EntireRow.Copy*1
 parse:
   procedure sub MergeAllSheets default static=false parameters=0 lines 7-23 recoveries=none unbalanced_blocks=false
   recoveries: none
