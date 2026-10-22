@@ -53,11 +53,14 @@ pub struct Facts {
     /// The names invoked in the statement, in source order: `Shell(x)`,
     /// `Kill path`, `Call Helper`, and a name used without being assigned to,
     /// such as `Dir` in `x = Dir`. After a dot, only a name with arguments
-    /// (`ws.Cells(1, 1)`): `ws.Name` reads a property. Not a name followed by
-    /// `=` (`Dir = 1`: assigned to, or compared), by a `.` that touches it
-    /// (`Kill.Count`), declared (`Dim Kill As Long`) or the name of a constant
-    /// of the module that holds a string, and none in a statement that
-    /// declares something (`Dim`, `Const`, `Sub`, `Declare`...).
+    /// (`ws.Cells(1, 1)`): `ws.Name` reads a property. The exception is the
+    /// function of the VBA library, which a call may qualify by the names of
+    /// the library only (`CallSite::library`): `VBA.Shell "calc"` is a call as
+    /// `Shell "calc"` is. Not a name followed by `=` (`Dir = 1`: assigned to,
+    /// or compared), by a `.` that touches it (`Kill.Count`), declared (`Dim
+    /// Kill As Long`) or the name of a constant of the module that holds a
+    /// string, and none in a statement that declares something (`Dim`,
+    /// `Const`, `Sub`, `Declare`...).
     pub calls: Vec<CallSite>,
     /// The member chains of the statement, in the order of their first token:
     /// the names of `a.b(c).d` are `["a", "b", "d"]`. The arguments of the
@@ -112,8 +115,10 @@ pub struct Facts {
     /// source spells them, with none folded, and its names as members and
     /// calls, a name that stands alone counting as a call whatever it is (a
     /// label or a type name too), but no chain, no ProgID and no mark of
-    /// obfuscation. A caller can count the statement among those that did not
-    /// parse.
+    /// obfuscation. The qualifiers of a call are read back from the tokens
+    /// before it, so `VBA.Shell(x)` is still a call of the library, but the
+    /// object of a `With` block is not followed. A caller can count the
+    /// statement among those that did not parse.
     ///
     /// [`MAX_NESTING`]: super::MAX_NESTING
     pub too_deep: bool,
@@ -134,9 +139,23 @@ pub struct MemberUse {
 pub struct CallSite {
     /// The name, spelled as for [`MemberUse::name`].
     pub name: String,
-    /// The name follows a `.` or a `!`, as `Cells` in `ws.Cells(1, 1)`, not
-    /// `Range` in `Range("A1").Select`.
+    /// The name follows a `.` or a `!`, as `Cells` in `ws.Cells(1, 1)` and
+    /// `Shell` in `VBA.Shell(x)`, not `Range` in `Range("A1").Select`. It is
+    /// true for a call that [`library`](Self::library) flags too.
     pub after_dot: bool,
+    /// Every name before it is a name of the VBA library: `VBA` and its
+    /// modules `Conversion`, `DateTime`, `FileSystem`, `Financial`,
+    /// `Information`, `Interaction`, `Math` and `Strings`, in any case. The
+    /// call is then the function of the library (`VBA.Shell(x)`,
+    /// `Interaction.Shell(x)`, `VBA.Interaction.Shell(x)`, and `.Shell x` in a
+    /// `With VBA` block), not the member of an object (`ws.Shell(x)`,
+    /// `Foo.VBA.Shell(x)`, `Application.SendKeys`). It implies `after_dot`,
+    /// and is false for a name with no qualifier: `Shell(x)` may as well be a
+    /// procedure of the project. The reader goes by the names, so a module or
+    /// a variable of the project that bears one of them is taken for the
+    /// library. "A member of an object", the reading that ADR-0010 gives of
+    /// "not preceded by `.`" in SPEC section 7, is `after_dot && !library`.
+    pub library: bool,
 }
 
 /// The `With` blocks that are open.
