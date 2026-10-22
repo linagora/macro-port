@@ -9,6 +9,7 @@
 //! quote. Scoring the hits is left to the callers: family scores, security
 //! signals and complexity traits.
 
+pub mod complexity;
 mod eval;
 pub mod families;
 mod glob;

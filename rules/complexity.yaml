@@ -1,6 +1,7 @@
 # Macro-Port complexity levels and traits (Lot 1). Licence: CC BY 4.0.
 # Initial thresholds, to be calibrated on the corpus and on the first real fleets (see ACCEPTANCE.md A4).
-version: 0.1.0
+# The metrics of the conditions are those of the report: schema/rules/complexity.schema.json lists them.
+version: 0.2.0
 
 # A file's level is the highest level reached by any criterion.
 file_levels:
@@ -8,7 +9,7 @@ file_levels:
     any:
       - { metric: logical_loc, gte: 150 }
       - { metric: procedures, gte: 10 }
-      - { metric: max_cyclomatic, gte: 10 }
+      - { metric: cyclomatic, gte: 10 }
       - { metric: max_nesting, gte: 4 }
       - { metric: forms, gte: 1 }
       - { metric: external_dependencies, gte: 1 }
@@ -16,7 +17,7 @@ file_levels:
     any:
       - { metric: logical_loc, gte: 1000 }
       - { metric: procedures, gte: 50 }
-      - { metric: max_cyclomatic, gte: 25 }
+      - { metric: cyclomatic, gte: 25 }
       - { metric: max_nesting, gte: 6 }
       - { metric: forms, gte: 3 }
       - { metric: external_dependencies, gte: 3 }
@@ -28,7 +29,7 @@ file_levels:
 metric_definitions:
   logical_loc: "Non-blank, non-comment lines, after joining line continuations."
   procedures: "Number of Sub, Function and Property procedures."
-  max_cyclomatic: "Highest per-procedure cyclomatic complexity."
+  cyclomatic: "Highest per-procedure cyclomatic complexity (for a procedure: its own)."
   max_nesting: "Deepest nesting of If/Select/For/Do/While/With blocks."
   forms: "Number of UserForm modules."
   external_dependencies: "File level: see comment above. Procedure level: distinct ProgIDs used in the procedure (same exclusions) + number of distinct Declare'd functions it calls."
