@@ -1,0 +1,29 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/07-tcd-graphiques/07-01-graphiques-series-temporelles.bas
+---
+families/07-tcd-graphiques/07-01-graphiques-series-temporelles.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=239 logical_loc=133 procedures=7 cyclomatic=5 cyclomatic_total=20 max_nesting=4 forms=0 declare_count=0
+module 07-01-graphiques-series-temporelles (standard): loc=239 logical_loc=133 procedures=7 cyclomatic=5 cyclomatic_total=20 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub Chart_CreateChartWithSeriesForEachColumn public lines 10-34: loc=25 logical_loc=15 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Chart_CopyToSheet public lines 36-58: loc=23 logical_loc=18 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Chart_SortSeriesByName public lines 60-89: loc=30 logical_loc=23 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Chart_TimeSeries public lines 92-142: loc=51 logical_loc=32 cyclomatic=2 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Chart_TimeSeries_FastCreation public lines 145-171: loc=27 logical_loc=11 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CreateMultipleTimeSeries public lines 175-204: loc=30 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveZeroValueDataLabel public lines 207-239: loc=33 logical_loc=18 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub Chart_CreateChartWithSeriesForEachColumn public static=false parameters=0 lines 10-34 recoveries=none unbalanced_blocks=false
+  procedure sub Chart_CopyToSheet public static=false parameters=0 lines 36-58 recoveries=none unbalanced_blocks=false
+  procedure sub Chart_SortSeriesByName public static=false parameters=0 lines 60-89 recoveries=none unbalanced_blocks=false
+  procedure sub Chart_TimeSeries public static=false parameters=3 lines 92-142 recoveries=none unbalanced_blocks=false
+  procedure sub Chart_TimeSeries_FastCreation public static=false parameters=0 lines 145-171 recoveries=none unbalanced_blocks=false
+  procedure sub CreateMultipleTimeSeries public static=false parameters=0 lines 175-204 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveZeroValueDataLabel public static=false parameters=0 lines 207-239 recoveries=none unbalanced_blocks=false
+  recoveries: none

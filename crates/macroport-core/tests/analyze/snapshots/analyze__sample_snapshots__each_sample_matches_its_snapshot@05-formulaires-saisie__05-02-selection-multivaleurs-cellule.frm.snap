@@ -1,0 +1,26 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/05-formulaires-saisie/05-02-selection-multivaleurs-cellule.frm
+---
+families/05-formulaires-saisie/05-02-selection-multivaleurs-cellule.frm
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=97 logical_loc=51 procedures=6 cyclomatic=5 cyclomatic_total=15 max_nesting=2 forms=1 declare_count=0
+module 05-02-selection-multivaleurs-cellule (form): loc=97 logical_loc=51 procedures=6 cyclomatic=5 cyclomatic_total=15 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub btnAll_Click private lines 22-28: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub btnCancel_Click private lines 30-32: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub btnOK_Click private lines 34-58: loc=25 logical_loc=17 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub btnReset_Click private lines 60-67: loc=8 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub btnUpdateFromCells_Click private lines 69-81: loc=13 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub btnUpdateOptions_Click private lines 83-97: loc=15 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub btnAll_Click private static=false parameters=0 lines 22-28 recoveries=none unbalanced_blocks=false
+  procedure sub btnCancel_Click private static=false parameters=0 lines 30-32 recoveries=none unbalanced_blocks=false
+  procedure sub btnOK_Click private static=false parameters=0 lines 34-58 recoveries=none unbalanced_blocks=false
+  procedure sub btnReset_Click private static=false parameters=0 lines 60-67 recoveries=none unbalanced_blocks=false
+  procedure sub btnUpdateFromCells_Click private static=false parameters=0 lines 69-81 recoveries=none unbalanced_blocks=false
+  procedure sub btnUpdateOptions_Click private static=false parameters=0 lines 83-97 recoveries=none unbalanced_blocks=false
+  recoveries: none

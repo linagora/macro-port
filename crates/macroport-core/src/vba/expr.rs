@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The expression reader: it walks the tokens of a statement as expressions,
 //! with the precedence of VBA, and lists the strings, the members, the calls,
-//! the chains and the ProgIDs it finds.
+//! the chains and the ProgIDs it finds. It also tells whether an expression
+//! shows the marks of obfuscation.
 //!
 //! A string literal is listed as it is. A literal that is part of an
 //! expression the closed set of [`super::fold`] folds is listed once, as the
@@ -25,6 +26,10 @@
 //!
 //! A ProgID is the class that a call of `CreateObject` or `GetObject` names, by
 //! its name (`Class:=`) or its position, when the argument folds to a string.
+//!
+//! The marks of obfuscation are those of SPEC section 7: three calls of `Chr`,
+//! `ChrW` or `ChrB` joined by `&` or `+` in one expression, whether or not they
+//! fold, and `StrReverse` applied to a string literal.
 //!
 //! The reader never fails and never recurses deeper than [`MAX_NESTING`]:
 //! where a statement nests more, the rest is read flat, its strings and names
@@ -72,6 +77,10 @@ const PROGID_FUNCTIONS: [(&str, usize); 2] = [("CreateObject", 0), ("GetObject",
 /// The name of that argument, for a call that gives it by name.
 const CLASS_ARGUMENT: &str = "Class";
 
+/// How many calls of `Chr`, `ChrW` or `ChrB` joined in one expression are a
+/// mark of obfuscation (SPEC section 7, `chr_obfuscation`).
+const CHR_CALLS_FOR_A_MARK: usize = 3;
+
 /// The words that stand for a value, which the lexer reads as identifiers: they
 /// are no member and no call.
 const LITERALS: [&str; 5] = ["True", "False", "Nothing", "Null", "Empty"];
@@ -83,15 +92,31 @@ struct Node {
     /// Index of its first token, which gives a string its place in the
     /// order of the statement.
     start: usize,
+    /// How many calls of `Chr`, `ChrW` and `ChrB` the operand joins, whether
+    /// or not they fold: the operand is one of them, or a join of operands,
+    /// or a function of the closed set (or a group) around such a join.
+    chr_calls: usize,
+    /// Whether the operand is a string literal, or literals joined (and
+    /// grouped): `StrReverse` of such an operand is a mark of obfuscation. The
+    /// name of a constant is no literal.
+    literal: bool,
 }
 
 impl Node {
+    /// An operand whose value is `value`, which is no literal and joins no
+    /// call of `Chr`, `ChrW` or `ChrB`.
+    fn valued(start: usize, value: Value) -> Self {
+        Self {
+            value,
+            start,
+            chr_calls: 0,
+            literal: false,
+        }
+    }
+
     /// An operand whose value is not known.
     fn unknown(start: usize) -> Self {
-        Self {
-            value: Value::Unknown,
-            start,
-        }
+        Self::valued(start, Value::Unknown)
     }
 }
 
@@ -334,6 +359,8 @@ pub(super) struct Reader<'a> {
     /// The ProgIDs found, by the index of the token of the function that
     /// takes them.
     progids: Vec<(usize, String)>,
+    /// Whether an expression shows the marks of obfuscation.
+    chr_obfuscation: bool,
     /// The innermost `With` block that the statement lies in, if the caller
     /// follows one. Its object has no names when it is unknown.
     enclosing: Option<Enclosing<'a>>,
@@ -367,6 +394,7 @@ impl<'a> Reader<'a> {
             calls: Vec::new(),
             chains: Vec::new(),
             progids: Vec::new(),
+            chr_obfuscation: false,
             enclosing: None,
             continued: &[],
             object_start: block_object_start(tokens),
@@ -432,6 +460,7 @@ impl<'a> Reader<'a> {
             calls: in_order(self.calls),
             chains: in_order(self.chains),
             progids: in_order(self.progids),
+            chr_obfuscation: self.chr_obfuscation,
             too_deep: self.too_deep,
         };
         (facts, self.opened)
@@ -571,21 +600,35 @@ impl<'a> Reader<'a> {
     /// What the operands `left` and `right` of `operator` make together. Two
     /// strings joined are one, built by appending to the left one: the chain
     /// `a & b & c & ...` is read in linear time. Otherwise the operands that
-    /// are known are listed, and the result is not.
+    /// are known are listed, and the result is not. A join adds up the calls
+    /// of `Chr`, `ChrW` and `ChrB` in its operands, known or not: it is a mark
+    /// of obfuscation when there are [`CHR_CALLS_FOR_A_MARK`] of them. Any
+    /// other operator counts for none, whatever its operands hold.
     fn combine(&mut self, operator: Operator, left: Node, right: Node) -> Node {
         let start = left.start;
+        let chr_calls = match operator {
+            Operator::Join => left.chr_calls.saturating_add(right.chr_calls),
+            Operator::Other => 0,
+        };
+        if chr_calls >= CHR_CALLS_FOR_A_MARK {
+            self.chr_obfuscation = true;
+        }
         match (operator, left.value, right.value) {
             (Operator::Join, Value::Text(mut joined), Value::Text(tail)) => {
                 joined.push_str(&tail);
                 Node {
-                    value: Value::Text(joined),
-                    start,
+                    chr_calls,
+                    literal: left.literal && right.literal,
+                    ..Node::valued(start, Value::Text(joined))
                 }
             }
             (_, left_value, right_value) => {
                 self.finish_value(start, left_value);
                 self.finish_value(right.start, right_value);
-                Node::unknown(start)
+                Node {
+                    chr_calls,
+                    ..Node::unknown(start)
+                }
             }
         }
     }
@@ -601,18 +644,20 @@ impl<'a> Reader<'a> {
         match token.kind {
             TokenKind::String => {
                 self.advance();
+                // A string that is not closed has no value, and is no literal.
+                let value = token
+                    .string_value(self.text)
+                    .map_or(Value::Unknown, Value::Text);
                 Node {
-                    value: token
-                        .string_value(self.text)
-                        .map_or(Value::Unknown, Value::Text),
-                    start,
+                    literal: matches!(value, Value::Text(_)),
+                    ..Node::valued(start, value)
                 }
             }
             TokenKind::Number => {
                 self.advance();
                 let value =
                     parse_number(token.text(self.text)).map_or(Value::Unknown, Value::Number);
-                Node { value, start }
+                Node::valued(start, value)
             }
             TokenKind::Date => {
                 self.advance();
@@ -1003,25 +1048,40 @@ impl<'a> Reader<'a> {
         if !self.budget.take(value.len()) {
             return Some(Node::unknown(start));
         }
-        Some(Node {
-            value: Value::Text(value.to_owned()),
-            start,
-        })
+        Some(Node::valued(start, Value::Text(value.to_owned())))
     }
 
     /// What `function` makes of its `arguments`: one expression whose value
-    /// it folds, or nothing.
+    /// it folds, or nothing. The call of `Chr`, `ChrW` or `ChrB` counts as one
+    /// call whether it folds or not, and the other functions pass on the count
+    /// of their argument. `StrReverse` of a string literal is a mark of
+    /// obfuscation.
     fn fold(&mut self, start: usize, function: Folding, arguments: Vec<Option<Node>>) -> Node {
-        if let [Some(argument)] = arguments.as_slice()
+        let argument = match arguments.as_slice() {
+            [Some(argument)] => Some(argument),
+            _ => None,
+        };
+        let chr_calls = if function.makes_character() {
+            1
+        } else {
+            argument.map_or(0, |argument| argument.chr_calls)
+        };
+        if function == Folding::StrReverse && argument.is_some_and(|argument| argument.literal) {
+            self.chr_obfuscation = true;
+        }
+        if let Some(argument) = argument
             && let Some(text) = function.apply(&argument.value, &mut self.budget)
         {
             return Node {
-                value: Value::Text(text),
-                start,
+                chr_calls,
+                ..Node::valued(start, Value::Text(text))
             };
         }
         self.finish_all(arguments);
-        Node::unknown(start)
+        Node {
+            chr_calls,
+            ..Node::unknown(start)
+        }
     }
 
     /// Reads the arguments of a call, or the content of a group, up to the
