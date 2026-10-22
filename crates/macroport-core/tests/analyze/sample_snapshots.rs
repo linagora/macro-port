@@ -11,9 +11,10 @@
 //! declarations, its procedures with whether their blocks match, and the places
 //! where it went on past a statement that it could not read. A procedure gets
 //! the trait `compile_error_suspected` for one of those two causes, so the
-//! second part is where to look for why. The spans of the procedures are in both
-//! parts on purpose: they come from two layers, and a snapshot where they
-//! differ shows it.
+//! second part is where to look for why, unless a statement nests too deep to be
+//! read, which the error `vba.statement.too_deep` of the first part says. The
+//! spans of the procedures are in both parts on purpose: they come from two
+//! layers, and a snapshot where they differ shows it.
 //!
 //! In a line, `-` stands for a field that the report leaves out because no stage
 //! fills it in yet, and `none` for an empty list. A metric that the report
