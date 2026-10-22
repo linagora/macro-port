@@ -33,11 +33,12 @@ const DEFAULT_REFERENCES: [&str; 6] = [
     "office",
 ];
 
-/// The number of distinct ProgIDs among `progids`, the strings that some code
-/// passes to `CreateObject` and `GetObject`, after constant folding. Two that
+/// The number of distinct ProgIDs among `progids`, the classes that some code
+/// passes to `CreateObject` and `GetObject`, as the reader lists them
+/// ([`Facts::progids`](super::Facts::progids)) after constant folding. Two that
 /// differ by their letter case are one. `Scripting.Dictionary` and
 /// `VBScript.RegExp` do not count, and neither does a string that is not
-/// shaped like a ProgID (see [`is_progid`]).
+/// shaped like a ProgID (see [`is_external_progid`]).
 pub(super) fn count_progids<I>(progids: I) -> u32
 where
     I: IntoIterator,
@@ -45,22 +46,33 @@ where
 {
     let distinct: BTreeSet<String> = progids
         .into_iter()
-        .filter(|progid| is_progid(progid.as_ref()) && !is_common_progid(progid.as_ref()))
+        .filter(|progid| is_external_progid(progid.as_ref()))
         .map(|progid| progid.as_ref().to_ascii_lowercase())
         .collect();
     u32::try_from(distinct.len()).unwrap_or(u32::MAX)
 }
 
+/// Whether `text`, a class that some code passes to `CreateObject` or
+/// `GetObject`, counts as an external dependency: it is shaped like a ProgID
+/// (see [`is_progid`]), and is neither `Scripting.Dictionary` nor
+/// `VBScript.RegExp`. A caller that keeps the classes of many statements can
+/// keep these alone: [`file_metrics`](super::file_metrics) counts no other.
+pub(crate) fn is_external_progid(text: &str) -> bool {
+    is_progid(text) && !is_common_progid(text)
+}
+
 /// Whether `text` is shaped like a ProgID: a letter, then letters, digits, `_`
 /// and `.`, with a `.` that does not end it, as in `Word.Application.16`, and
-/// at most 255 bytes long. A path (`C:\Reports\book.xlsx`) or a moniker
-/// (`winmgmts:`) that `GetObject` takes has characters that no ProgID has, and
-/// so does anything with a space. A ProgID with no `.`, such as `htmlfile`, is
-/// not counted.
+/// at most 255 bytes long. Anything with a space or another character that no
+/// ProgID has is not one, and a ProgID with no `.`, such as `htmlfile`, is not
+/// counted.
 ///
 /// The shape is all that is tested: a bare file name such as `book.xlsx` has
-/// it. The strings to give are the arguments of `CreateObject` and `GetObject`,
-/// not every string of the statements that call them.
+/// it. The strings to give are the classes that the reader lists in
+/// [`Facts::progids`](super::Facts::progids): the class argument of
+/// `CreateObject` and `GetObject`, never the path or the moniker that
+/// `GetObject` may take first (`GetObject("C:\Reports\book.xlsx")` lists none),
+/// and not every string of the statements that call them.
 fn is_progid(text: &str) -> bool {
     text.len() <= MAX_PROGID_BYTES
         && text
