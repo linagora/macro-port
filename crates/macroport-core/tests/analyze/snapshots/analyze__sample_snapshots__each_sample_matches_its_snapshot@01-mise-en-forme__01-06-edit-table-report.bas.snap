@@ -1,0 +1,30 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/01-mise-en-forme/01-06-edit-table-report.bas
+---
+families/01-mise-en-forme/01-06-edit-table-report.bas
+status: ok
+container: text_module
+errors: none
+traits: compile_error_suspected
+file: loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 forms=0 declare_count=0
+module 01-06-edit-table-report (standard): loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub editTable default lines 11-86: loc=76 logical_loc=50 cyclomatic=4 max_nesting=0 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function SelectFirstEmptyRowInColumn private lines 88-93: loc=6 logical_loc=5 cyclomatic=1 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AutoSumColumnAF private lines 94-107: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub changeProperties private lines 108-167: loc=60 logical_loc=44 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub removeHeaderSpace private lines 169-188: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub removeProductCodeSpace private lines 190-209: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SaveAsToFolderPath private lines 211-230: loc=20 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  declaration Variable line 9
+  procedure sub editTable default static=false parameters=0 lines 11-86 recoveries=Unparseable@13 unbalanced_blocks=false
+  procedure function SelectFirstEmptyRowInColumn private static=false parameters=2 lines 88-93 recoveries=none unbalanced_blocks=false
+  procedure sub AutoSumColumnAF private static=false parameters=0 lines 94-107 recoveries=none unbalanced_blocks=false
+  procedure sub changeProperties private static=false parameters=1 lines 108-167 recoveries=none unbalanced_blocks=false
+  procedure sub removeHeaderSpace private static=false parameters=0 lines 169-188 recoveries=none unbalanced_blocks=false
+  procedure sub removeProductCodeSpace private static=false parameters=0 lines 190-209 recoveries=none unbalanced_blocks=false
+  procedure sub SaveAsToFolderPath private static=false parameters=0 lines 211-230 recoveries=none unbalanced_blocks=false
+  recoveries: none
