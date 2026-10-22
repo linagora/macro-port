@@ -3,13 +3,12 @@
 
 #![forbid(unsafe_code)]
 
-mod rules_check;
-
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use macroport_cli::scan;
+use macroport_cli::args::existing_dir;
+use macroport_cli::{rules_check, scan};
 
 /// Inventory of Excel VBA macros, for migrations to OnlyOffice, Grist and LibreOffice Calc.
 #[derive(Parser)]
@@ -46,15 +45,5 @@ fn main() -> ExitCode {
         Command::Rules {
             command: RulesCommand::Check { rules },
         } => rules_check::run(rules.as_deref()),
-    }
-}
-
-/// A `--rules` directory must exist: otherwise it is a usage error.
-fn existing_dir(value: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(value);
-    if path.is_dir() {
-        Ok(path)
-    } else {
-        Err("not an existing directory".to_owned())
     }
 }

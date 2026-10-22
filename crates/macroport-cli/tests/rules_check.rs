@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //! End-to-end tests of `macro-port rules check`.
 
+mod support;
+
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use support::{RULES_FILES, scratch, use_fixture, valid_rules};
+
 /// Ends the count of the problems found before the core loads the rules.
 const FILE_STAGE: &str = " (regexes, ids and references are not checked yet)";
-
-/// Every rules file that `rules check` reads.
-const RULES_FILES: [&str; 3] = ["families.yaml", "security.yaml", "complexity.yaml"];
 
 /// What `rules check` prints when the rules are valid.
 const ALL_OK: &str = "families.yaml: ok\nsecurity.yaml: ok\ncomplexity.yaml: ok\n";
@@ -26,34 +27,10 @@ fn macro_port<S: AsRef<OsStr>>(args: impl IntoIterator<Item = S>) -> Output {
         .expect("the macro-port binary runs")
 }
 
-/// The fixtures of `<kind>.yaml`.
-fn fixtures(kind: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/rules")
-        .join(kind)
-}
-
 /// A fresh rules directory holding the valid fixture of every rules file:
 /// `tests/fixtures/rules/<kind>/valid-minimal.yaml` as `<kind>.yaml`.
 fn rules_dir(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join("rules")
-        .join(name);
-    if dir.exists() {
-        fs::remove_dir_all(&dir).expect("old rules directory removed");
-    }
-    fs::create_dir_all(&dir).expect("rules directory created");
-    for kind in ["families", "security", "complexity"] {
-        let valid = fixtures(kind).join("valid-minimal.yaml");
-        fs::copy(valid, dir.join(format!("{kind}.yaml"))).expect("valid fixture copied");
-    }
-    dir
-}
-
-/// Puts the fixture `tests/fixtures/rules/<kind>/<fixture>.yaml` in `dir` as `<kind>.yaml`.
-fn use_fixture(dir: &Path, kind: &str, fixture: &str) {
-    let fixture = fixtures(kind).join(format!("{fixture}.yaml"));
-    fs::copy(fixture, dir.join(format!("{kind}.yaml"))).expect("fixture copied");
+    valid_rules(&scratch(&format!("rules_check_{name}")))
 }
 
 /// Runs `rules check` on a rules directory.

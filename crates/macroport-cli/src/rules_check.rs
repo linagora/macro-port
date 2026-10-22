@@ -3,19 +3,29 @@
 //! against its JSON Schema; once every file passes, the core loads the rules,
 //! which compiles the regexes, rejects duplicate ids and checks the
 //! references between rules.
+//!
+//! A command that is given a rules directory loads it with [`load`], so that
+//! rules it accepts are rules that `rules check` accepts. Without a directory
+//! it loads the embedded rules directly: the tests check them, and a run does
+//! not compile three JSON Schemas to check them again.
 
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use jsonschema::error::ValidationErrorKind;
+use macroport_core::report::Lang;
 use macroport_core::rules::{
     self, COMPLEXITY_FILE, FAMILIES_FILE, Problem, RuleSet, RulesSources, SECURITY_FILE,
 };
 use serde_json::Value;
+
+use crate::console::{say_on_stderr, say_on_stdout};
+use crate::exit::{FAILED, FATAL};
+use crate::i18n::Messages;
 
 const FAMILIES_SCHEMA: &str = include_str!("../../../schema/rules/families.schema.json");
 const SECURITY_SCHEMA: &str = include_str!("../../../schema/rules/security.schema.json");
@@ -52,63 +62,97 @@ const COMPLEXITY: RulesFile = RulesFile {
 const MAX_FILE_MIB: u64 = 1;
 const MAX_FILE_BYTES: u64 = MAX_FILE_MIB << 20;
 
-/// Exit code when the rules have problems.
-const PROBLEMS_FOUND: u8 = 1;
-
-/// Exit code of a fatal error (SPEC M4).
-const FATAL: u8 = 3;
-
-/// How a check that could run ends.
-enum Outcome {
-    /// Every rules file is valid.
-    Valid,
-    /// Problems found by the core.
-    CoreProblems(Vec<Problem>),
+/// Why the rules cannot be used.
+#[derive(Debug, PartialEq)]
+pub enum Failure {
+    /// A rules file cannot be read, so the check cannot run.
+    Unreadable { path: PathBuf, reason: String },
+    /// An embedded schema is broken, so the check cannot run. The tests check
+    /// the schemas: a build that ships does not get here.
+    BrokenSchema { file: &'static str, reason: String },
     /// Problems found before the core loads the rules: size, encoding, YAML
     /// or schema.
     FileProblems(Vec<Problem>),
+    /// Problems found by the core: regexes, ids and references.
+    CoreProblems(Vec<Problem>),
 }
 
-/// Checks the rules of `dir`, or the embedded rules, and prints the outcome.
-pub fn run(dir: Option<&Path>) -> ExitCode {
-    match check(dir) {
-        Ok(Outcome::Valid) => {
-            for file in [FAMILIES, SECURITY, COMPLEXITY] {
-                println!("{}: ok", file.name);
-            }
-            ExitCode::SUCCESS
+impl Failure {
+    /// Whether the check could not run, as opposed to the rules having
+    /// problems.
+    pub fn could_not_run(&self) -> bool {
+        match self {
+            Self::Unreadable { .. } | Self::BrokenSchema { .. } => true,
+            Self::FileProblems(_) | Self::CoreProblems(_) => false,
         }
-        Ok(Outcome::CoreProblems(problems)) => print_problems(&problems, ""),
-        Ok(Outcome::FileProblems(problems)) => print_problems(
-            &problems,
-            " (regexes, ids and references are not checked yet)",
-        ),
-        Err(message) => {
-            eprintln!("error: {message}");
-            ExitCode::from(FATAL)
+    }
+
+    /// What is wrong, as the lines that a command prints on stderr in the words
+    /// of `messages`: one line for each problem, then their count.
+    ///
+    /// The problems come from the validators and the core, which write English.
+    pub fn lines(&self, messages: &Messages) -> Vec<String> {
+        match self {
+            Self::Unreadable { path, reason } => {
+                let path = path.display().to_string();
+                let values = [("path", path.as_str()), ("reason", reason.as_str())];
+                vec![error_line(messages, "cli-error-rules-read", &values)]
+            }
+            Self::BrokenSchema { file, reason } => {
+                let values = [("file", *file), ("reason", reason.as_str())];
+                vec![error_line(messages, "cli-error-rules-schema", &values)]
+            }
+            Self::FileProblems(problems) => problem_lines(problems, messages, true),
+            Self::CoreProblems(problems) => problem_lines(problems, messages, false),
         }
     }
 }
 
-/// `Err` when the check cannot run: a rules file cannot be read, or an
-/// embedded schema is broken.
-fn check(dir: Option<&Path>) -> Result<Outcome, String> {
+/// Checks the rules of `dir`, or the embedded rules, and prints the outcome.
+///
+/// The command has no `--lang` (SPEC M4): it speaks English.
+pub fn run(dir: Option<&Path>) -> ExitCode {
+    let messages = Messages::console(Lang::En);
+    match load(dir) {
+        Ok(_) => {
+            for file in [FAMILIES, SECURITY, COMPLEXITY] {
+                say_on_stdout(&messages.text_with("cli-rules-file-ok", &[("file", file.name)]));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(failure) => {
+            for line in failure.lines(&messages) {
+                say_on_stderr(&line);
+            }
+            ExitCode::from(if failure.could_not_run() {
+                FATAL
+            } else {
+                FAILED
+            })
+        }
+    }
+}
+
+/// The rules of `dir`, or the embedded rules, once they pass the check.
+///
+/// # Errors
+///
+/// A [`Failure`]: the check could not run, or the rules have problems.
+pub fn load(dir: Option<&Path>) -> Result<RuleSet, Failure> {
     let mut problems = Vec::new();
     let families = file_stage(dir, &FAMILIES, &mut problems)?;
     let security = file_stage(dir, &SECURITY, &mut problems)?;
     let complexity = file_stage(dir, &COMPLEXITY, &mut problems)?;
     let (Some(families), Some(security), Some(complexity)) = (families, security, complexity)
     else {
-        return Ok(Outcome::FileProblems(problems));
+        return Err(Failure::FileProblems(problems));
     };
-    match RuleSet::load(&RulesSources {
+    RuleSet::load(&RulesSources {
         families: &families,
         security: &security,
         complexity: &complexity,
-    }) {
-        Ok(_) => Ok(Outcome::Valid),
-        Err(problems) => Ok(Outcome::CoreProblems(problems)),
-    }
+    })
+    .map_err(Failure::CoreProblems)
 }
 
 /// The text of `file` if it passes the checks that come before the core.
@@ -117,7 +161,7 @@ fn file_stage(
     dir: Option<&Path>,
     file: &RulesFile,
     problems: &mut Vec<Problem>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, Failure> {
     let text = match dir {
         Some(dir) => decode(file.name, read(dir, file.name)?),
         None => Ok(file.embedded.to_owned()),
@@ -145,15 +189,27 @@ fn file_stage(
     }
 }
 
-/// Prints `problems`, then their count followed by `note`.
-fn print_problems(problems: &[Problem], note: &str) -> ExitCode {
-    for problem in problems {
-        eprintln!("{problem}");
-    }
-    let count = problems.len();
-    let noun = if count == 1 { "problem" } else { "problems" };
-    eprintln!("{count} {noun} found{note}");
-    ExitCode::from(PROBLEMS_FOUND)
+/// The line of an error that stops the command: `message` with its `values`,
+/// in the frame that every error of the command line has.
+fn error_line(messages: &Messages, message: &str, values: &[(&str, &str)]) -> String {
+    let reason = messages.text_with(message, values);
+    messages.text_with("cli-error", &[("message", reason.as_str())])
+}
+
+/// One line for each of `problems`, then their count. The count says that the
+/// core has not checked the rules yet when `before_the_core` is set.
+fn problem_lines(problems: &[Problem], messages: &Messages, before_the_core: bool) -> Vec<String> {
+    let mut lines: Vec<String> = problems.iter().map(ToString::to_string).collect();
+    let count = match problems.len() {
+        1 => messages.text("cli-rules-problem"),
+        count => messages.text_with("cli-rules-problems", &[("count", &count.to_string())]),
+    };
+    lines.push(if before_the_core {
+        format!("{count} {}", messages.text("cli-rules-not-checked"))
+    } else {
+        count
+    });
+    lines
 }
 
 /// Parses one rules file. The core reports the same YAML errors, but without
@@ -168,8 +224,11 @@ fn parse(file: &'static str, text: &str) -> Result<Value, Problem> {
 
 /// Validates a rules document against its JSON Schema. `Err` when the
 /// embedded schema itself is broken.
-fn validate(file: &'static str, document: &Value, schema: &str) -> Result<Vec<Problem>, String> {
-    let broken = |error: &dyn Display| format!("the embedded schema of {file} is invalid: {error}");
+fn validate(file: &'static str, document: &Value, schema: &str) -> Result<Vec<Problem>, Failure> {
+    let broken = |error: &dyn Display| Failure::BrokenSchema {
+        file,
+        reason: error.to_string(),
+    };
     let schema: Value = serde_json::from_str(schema).map_err(|error| broken(&error))?;
     let validator = jsonschema::options()
         .build(&schema)
@@ -281,12 +340,15 @@ fn pointer_order(a: &str, b: &str) -> Ordering {
 }
 
 /// Reads one rules file of `dir`, at most one byte past the size limit.
-fn read(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
+fn read(dir: &Path, file: &str) -> Result<Vec<u8>, Failure> {
     let path = dir.join(file);
     let mut bytes = Vec::new();
     File::open(&path)
         .and_then(|handle| handle.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes))
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        .map_err(|error| Failure::Unreadable {
+            path,
+            reason: error.to_string(),
+        })?;
     Ok(bytes)
 }
 

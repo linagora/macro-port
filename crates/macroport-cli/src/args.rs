@@ -56,6 +56,12 @@ pub struct AnalysisArgs {
     #[arg(long, value_enum, default_value_t)]
     pub lang: LangArg,
 
+    /// Directory with `families.yaml`, `security.yaml` and `complexity.yaml`,
+    /// to use instead of the embedded rules. They are checked as `rules check`
+    /// checks them, and a problem stops the command with exit code 3.
+    #[arg(long, value_name = "DIR", value_parser = existing_dir)]
+    pub rules: Option<PathBuf>,
+
     /// Largest file to analyse, in MB. A larger file is not analysed: it is
     /// hashed and reported as too large.
     #[arg(
@@ -91,5 +97,15 @@ pub fn existing_path(value: &str) -> Result<PathBuf, String> {
         Ok(metadata) if metadata.is_file() || metadata.is_dir() => Ok(path),
         Ok(_) => Err("neither a file nor a directory".to_owned()),
         Err(error) => Err(error.to_string()),
+    }
+}
+
+/// A path that exists and is a directory.
+pub fn existing_dir(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    if path.is_dir() {
+        Ok(path)
+    } else {
+        Err("not an existing directory".to_owned())
     }
 }

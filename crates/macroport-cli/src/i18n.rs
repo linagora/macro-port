@@ -81,13 +81,22 @@ pub struct Messages {
 
 impl Messages {
     /// The words of `lang`, with the labels of `rules`.
-    ///
+    pub fn new(lang: Lang, rules: &RuleSet) -> Self {
+        Self::with_labels(lang, Labels::new(lang, rules))
+    }
+
+    /// The words of `lang` without any label: for what a command says before it
+    /// has rules, such as why it has none. A label that is asked for is missing.
+    pub fn console(lang: Lang) -> Self {
+        Self::with_labels(lang, Labels::default())
+    }
+
     /// The Fluent files are embedded and the tests load them strictly: a syntax
     /// error, a message defined twice or a message that refers to one that does
     /// not exist cannot reach a release. So here what parsed is kept, a later
     /// definition overrides an earlier one, and formatting errors are not
     /// collected.
-    pub fn new(lang: Lang, rules: &RuleSet) -> Self {
+    fn with_labels(lang: Lang, labels: Labels) -> Self {
         let mut bundle = FluentBundle::new(vec![language_id(lang)]);
         // The words are printed as plain text: no Unicode isolation marks
         // (U+2068, U+2069) around placeables (ADR-0002).
@@ -100,7 +109,7 @@ impl Messages {
         Self {
             lang,
             bundle,
-            labels: Labels::new(lang, rules),
+            labels,
             problems: RefCell::default(),
         }
     }
@@ -235,6 +244,7 @@ impl Messages {
 }
 
 /// The labels of the rules in one language, by id.
+#[derive(Default)]
 struct Labels {
     families: BTreeMap<String, String>,
     signals: BTreeMap<String, String>,
