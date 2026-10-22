@@ -55,8 +55,12 @@
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
 //! | `vba.statement.too_deep` | `unchanged` | a module has statements nested too deep to be read in full; the rest of each is read flat |
+//! | `vba.apis.left_out` | `unchanged` | procedures of a module use more APIs than a list holds, or than the lists of the file may take together; their `apis` are left out |
+//! | `vba.calls.left_out` | `unchanged` | procedures of the file have no list of calls, since the call graph passed a bound or a procedure calls more procedures than a list holds; their `calls` are left out |
 //!
-//! The message of an error about a module starts with `module <name>:`.
+//! The message of an error about a module starts with `module <name>:`. That of
+//! `vba.calls.left_out` is about the file, and names the module of the first
+//! procedure.
 
 mod detect;
 mod indicators;
@@ -93,7 +97,9 @@ pub struct Options<'a> {
     /// The rules. Extraction reads the container indicators from them, with
     /// their severity, and the front end takes from them the traits that the
     /// parser, the metrics and the statements decide
-    /// (`compile_error_suspected`).
+    /// (`compile_error_suspected`), and the functions that a list of `apis`
+    /// names when a statement calls one by its bare name (those of the `call`
+    /// matchers, ADR-0011): other rules can give other lists.
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and
