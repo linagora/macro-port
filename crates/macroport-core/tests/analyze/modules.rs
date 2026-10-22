@@ -449,9 +449,8 @@ fn the_fields_that_later_stages_fill_are_left_out_not_made_up() {
 
     let hello = &module(&file).procedures[0];
     assert_eq!(hello.is_entry_point, None);
+    assert_eq!(hello.is_event_handler, None);
     assert_eq!(hello.possibly_unused, None);
-    assert_eq!(hello.calls, None);
-    assert_eq!(hello.apis, None);
     assert_eq!(hello.traits, None);
     assert_eq!(hello.primary_family, "unclassified");
     assert!(hello.families.is_empty() && hello.signals.is_empty());
