@@ -810,8 +810,8 @@ fn trait_conditions_load_in_every_form() {
     };
     let [
         Condition::Metric(metric),
-        Condition::Comment(comments),
-        Condition::ProcedureName(names),
+        Condition::Matches(Matcher::Comment(comments)),
+        Condition::Matches(Matcher::ProcedureName(names)),
         Condition::Ratio {
             of,
             per_logical_loc_gte,

@@ -4,10 +4,9 @@
 
 use std::collections::BTreeMap;
 
-use regex::Regex;
 use serde::Deserialize;
 
-use super::matcher::{self, Patterns, StructuralPredicate};
+use super::matcher::{self, Matcher, Patterns, StructuralPredicate};
 use super::{COMPLEXITY_FILE, Ids, Label, Problem, yaml};
 
 /// The content of `complexity.yaml`.
@@ -127,12 +126,15 @@ pub enum TraitRule {
 pub enum Condition {
     /// A bound on a procedure metric.
     Metric(MetricCondition),
-    /// Regexes on comment text.
-    Comment(Vec<Regex>),
-    /// Regexes on the procedure name.
-    ProcedureName(Vec<Regex>),
+    /// The matcher finds something: `Matcher::Comment` for `match: comment`
+    /// (regexes on comment text) and `Matcher::ProcedureName` for
+    /// `match: procedure_name` (regexes on the procedure name).
+    Matches(Matcher),
     /// The occurrences of these members or chains, divided by the
-    /// procedure's `logical_loc`, reach `per_logical_loc_gte`.
+    /// procedure's `logical_loc`, reach `per_logical_loc_gte`. A name of `of`
+    /// that holds a dot is a chain and any other is a member. The schema
+    /// requires `of` not to be empty and the threshold to be positive, and the
+    /// loader leaves that to it.
     Ratio {
         of: Vec<String>,
         per_logical_loc_gte: f64,
@@ -332,10 +334,10 @@ impl Checker<'_> {
                     conditions.extend(self.metric(Some(rule), raw, &at).map(Condition::Metric));
                 }
                 RawCondition::Pattern(raw) => match matcher::regexes(raw.pattern) {
-                    Ok(regexes) => conditions.push(match raw.matcher {
-                        PatternMatch::Comment => Condition::Comment(regexes),
-                        PatternMatch::ProcedureName => Condition::ProcedureName(regexes),
-                    }),
+                    Ok(regexes) => conditions.push(Condition::Matches(match raw.matcher {
+                        PatternMatch::Comment => Matcher::Comment(regexes),
+                        PatternMatch::ProcedureName => Matcher::ProcedureName(regexes),
+                    })),
                     Err(errors) => self.problems.extend(
                         errors
                             .into_iter()
