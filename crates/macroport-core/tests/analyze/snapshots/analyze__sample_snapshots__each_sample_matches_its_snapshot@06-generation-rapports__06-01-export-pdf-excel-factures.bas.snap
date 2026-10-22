@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 forms=0 declare_count=0
+file: loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 forms=0 declare_count=0 external_dependencies=1
 module 06-01-export-pdf-excel-factures (standard): loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub EXPORT_PDF_MultipleSheet_ForOne default lines 11-53: loc=43 logical_loc=28 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

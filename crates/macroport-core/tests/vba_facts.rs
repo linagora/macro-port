@@ -595,3 +595,19 @@ fn nesting_beyond_the_limit_hides_no_name() {
     assert!(read.too_deep);
     assert!(read.chains.is_empty());
 }
+
+#[test]
+fn a_long_run_of_library_names_is_read_in_proportion_to_its_size() {
+    // Read flat, a call has its qualifiers read back from the tokens before
+    // it: a run of names costs once, whether one call or many follow runs.
+    let (run, open) = ("VBA.".repeat(100_000), "f(".repeat(100_000));
+    let library = |facts: &Facts| facts.calls.iter().filter(|call| call.library).count();
+    let read = facts_in_time(&format!("x = {run}Shell(x)"));
+    assert!(!read.too_deep);
+    assert_eq!(library(&read), 1);
+    let read = facts_in_time(&format!("{open}{run}Shell(x)"));
+    assert!(read.too_deep);
+    assert_eq!(library(&read), 1);
+    let read = facts_in_time(&format!("{open}{}", "VBA.Shell(x) + ".repeat(50_000)));
+    assert_eq!(library(&read), 50_000);
+}

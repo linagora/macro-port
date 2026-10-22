@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=33 logical_loc=13 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0
+file: loc=33 logical_loc=13 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 04-01-count-unique-dictionary (standard): loc=33 logical_loc=13 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   sub CountUnique public lines 7-33: loc=27 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
