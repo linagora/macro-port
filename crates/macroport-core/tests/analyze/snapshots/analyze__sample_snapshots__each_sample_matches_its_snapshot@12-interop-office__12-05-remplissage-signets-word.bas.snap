@@ -1,0 +1,17 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/12-interop-office/12-05-remplissage-signets-word.bas
+---
+families/12-interop-office/12-05-remplissage-signets-word.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=58 logical_loc=34 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0
+module 12-05-remplissage-signets-word (standard): loc=58 logical_loc=34 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub Add_Single_Values_Word default lines 12-58: loc=47 logical_loc=33 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 10
+  procedure sub Add_Single_Values_Word default static=false parameters=0 lines 12-58 recoveries=none unbalanced_blocks=false
+  recoveries: none

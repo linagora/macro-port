@@ -17,6 +17,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 codepage = "0.1.3"
 encoding_rs = "0.8.42"
 flate2 = "1.1.10"
+insta = { version = "1.49.0", features = ["glob", "yaml"] }
 jsonschema = { version = "0.59.0", default-features = false }
 macroport-core = { path = "crates/macroport-core" }
 macroport-testkit = { path = "crates/macroport-testkit" }

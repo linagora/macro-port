@@ -18,5 +18,6 @@ mod fixtures;
 mod indicators;
 mod modules;
 mod robustness;
+mod sample_snapshots;
 mod support;
 mod text_files;
