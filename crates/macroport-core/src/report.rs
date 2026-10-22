@@ -42,6 +42,29 @@ impl Report {
     /// date-time that the caller reads from its clock or fixes for tests;
     /// `tool.build` is left for the caller to set.
     pub fn empty(rules: &RuleSet, generated_at: String, lang: Lang) -> Self {
+        Self::from_files(rules, generated_at, lang, Vec::new())
+    }
+
+    /// The fleet report on `files`, the reports of the files of a scan in any
+    /// order.
+    ///
+    /// The files come out in the order of their paths, byte by byte, so that
+    /// the report does not depend on the order in which they were analysed.
+    /// Two files of the same path, which a name that is not UTF-8 can give,
+    /// come out in the order of their hashes. A caller that rewrites the paths
+    /// afterwards sorts the files again.
+    ///
+    /// The counts of the scan and the summary follow from the files.
+    /// `generated_at` is an RFC 3339 date-time that the caller reads from its
+    /// clock or fixes for tests. `scan.roots`, `scan.duration_ms` and
+    /// `tool.build` are left for the caller to set: the files do not tell them.
+    pub fn from_files(
+        rules: &RuleSet,
+        generated_at: String,
+        lang: Lang,
+        mut files: Vec<FileReport>,
+    ) -> Self {
+        files.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.sha256.cmp(&b.sha256)));
         Self {
             schema_version: SCHEMA_VERSION.to_owned(),
             tool: Tool {
@@ -53,26 +76,9 @@ impl Report {
             generated_at,
             redacted: false,
             lang: Some(lang),
-            scan: Scan {
-                roots: None,
-                files_total: 0,
-                files_with_macros: 0,
-                files_failed: 0,
-                duration_ms: None,
-            },
-            files: Vec::new(),
-            summary: Summary {
-                by_status: BTreeMap::new(),
-                by_family: BTreeMap::new(),
-                by_complexity: BTreeMap::new(),
-                by_severity: BTreeMap::new(),
-                totals: Some(Totals {
-                    modules: Some(0),
-                    procedures: Some(0),
-                    logical_loc: Some(0),
-                    possibly_unused_procedures: Some(0),
-                }),
-            },
+            scan: Scan::of(&files),
+            summary: Summary::of(&files),
+            files,
         }
     }
 
@@ -131,6 +137,27 @@ pub struct Scan {
     pub files_failed: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+}
+
+impl Scan {
+    /// The counts of a scan that produced `files`. The caller sets the roots
+    /// and the duration.
+    ///
+    /// `files_with_macros` counts the files in status `ok`: those with a VBA
+    /// procedure or an Excel 4.0 macro sheet (SPEC M1, file statuses).
+    /// `files_failed` counts those in a failure status, see
+    /// [`Status::is_failure`].
+    fn of(files: &[FileReport]) -> Self {
+        let counted =
+            |keep: fn(Status) -> bool| saturating_count(files.iter().filter(|f| keep(f.status)));
+        Self {
+            roots: None,
+            files_total: saturating_count(files.iter()),
+            files_with_macros: counted(|status| status == Status::Ok),
+            files_failed: counted(Status::is_failure),
+            duration_ms: None,
+        }
+    }
 }
 
 /// One analysed file.
@@ -207,6 +234,23 @@ pub enum Status {
     TooLarge,
     SuspiciousArchive,
     Error,
+}
+
+impl Status {
+    /// Whether a file in this status failed: it is damaged, above the size
+    /// limit, an archive that inflates suspiciously, or the analysis broke on
+    /// it. These are the files that make `macro-port scan` exit with code 1
+    /// (SPEC M4), and the ones that `scan.files_failed` counts.
+    ///
+    /// A file that is encrypted or in a format the tool does not read did not
+    /// fail: it is a finding of the inventory.
+    pub fn is_failure(self) -> bool {
+        // No wildcard: a new status has to be sorted into one side or the other.
+        match self {
+            Self::Corrupted | Self::TooLarge | Self::SuspiciousArchive | Self::Error => true,
+            Self::Ok | Self::NoMacros | Self::Encrypted | Self::Unsupported => false,
+        }
+    }
 }
 
 /// An error met while analysing a file.
@@ -450,6 +494,72 @@ pub struct Summary {
     pub by_severity: BTreeMap<Severity, u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub totals: Option<Totals>,
+}
+
+impl Summary {
+    /// The summary of `files`. Only the statuses, families, levels and
+    /// severities that occur are counted.
+    ///
+    /// The files are counted by status, by complexity level and by highest
+    /// severity; the procedures by primary family. The totals add up the
+    /// modules and procedures of the VBA projects, the logical lines of the
+    /// files and the procedures that are possibly unused.
+    fn of(files: &[FileReport]) -> Self {
+        let mut by_status = BTreeMap::new();
+        let mut by_family = BTreeMap::new();
+        let mut by_complexity = BTreeMap::new();
+        let mut by_severity = BTreeMap::new();
+        let mut modules = 0_u32;
+        let mut procedures = 0_u32;
+        let mut logical_loc = 0_u32;
+        let mut possibly_unused = 0_u32;
+        for file in files {
+            tally(&mut by_status, file.status);
+            if let Some(level) = file.complexity_level {
+                tally(&mut by_complexity, level);
+            }
+            if let Some(severity) = file.max_severity {
+                tally(&mut by_severity, severity);
+            }
+            if let Some(metrics) = &file.metrics {
+                logical_loc = logical_loc.saturating_add(metrics.logical_loc);
+            }
+            let Some(project) = &file.vba_project else {
+                continue;
+            };
+            modules = modules.saturating_add(saturating_count(project.modules.iter()));
+            for procedure in project.modules.iter().flat_map(|m| &m.procedures) {
+                procedures = procedures.saturating_add(1);
+                tally(&mut by_family, procedure.primary_family.clone());
+                if procedure.possibly_unused == Some(true) {
+                    possibly_unused = possibly_unused.saturating_add(1);
+                }
+            }
+        }
+        Self {
+            by_status,
+            by_family,
+            by_complexity,
+            by_severity,
+            totals: Some(Totals {
+                modules: Some(modules),
+                procedures: Some(procedures),
+                logical_loc: Some(logical_loc),
+                possibly_unused_procedures: Some(possibly_unused),
+            }),
+        }
+    }
+}
+
+/// Counts one more occurrence of `key`.
+fn tally<K: Ord>(counts: &mut BTreeMap<K, u32>, key: K) {
+    let seen = counts.entry(key).or_insert(0);
+    *seen = seen.saturating_add(1);
+}
+
+/// The number of `items`, at most `u32::MAX`.
+fn saturating_count<I: Iterator>(items: I) -> u32 {
+    u32::try_from(items.count()).unwrap_or(u32::MAX)
 }
 
 /// Totals over the files of the report.
