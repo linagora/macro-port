@@ -10,7 +10,28 @@ traits: none
 file: loc=103 logical_loc=62 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 03-05-split-product-code-regex (standard): loc=103 logical_loc=62 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub splitStyleFabricColourSizeV3 default lines 9-103: loc=95 logical_loc=61 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub splitStyleFabricColourSizeV3 default lines 9-103: loc=95 logical_loc=61 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=21
+    api colF.Add*1
+    api colF.Count*2
+    api CreateObject:vbscript.regexp*1
+    api MC.submatches*4
+    api pC.Colour*2
+    api pC.Fabric*2
+    api pC.Size*2
+    api pC.Style*3
+    api RE.Execute*1
+    api RE.Global*1
+    api RE.MultiLine*1
+    api RE.Pattern*1
+    api RE.Test*2
+    api rRes.Resize*1
+    api rRes.value*1
+    api Selection.Resize*1
+    api V.Colour*1
+    api V.Fabric*1
+    api V.Size*1
+    api V.Style*1
+    api wsRes.Application.Selection*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub splitStyleFabricColourSizeV3 default static=false parameters=0 lines 9-103 recoveries=none unbalanced_blocks=false

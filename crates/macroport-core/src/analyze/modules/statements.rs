@@ -7,7 +7,8 @@
 //! names it invokes, the chains it follows, the strings it holds and the
 //! ProgIDs it creates. They hold their own copies of those names and strings,
 //! so none is kept: [`each_statement`] hands them to a visitor one at a time,
-//! and what a stage keeps of them is a count, a flag or a small set.
+//! and what a stage keeps of them is a count, a flag, or a set or lists that it
+//! bounds itself (the ProgIDs of the file, the APIs of the procedures).
 //!
 //! The statements are read in *runs*: the lines of one procedure, or the lines
 //! outside the procedures that lie together (before the first, between two,
@@ -17,14 +18,18 @@
 //! declared before any run is read, since a procedure may use one that the
 //! module declares below it.
 //!
-//! [`Statements::read`] is the walk that `analyze` makes. It hands the ProgIDs
-//! to the set of the file and keeps what the statements show of the module: the
-//! ones that nest expressions too deep to be read in full.
+//! [`Statements::read`] is the walk that `analyze` makes, one for each module,
+//! and every stage that reads statements is fed by it. It hands the ProgIDs to
+//! the set of the file, the APIs to the lists of the procedures, and keeps what
+//! the statements show of the module: the ones that nest expressions too deep
+//! to be read in full.
 
 use std::collections::BTreeSet;
 use std::ops::Range;
 
 use super::Analysis;
+use super::apis::FileApis;
+use crate::report::ApiUse;
 use crate::vba::{ConstTable, Facts, LogicalLine, Procedure, StatementReader, is_external_progid};
 
 /// The most distinct ProgIDs that a file keeps. Real code names a handful, and
@@ -121,8 +126,9 @@ impl ExternalProgids {
     }
 }
 
-/// What the statements of one module show of the module itself. What they show
-/// of the file, its ProgIDs, goes to the set that the caller gives.
+/// What the statements of one module show of the module itself and of its
+/// procedures. What they show of the file, its ProgIDs, goes to the set that the
+/// caller gives.
 #[derive(Debug, Default)]
 pub(super) struct Statements {
     /// The procedures of the module, by their position among them, that hold a
@@ -131,13 +137,23 @@ pub(super) struct Statements {
     /// The statements of the module that are nested too deep to be read, those
     /// outside the procedures too. `None` if there is none.
     pub(super) too_deep: Option<TooDeep>,
+    /// The list of APIs of each procedure, by position: `None` for one that
+    /// passed a bound, or that [`Statements::take_apis`] took.
+    api_lists: Vec<Option<Vec<ApiUse>>>,
 }
 
 impl Statements {
     /// Reads every statement of `analysis`. The classes that they pass to
-    /// `CreateObject` and `GetObject` join `progids`, the set of the file.
-    pub(super) fn read(analysis: &Analysis, progids: &mut ExternalProgids) -> Self {
+    /// `CreateObject` and `GetObject` join `progids`, the set of the file, and
+    /// the APIs they use are counted in the lists of the procedures, which
+    /// `file_apis`, that of the file, bounds.
+    pub(super) fn read(
+        analysis: &Analysis,
+        progids: &mut ExternalProgids,
+        file_apis: &mut FileApis,
+    ) -> Self {
         let mut statements = Self::default();
+        let mut lists = file_apis.module(analysis);
         each_statement(analysis, |place, _, line, facts| {
             for progid in &facts.progids {
                 progids.add(progid);
@@ -145,13 +161,23 @@ impl Statements {
             if facts.too_deep {
                 statements.note_deep(place, line);
             }
+            if let Place::Procedure(index) = place {
+                lists.add(index, &facts);
+            }
         });
+        statements.api_lists = lists.finish();
         statements
     }
 
     /// Whether the procedure at `index` holds a statement nested too deep.
     pub(super) fn is_deep(&self, index: usize) -> bool {
         self.deep.contains(&index)
+    }
+
+    /// The APIs that the procedure at `index` uses, with how many times each:
+    /// `None` if its list passed a bound. A list is taken once.
+    pub(super) fn take_apis(&mut self, index: usize) -> Option<Vec<ApiUse>> {
+        self.api_lists.get_mut(index).and_then(Option::take)
     }
 
     /// Takes note of a statement, the logical line `line` in `place`, that
@@ -186,6 +212,7 @@ pub(super) struct TooDeep {
 mod tests {
     use super::*;
     use crate::report::{ProcedureKind, Visibility};
+    use crate::rules::{RuleSet, RulesSources};
     use crate::vba::MAX_NESTING;
 
     fn analysis(text: &str) -> Analysis {
@@ -277,11 +304,23 @@ mod tests {
         assert_eq!(visited(""), []);
     }
 
+    /// The lists of APIs of a file read with the rules that ship with the tool.
+    fn file_apis() -> FileApis {
+        let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+        FileApis::new(&rules)
+    }
+
     /// The ProgIDs that the statements of `text` give, as the file keeps them.
     fn progids(text: &str) -> Vec<String> {
         let mut found = ExternalProgids::default();
-        Statements::read(&analysis(text), &mut found);
+        Statements::read(&analysis(text), &mut found, &mut file_apis());
         found.iter().cloned().collect()
+    }
+
+    /// What the statements of `text` show of its module.
+    fn statements_of(text: &str) -> Statements {
+        let mut progids = ExternalProgids::default();
+        Statements::read(&analysis(text), &mut progids, &mut file_apis())
     }
 
     #[test]
@@ -350,7 +389,7 @@ mod tests {
         let deep = too_deep_statement();
         let text = format!("Sub A()\nEnd Sub\nSub B()\n    {deep}\n    {deep}\nEnd Sub\n{deep}\n");
 
-        let statements = Statements::read(&analysis(&text), &mut ExternalProgids::default());
+        let statements = statements_of(&text);
 
         assert_eq!([0, 1].map(|index| statements.is_deep(index)), [false, true]);
         // No procedure lies at 2, whatever the module holds below the others.
@@ -368,7 +407,7 @@ mod tests {
     fn a_statement_nested_too_deep_below_the_procedures_marks_none_of_them() {
         let text = format!("Sub A()\nEnd Sub\n{}\n", too_deep_statement());
 
-        let statements = Statements::read(&analysis(&text), &mut ExternalProgids::default());
+        let statements = statements_of(&text);
 
         assert!(!statements.is_deep(0));
         let expected = TooDeep {

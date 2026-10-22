@@ -10,7 +10,11 @@ traits: none
 file: loc=48 logical_loc=37 procedures=1 cyclomatic=13 cyclomatic_total=13 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 08-02-udf-extraction-entre-chaines (standard): loc=48 logical_loc=37 procedures=1 cyclomatic=13 cyclomatic_total=13 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  function SuperMid public lines 9-48: loc=40 logical_loc=36 cyclomatic=13 max_nesting=2 parameters=4 goto_count=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function SuperMid public lines 9-48: loc=40 logical_loc=36 cyclomatic=13 max_nesting=2 parameters=4 goto_count=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=4
+    api InStr*4
+    api InStrRev*4
+    api Len*8
+    api Mid*1
 parse:
   declaration Option(Explicit) line 8
   procedure function SuperMid public static=false parameters=4 lines 9-48 recoveries=none unbalanced_blocks=false
