@@ -7,7 +7,7 @@ const TYPE_CHARS: [char; 6] = ['$', '%', '&', '!', '#', '@'];
 
 /// `name` without the type-declaration character that ends it: `Chr$` is
 /// `Chr`.
-fn without_type_char(name: &str) -> &str {
+pub(super) fn without_type_char(name: &str) -> &str {
     name.strip_suffix(TYPE_CHARS).unwrap_or(name)
 }
 

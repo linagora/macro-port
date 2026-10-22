@@ -4,6 +4,9 @@
 
 use std::collections::BTreeSet;
 
+use regex::Regex;
+
+use super::hit::Hit;
 use super::input::{
     CallSite, CodeLine, MemberUse, ModuleInput, ParserPredicates, ProcedureInput, ProjectInput,
 };
@@ -123,6 +126,14 @@ pub(crate) fn project(modules: Vec<ModuleInput>) -> ProjectInput {
     }
 }
 
+impl ProjectInput {
+    /// Sets the display names of the references of the project.
+    pub(crate) fn with_references(mut self, references: &[&str]) -> Self {
+        self.references = owned(references);
+        self
+    }
+}
+
 /// A project of one standard module that holds one procedure, whose body is
 /// `body`.
 pub(crate) fn project_of(body: &[CodeLine]) -> ProjectInput {
@@ -155,4 +166,37 @@ pub(crate) fn calls(names: &[&str]) -> Matcher {
 /// A `progid` matcher for these glob patterns.
 pub(crate) fn progids(patterns: &[&str]) -> Matcher {
     Matcher::ProgId(owned(patterns))
+}
+
+/// The regexes of a rule, as the matchers receive them. The rules loader makes
+/// them case-insensitive and the matchers add nothing to them: a test that
+/// needs the case ignored says `(?i)`.
+fn compiled(patterns: &[&str]) -> Vec<Regex> {
+    patterns
+        .iter()
+        .map(|pattern| Regex::new(pattern).unwrap())
+        .collect()
+}
+
+/// A `procedure_name` matcher for these regexes.
+pub(crate) fn procedure_names(patterns: &[&str]) -> Matcher {
+    Matcher::ProcedureName(compiled(patterns))
+}
+
+/// A `reference` matcher for these regexes.
+pub(crate) fn references(patterns: &[&str]) -> Matcher {
+    Matcher::Reference(compiled(patterns))
+}
+
+/// The module and the line of each hit that has a place.
+pub(crate) fn places(hits: &[Hit<'_>]) -> Vec<(usize, u32)> {
+    hits.iter()
+        .filter_map(|hit| hit.place)
+        .map(|place| (place.module, place.line))
+        .collect()
+}
+
+/// The snippet of each hit.
+pub(crate) fn snippets(hits: &[Hit<'_>]) -> Vec<String> {
+    hits.iter().map(Hit::snippet).collect()
 }

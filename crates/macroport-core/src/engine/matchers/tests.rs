@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Tests of the matchers, through the evaluator.
+//! Tests of the `member`, `chain`, `call` and `progid` matchers, through the
+//! evaluator. The other matchers have a test module of their own.
 
 use crate::engine::testing::{calls, chains, line, members, progids, project_of};
 use crate::engine::{CodeLine, Evaluator, Hit, Place};

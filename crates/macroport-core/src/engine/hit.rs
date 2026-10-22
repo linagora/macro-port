@@ -26,8 +26,9 @@ pub struct Place {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hit<'p> {
     /// Where the match is, or `None` for a hit that is not in module source:
-    /// a reference of the project. A hit about a whole module, such as a
-    /// `module_type` hit, cites the first line of the module.
+    /// a reference of the project. A hit about a whole procedure cites its
+    /// declaration, and one about a whole module cites its first line, or the
+    /// declaration when the matcher was run over one procedure.
     pub place: Option<Place>,
     /// What the snippet quotes: the statement that matched, the declaration
     /// of the procedure, the name of the module or of the reference.
