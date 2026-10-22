@@ -249,13 +249,27 @@ fn the_metrics_of_a_sample_add_up_from_its_procedures() {
     }
 }
 
+/// The APIs of a procedure as `name*count` in lowercase. The editor of Excel
+/// gives an identifier the case of its declaration when it stores the code, so
+/// a workbook spells a name as `XLPicture` where its sample has `xlPicture`.
+fn lowercase_apis(procedure: &ProcedureReport) -> Option<Vec<String>> {
+    let apis = procedure.apis.as_ref()?;
+    let spelled = apis.iter().map(|api| (api.name.to_lowercase(), api.count));
+    Some(
+        spelled
+            .map(|(name, count)| format!("{name}*{count}"))
+            .collect(),
+    )
+}
+
 /// What a procedure reports whatever the container its module came from: all
-/// but its lines, which the header of an export and the `Attribute` lines move.
+/// but its lines, which the header of an export and the `Attribute` lines move,
+/// and the case of the names of its APIs.
 fn fingerprint(procedure: &ProcedureReport) -> String {
     let metrics = &procedure.metrics;
     format!(
         "{} {:?} {:?} loc={} logical_loc={} cyclomatic={:?} max_nesting={:?} \
-         parameters={:?} goto_count={:?} traits={:?}",
+         parameters={:?} goto_count={:?} traits={:?} calls={:?} apis={:?}",
         procedure.name,
         procedure.kind,
         procedure.visibility,
@@ -266,6 +280,8 @@ fn fingerprint(procedure: &ProcedureReport) -> String {
         metrics.parameters,
         metrics.goto_count,
         procedure.traits,
+        procedure.calls,
+        lowercase_apis(procedure),
     )
 }
 
