@@ -41,8 +41,9 @@ pub(super) fn is_one_of(name: &str, candidates: &[impl AsRef<str>]) -> bool {
 
 /// `name` in the form in which names are compared, as a string: two names are
 /// the same name when their keys are equal and not empty. For the sets of
-/// names, which look a name up and do not run through all of them.
-pub(super) fn comparable_key(name: &str) -> String {
+/// names, which look a name up and do not run through all of them. The callers
+/// of the engine count distinct names with it.
+pub(crate) fn comparable_key(name: &str) -> String {
     comparable(name).collect()
 }
 

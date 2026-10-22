@@ -62,6 +62,12 @@ pub struct ModuleInput {
     pub declarations: Vec<CodeLine>,
     /// The procedures, in source order.
     pub procedures: Vec<ProcedureInput>,
+    /// `parse_recovered` holds for the module as a whole: the parser stepped
+    /// over something in it, in a procedure or outside any, as it does for a
+    /// stray `End Sub` that no procedure holds (`ParsedModule::is_recovered`).
+    /// Read by `parse_recovered` over a module or a project. Over one
+    /// procedure, only its own `ParserPredicates` count.
+    pub parse_recovered: bool,
 }
 
 /// A set of names that finds a name as the matchers compare names: whatever
@@ -76,6 +82,11 @@ pub struct ModuleInput {
 pub struct NameSet(BTreeSet<String>);
 
 impl NameSet {
+    /// Whether the set holds no name.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Whether `name` is one of the names of the set. A name that is empty
     /// once its type character is gone is none of them.
     pub fn contains(&self, name: &str) -> bool {
@@ -137,8 +148,9 @@ pub struct CodeLine {
     pub line: u32,
     /// The statement as written, comment and string literals intact, its
     /// continuation markers removed and its physical lines joined by one
-    /// space. Read by `regex` with `text: raw`, and quoted by the hits found
-    /// in the statement.
+    /// space. The comment comes back after an apostrophe, whatever marked it:
+    /// the parser does not keep whether `Rem` did. Read by `regex` with `text:
+    /// raw`, and quoted by the hits found in the statement.
     pub raw: String,
     /// `raw` for `regex` with `text: code`: each string literal replaced by
     /// `""` and the comment removed. The empty literal stays, so that
