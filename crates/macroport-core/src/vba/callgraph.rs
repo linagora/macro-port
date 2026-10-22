@@ -63,6 +63,10 @@
 //! says nothing it is not sure of: [`ProcedureLinks::possibly_unused`] and
 //! [`ProcedureLinks::calls`] are `None`, whereas the entry points do not depend
 //! on what was read and are always told.
+//!
+//! A module that the caller did not read ([`CallGraph::skip_module`]) does the
+//! same. It may hold any procedure: one that nothing seems to refer to may be
+//! used from it, and a name that no procedure of the project has may be its own.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -119,9 +123,9 @@ const LIMITS: Limits = Limits {
     calls: 500_000,
 };
 
-/// A module of a [`CallGraph`], as [`CallGraph::add_module`] numbers it. It is
-/// the position of the module in the result of [`CallGraph::resolve`], and
-/// means nothing for another graph.
+/// A module of a [`CallGraph`], as [`CallGraph::add_module`] or
+/// [`CallGraph::skip_module`] numbers it. It is the position of the module in
+/// the result of [`CallGraph::resolve`], and means nothing for another graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleId(usize);
 
@@ -164,7 +168,7 @@ pub struct CallGraph {
     current: Option<usize>,
     /// How many mentions the graph may still read.
     mentions: usize,
-    /// No limit stopped the reading.
+    /// No limit stopped the reading, and no module was skipped.
     complete: bool,
 }
 
@@ -234,6 +238,24 @@ impl CallGraph {
         ModuleId(module)
     }
 
+    /// Adds a module that was not read, in the place that
+    /// [`CallGraph::add_module`] would give it: the module has no source, or
+    /// its source is lost with its procedures, or the caller refuses it for a
+    /// budget of its own. The graph then says no more of the project than it does
+    /// past a limit, and reads no further statement. The module has no procedure
+    /// in the result of [`CallGraph::resolve`], and the modules after it keep
+    /// their places.
+    pub fn skip_module(&mut self) -> ModuleId {
+        self.complete = false;
+        let module = self.modules.len();
+        self.modules.push(ModuleInfo {
+            first: self.procedures.len(),
+            count: 0,
+            groups: BTreeMap::new(),
+        });
+        ModuleId(module)
+    }
+
     /// Reads the facts of a statement of a procedure. `procedure` is its
     /// position among the procedures that [`CallGraph::add_module`] was given
     /// for `module`, and `line` the position of the statement among the logical
@@ -287,8 +309,9 @@ impl CallGraph {
     }
 
     /// Ends the reading and gives what the graph says of each procedure, by
-    /// module in the order of [`CallGraph::add_module`] and by procedure in
-    /// the order it was given there.
+    /// module in the order of [`CallGraph::add_module`] and
+    /// [`CallGraph::skip_module`] (a module that was skipped has no procedure)
+    /// and by procedure in the order it was given there.
     pub fn resolve(mut self) -> Vec<Vec<ProcedureLinks>> {
         self.flush();
         let mut calls = if self.complete {
@@ -994,5 +1017,45 @@ mod tests {
         let pending = graph.pending.len();
         graph.read(module, 0, 1, &calling(&["c"]));
         assert_eq!(graph.pending.len(), pending);
+    }
+
+    #[test]
+    fn a_module_that_was_not_read_keeps_its_place_and_leaves_the_links_unknown() {
+        let mut graph = CallGraph::new();
+        let run = [procedure("Run", Visibility::Public)];
+        let first = graph.add_module(ModuleType::Standard, &run, &[]);
+        let skipped = graph.skip_module();
+        let rest = [private("Helper"), procedure("Last", Visibility::Public)];
+        let last = graph.add_module(ModuleType::Standard, &rest, &[]);
+        graph.read(first, 0, 1, &calling(&["Helper"]));
+        graph.read(last, 1, 1, &calling(&["Run"]));
+
+        assert_eq!(
+            [first, skipped, last].map(|module| module.0),
+            [0, 1, 2],
+            "one place for each module, read or not"
+        );
+        let links = graph.resolve();
+        let sizes: Vec<_> = links.iter().map(Vec::len).collect();
+        assert_eq!(sizes, [1, 0, 2]);
+        let links: Vec<_> = links.into_iter().flatten().collect();
+        // What is called, and what is unused, depends on the module that was not
+        // read; the entry points do not.
+        assert_eq!(unused(&links), [None, None, None]);
+        assert!(links.iter().all(|links| links.calls.is_none()));
+        let entries: Vec<_> = links.iter().map(|links| links.is_entry_point).collect();
+        assert_eq!(entries, [true, false, true]);
+    }
+
+    #[test]
+    fn a_graph_with_a_module_that_was_not_read_reads_no_more() {
+        let mut graph = CallGraph::new();
+        graph.skip_module();
+        assert!(!graph.complete);
+        let module = graph.add_module(ModuleType::Standard, &[private("a")], &[]);
+
+        graph.read(module, 0, 1, &calling(&["a", "b"]));
+
+        assert!(graph.pending.is_empty() && graph.edges.is_empty());
     }
 }

@@ -303,12 +303,21 @@ fn decode(file: &'static str, bytes: Vec<u8>) -> Result<String, Problem> {
 
 #[cfg(test)]
 mod tests {
-    use macroport_core::rules::{ModuleType, StructuralPredicate};
+    use macroport_core::rules::{Metric, ModuleType, StructuralPredicate};
 
     use super::*;
 
     fn json(schema: &str) -> Value {
         serde_json::from_str(schema).expect("the schema is JSON")
+    }
+
+    /// The version that the shipped rules files share. The files that a test
+    /// builds load beside them, so they have to share it too.
+    fn shipped_version() -> String {
+        RuleSet::load(&RulesSources::EMBEDDED)
+            .expect("the shipped rules load")
+            .version()
+            .to_owned()
     }
 
     fn names(enumeration: &Value) -> Vec<String> {
@@ -333,6 +342,22 @@ mod tests {
 
         let module_types: Vec<&str> = ModuleType::ALL.into_iter().map(ModuleType::name).collect();
         assert_eq!(names(&schema["$defs"]["module_type"]), module_types);
+
+        // The metrics of the conditions, and the only ones that can be
+        // defined, are those of the core (#29).
+        let schema = json(COMPLEXITY_SCHEMA);
+        let mut metrics: Vec<&str> = Metric::ALL.into_iter().map(Metric::name).collect();
+        assert_eq!(names(&schema["$defs"]["metric"]), metrics);
+        let defined = &schema["properties"]["metric_definitions"]["properties"];
+        let mut defined: Vec<&str> = defined
+            .as_object()
+            .expect("the metrics that can be defined")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        defined.sort_unstable();
+        metrics.sort_unstable();
+        assert_eq!(defined, metrics);
     }
 
     /// Every matcher, scope and text mode that the schema allows loads in the core.
@@ -356,9 +381,10 @@ mod tests {
             signals.push(format!("match: member, pattern: x, text: {text}"));
         }
 
+        let version = shipped_version();
         for signal in signals {
             let families = format!(
-                "version: 0.1.0\n\
+                "version: {version}\n\
                  scoring: {{ min_score: 3, secondary_ratio: 0.6, default_max_hits_per_procedure: 3 }}\n\
                  families:\n  \
                    - {{ id: 01-x, corpus_slug: 01-x, label: {{ en: X, fr: X }}, \
@@ -372,7 +398,9 @@ mod tests {
             );
             let loaded = RuleSet::load(&RulesSources {
                 families: &families,
-                security: "version: 0.1.0\nsignals: []\nchains: []\ncontainer_indicators: []\n",
+                security: &format!(
+                    "version: {version}\nsignals: []\nchains: []\ncontainer_indicators: []\n"
+                ),
                 complexity: RulesSources::EMBEDDED.complexity,
             });
             assert!(loaded.is_ok(), "{signal}: {loaded:?}");
@@ -434,10 +462,11 @@ mod tests {
     /// Every severity that the schema allows loads in the core.
     #[test]
     fn the_core_loads_every_severity_of_the_schema() {
+        let version = shipped_version();
         for severity in names(&json(SECURITY_SCHEMA)["$defs"]["severity"]) {
             let label_entry = "label: { en: X, fr: X }";
             let security = format!(
-                "version: 0.1.0\n\
+                "version: {version}\n\
                  signals: [{{ id: s, category: test, match: call, pattern: x, \
                               severity: {severity}, {label_entry} }}]\n\
                  chains: [{{ id: c, all: [s], severity: {severity}, {label_entry} }}]\n\
@@ -496,11 +525,11 @@ mod tests {
         for key in exactly_one_of(&schema, "/$defs/trait/oneOf").expect("the rules of a trait") {
             rules.push(match key {
                 "structural" => format!("{key}: udf_candidate"),
-                _ => format!("{key}: [{{ metric: m, gte: 1 }}]"),
+                _ => format!("{key}: [{{ metric: logical_loc, gte: 1 }}]"),
             });
         }
         for bound in exactly_one_of(&schema, "/$defs/metric_condition/oneOf").expect("the bounds") {
-            rules.push(format!("all: [{{ metric: m, {bound}: 1 }}]"));
+            rules.push(format!("all: [{{ metric: logical_loc, {bound}: 1 }}]"));
         }
         for matcher in names(&schema["$defs"]["condition"]["properties"]["match"]) {
             let condition = match matcher.as_str() {
@@ -510,13 +539,14 @@ mod tests {
             rules.push(format!("any: [{{ match: {matcher}, {condition} }}]"));
         }
 
+        let version = shipped_version();
         for rule in rules {
             let complexity = format!(
-                "version: 0.1.0\n\
+                "version: {version}\n\
                  file_levels:\n  \
-                   medium: {{ any: [{{ metric: m, gte: 2 }}] }}\n  \
-                   high: {{ any: [{{ metric: m, gte: 3 }}] }}\n\
-                 metric_definitions: {{ m: M }}\n\
+                   medium: {{ any: [{{ metric: logical_loc, gte: 2 }}] }}\n  \
+                   high: {{ any: [{{ metric: logical_loc, gte: 3 }}] }}\n\
+                 metric_definitions: {{ logical_loc: Lines }}\n\
                  traits: [{{ id: t, label: {{ en: X, fr: X }}, description: X, {rule} }}]\n"
             );
             let document = parse(COMPLEXITY_FILE, &complexity).expect("valid YAML");
