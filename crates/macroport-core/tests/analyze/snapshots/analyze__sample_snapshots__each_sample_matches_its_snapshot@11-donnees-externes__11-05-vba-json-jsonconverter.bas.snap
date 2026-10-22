@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 forms=0 declare_count=14
+file: loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 forms=0 declare_count=14 external_dependencies=1
 module 11-05-vba-json-jsonconverter (standard): loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 declare_count=14
   declarations: declare_count=14 with_events_count=0 option_explicit=true option_vba_support=false
   function ParseJson public lines 178-195: loc=18 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
