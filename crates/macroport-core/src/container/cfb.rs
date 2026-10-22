@@ -130,6 +130,21 @@ impl<'a> CfbFile<'a> {
         Ok(Some(data))
     }
 
+    /// The length in bytes that the directory gives the stream at `path`,
+    /// which reads as for [`read_stream`](Self::read_stream); `None` when no
+    /// stream has that path.
+    ///
+    /// The directory is not trusted, and nothing is read to check it: the
+    /// chain of the stream may be shorter (reading it then fails after the
+    /// bytes it holds are copied) or longer (a read gives the length that the
+    /// directory gives, but walks the whole chain), and the length may be
+    /// above [`MAX_STREAM_SIZE`], which `read_stream` refuses. It tells what a
+    /// read may copy before the read, not what it may cost.
+    pub fn stream_len(&self, path: &str) -> Option<u64> {
+        let entry = self.file.entry(lookup_path(path)?).ok()?;
+        entry.is_stream().then(|| entry.len())
+    }
+
     /// Whether a stream sits at `path`, which reads as for
     /// [`read_stream`](Self::read_stream).
     pub fn has_stream(&self, path: &str) -> bool {

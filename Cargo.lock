@@ -887,6 +887,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "hmac",
+ "insta",
  "macroport-testkit",
  "quick-xml",
  "regex",
