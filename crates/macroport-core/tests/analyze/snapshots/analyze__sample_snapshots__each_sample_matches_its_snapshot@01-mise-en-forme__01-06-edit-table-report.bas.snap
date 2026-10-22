@@ -10,13 +10,92 @@ traits: compile_error_suspected
 file: loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 01-06-edit-table-report (standard): loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub editTable default lines 11-86: loc=76 logical_loc=50 cyclomatic=4 max_nesting=0 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function SelectFirstEmptyRowInColumn private lines 88-93: loc=6 logical_loc=5 cyclomatic=1 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub AutoSumColumnAF private lines 94-107: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub changeProperties private lines 108-167: loc=60 logical_loc=44 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub removeHeaderSpace private lines 169-188: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub removeProductCodeSpace private lines 190-209: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub SaveAsToFolderPath private lines 211-230: loc=20 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub editTable default lines 11-86: loc=76 logical_loc=50 cyclomatic=4 max_nesting=0 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=AutoSumColumnAF,changeProperties,removeHeaderSpace,removeProductCodeSpace apis=14
+    api ActiveWindow.FreezePanes*1
+    api Application.ScreenUpdating*4
+    api Cells.End*2
+    api currentProgressBar.cancelIsPressed*1
+    api currentProgressBar.Configure*1
+    api currentProgressBar.SetStatus*5
+    api currentProgressBar.SetValue*5
+    api currentProgressBar.Show*1
+    api Debug.Print*1
+    api Err.Description*2
+    api Err.Number*1
+    api Range.Offset.Select*2
+    api Rows.Count*2
+    api Selection.TextToColumns*1
+  function SelectFirstEmptyRowInColumn private lines 88-93: loc=6 logical_loc=5 cyclomatic=1 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api WS.Cells.End.Row*1
+    api WS.Rows.Count*1
+  sub AutoSumColumnAF private lines 94-107: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=SelectFirstEmptyRowInColumn apis=6
+    api ActiveCell.Column*1
+    api ActiveCell.Font.Bold*1
+    api ActiveCell.Font.ColorIndex*1
+    api ActiveCell.Formula*1
+    api Cells.Select*1
+    api WorksheetFunction.Sum*1
+  sub changeProperties private lines 108-167: loc=60 logical_loc=44 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=37
+    api Application.InchesToPoints*6
+    api Application.Union*1
+    api Cells.End*1
+    api Columns.Count*1
+    api columnsToHide.EntireColumn.Hidden*1
+    api headerFormat.AutoFilter*1
+    api headerFormat.Font*1
+    api headerFormat.Font.FontStyle*1
+    api headerFormat.Font.Name*1
+    api headerFormat.Interior.Color*1
+    api Range.Columns*1
+    api Range.CurrentRegion*1
+    api tableRng.Borders*1
+    api tableRng.Borders.LineStyle*1
+    api tableRng.Borders.Weight*1
+    api tableRng.Cells.EntireColumn.AutoFit*1
+    api WS.Columns*6
+    api WS.PageSetup*1
+    api WS.PageSetup.BottomMargin*1
+    api WS.PageSetup.CenterFooter*1
+    api WS.PageSetup.CenterHeader*1
+    api WS.PageSetup.FitToPagesTall*1
+    api WS.PageSetup.FitToPagesWide*1
+    api WS.PageSetup.FooterMargin*1
+    api WS.PageSetup.HeaderMargin*1
+    api WS.PageSetup.LeftFooter*1
+    api WS.PageSetup.LeftHeader*1
+    api WS.PageSetup.LeftMargin*1
+    api WS.PageSetup.Orientation*1
+    api WS.PageSetup.PrintArea*1
+    api WS.PageSetup.PrintTitleColumns*1
+    api WS.PageSetup.PrintTitleRows*1
+    api WS.PageSetup.RightFooter*1
+    api WS.PageSetup.RightHeader*1
+    api WS.PageSetup.RightMargin*1
+    api WS.PageSetup.TopMargin*1
+    api WS.PageSetup.Zoom*1
+  sub removeHeaderSpace private lines 169-188: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+    api Application.Clean*1
+    api Application.Trim*1
+    api CellChecker.value*4
+    api Cells.End*1
+    api Columns.Count*1
+    api Range.Columns*1
+    api rngRemoveSpace.Cells*1
+    api rngRemoveSpace.Replace*1
+  sub removeProductCodeSpace private lines 190-209: loc=20 logical_loc=11 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+    api Application.Clean*1
+    api Application.Trim*1
+    api CellChecker.value*4
+    api Cells.End*1
+    api Range.Offset*1
+    api rngRemoveSpace.Cells*1
+    api rngRemoveSpace.Replace*1
+    api Rows.Count*1
+  sub SaveAsToFolderPath private lines 211-230: loc=20 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api ActiveWorkbook.SaveAs*1
+    api ActiveWorkbook.Saved*1
+    api Format*1
+    api Range.value*1
 parse:
   declaration Option(Explicit) line 8
   declaration Variable line 9
