@@ -810,6 +810,7 @@ dependencies = [
  "codepage",
  "encoding_rs",
  "flate2",
+ "insta",
  "macroport-testkit",
  "quick-xml",
  "regex",
