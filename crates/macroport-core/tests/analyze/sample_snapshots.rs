@@ -17,14 +17,14 @@
 //! layers, and a snapshot where they differ shows it.
 //!
 //! In a line, `-` stands for a field that the report leaves out because no stage
-//! fills it in yet or because it passed a bound, and `none` for an empty list.
-//! A metric that the report leaves out is not printed. `calls` prints as a comma
-//! separated list once something fills it: that format is a guess, and the
-//! change that wires it in may adjust it. `apis` prints how many names a
-//! procedure uses, then a line `api name*count` for each below the procedure,
-//! in the order of the report, so that a change of one name is a change of one
-//! line. The families and the signals are the rule engine's and not the front
-//! end's, so they are not in the snapshots.
+//! fills it in yet, because it passed a bound or because a module was not read,
+//! and `none` for an empty list. A metric that the report leaves out is not
+//! printed. `calls` prints as the comma separated names of the procedures that
+//! a procedure calls. `apis` prints how many names a procedure uses, then a line
+//! `api name*count` for each below the procedure, in the order of the report, so
+//! that a change of one name is a change of one line. The families and the
+//! signals are the rule engine's and not the front end's, so they are not in
+//! the snapshots.
 //!
 //! The renderers destructure the report and the parser's types without `..`, so
 //! a field added to one of them does not compile until the rendering decides

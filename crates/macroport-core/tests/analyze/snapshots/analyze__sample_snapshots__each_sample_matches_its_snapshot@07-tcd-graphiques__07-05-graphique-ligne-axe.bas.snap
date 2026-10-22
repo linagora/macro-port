@@ -10,7 +10,7 @@ traits: none
 file: loc=28 logical_loc=14 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 07-05-graphique-ligne-axe (standard): loc=28 logical_loc=14 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Chart default lines 7-28: loc=22 logical_loc=14 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=7
+  sub Chart default lines 7-28: loc=22 logical_loc=14 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
     api ActiveChart.Axes.Select*1
     api ActiveChart.ChartType*1
     api ActiveChart.Location*1
