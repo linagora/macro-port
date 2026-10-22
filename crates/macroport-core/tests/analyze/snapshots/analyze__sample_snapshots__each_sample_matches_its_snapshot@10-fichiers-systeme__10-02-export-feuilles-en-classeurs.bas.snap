@@ -10,7 +10,18 @@ traits: none
 file: loc=42 logical_loc=26 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 10-02-export-feuilles-en-classeurs (standard): loc=42 logical_loc=26 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub CopyEachWSToNewWB default lines 9-42: loc=34 logical_loc=25 cyclomatic=4 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CopyEachWSToNewWB default lines 9-42: loc=34 logical_loc=25 cyclomatic=4 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=11
+    api ActiveWorkbook.Sheets*1
+    api Application.ActiveWorkbook.Close*1
+    api Application.ActiveWorkbook.path*1
+    api Application.ActiveWorkbook.SaveAs*1
+    api Application.DisplayAlerts*3
+    api Application.ScreenUpdating*3
+    api Debug.Print*1
+    api Err.Description*2
+    api Err.Number*2
+    api xWs.Copy*1
+    api xWs.Name*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub CopyEachWSToNewWB default static=false parameters=0 lines 9-42 recoveries=none unbalanced_blocks=false

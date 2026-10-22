@@ -17,12 +17,14 @@
 //! layers, and a snapshot where they differ shows it.
 //!
 //! In a line, `-` stands for a field that the report leaves out because no stage
-//! fills it in yet, and `none` for an empty list. A metric that the report
-//! leaves out is not printed. `calls` and `apis` print as a comma separated list
-//! (`name*count` for an API) once something fills them: that format is a guess,
-//! and the change that wires them in may adjust it. The families and the
-//! signals are the rule engine's and not the front end's, so they are not in
-//! the snapshots.
+//! fills it in yet or because it passed a bound, and `none` for an empty list.
+//! A metric that the report leaves out is not printed. `calls` prints as a comma
+//! separated list once something fills it: that format is a guess, and the
+//! change that wires it in may adjust it. `apis` prints how many names a
+//! procedure uses, then a line `api name*count` for each below the procedure,
+//! in the order of the report, so that a change of one name is a change of one
+//! line. The families and the signals are the rule engine's and not the front
+//! end's, so they are not in the snapshots.
 //!
 //! The renderers destructure the report and the parser's types without `..`, so
 //! a field added to one of them does not compile until the rendering decides
@@ -179,9 +181,10 @@ fn show_metrics(metrics: &Metrics) -> String {
     pairs.join(" ")
 }
 
-/// A procedure of the report: its kind, name, visibility and span, its metrics
-/// and traits, and the fields that the stages after the parser fill in.
-fn show_procedure(procedure: &ProcedureReport) -> String {
+/// A procedure of the report as a line: its kind, name, visibility and span, its
+/// metrics and traits, and the fields that the stages after the parser fill in.
+/// A line for each of its APIs follows.
+fn show_procedure(procedure: &ProcedureReport) -> Vec<String> {
     let ProcedureReport {
         name,
         kind,
@@ -202,13 +205,7 @@ fn show_procedure(procedure: &ProcedureReport) -> String {
         signals: _,
         orientation: _,
     } = procedure;
-    let apis = apis.as_ref().map(|apis| {
-        let uses = apis
-            .iter()
-            .map(|ApiUse { name, count }| format!("{name}*{count}"));
-        uses.collect::<Vec<_>>()
-    });
-    format!(
+    let line = format!(
         "  {} {name} {} lines {start_line}-{end_line}: {} traits={} entry_point={} \
          event_handler={} possibly_unused={} calls={} apis={}",
         wire_name(kind),
@@ -219,8 +216,11 @@ fn show_procedure(procedure: &ProcedureReport) -> String {
         or_dash(*is_event_handler),
         or_dash(*possibly_unused),
         join_or_dash(calls.as_deref()),
-        join_or_dash(apis.as_deref()),
-    )
+        or_dash(apis.as_ref().map(Vec::len)),
+    );
+    let uses = apis.iter().flatten();
+    let uses = uses.map(|ApiUse { name, count }| format!("    api {name}*{count}"));
+    std::iter::once(line).chain(uses).collect()
 }
 
 /// The lines of the snapshot that come from the report: the file, then each
@@ -242,7 +242,7 @@ fn render_report(file: &FileReport) -> Vec<String> {
             Some(declarations) => show_declarations(declarations),
             None => "  declarations: -".to_owned(),
         });
-        lines.extend(module.procedures.iter().map(show_procedure));
+        lines.extend(module.procedures.iter().flat_map(show_procedure));
     }
     lines
 }

@@ -20,36 +20,43 @@
 //!
 //! Only what the parser, the metrics and the statements show is filled so far:
 //! the spans of the procedures and their metrics (sizes, cyclomatic complexity,
-//! nesting, parameters and `GoTo`s), the metrics of the modules and of the file
-//! (their sizes, their counts, what their procedures add up to, and the
-//! external dependencies of the file: the ProgIDs of its statements, its
-//! references and its `Declare` statements), the declarations of the modules
-//! (and the count of their `Declare` statements, a metric), and the trait that
-//! the recoveries of the parser, the blocks that do not match and the statements
-//! nested too deep to be read give. The other fields are left out until the
-//! stages that measure them run, since a missing value is not a zero: the
-//! external dependencies of a procedure are such a field. The exceptions are
-//! three fields of a procedure that the schema requires and that only the rule
-//! engine can decide: until it runs, `primary_family` is `unclassified`, and
-//! `families` and `signals` are empty.
+//! nesting, parameters and `GoTo`s), the APIs that they use (the `apis`
+//! submodule, ADR-0011), the metrics of the modules and of the file (their
+//! sizes, their counts, what their procedures add up to, and the external
+//! dependencies of the file: the ProgIDs of its statements, its references and
+//! its `Declare` statements), the declarations of the modules (and the count of
+//! their `Declare` statements, a metric), and the trait that the recoveries of
+//! the parser, the blocks that do not match and the statements nested too deep
+//! to be read give. The other fields are left out until the stages that measure
+//! them run, since a missing value is not a zero: the external dependencies of
+//! a procedure are such a field. The exceptions are three fields of a procedure
+//! that the schema requires and that only the rule engine can decide: until it
+//! runs, `primary_family` is `unclassified`, and `families` and `signals` are
+//! empty.
 //!
 //! The statements of a module are read once, in the `statements` submodule,
-//! which hands the facts of each to the stages that want them. A statement
-//! nested too deep to be read in full is no failure: the module is read, the
-//! status of the file does not follow, and the file lists one error for the
-//! module (`vba.statement.too_deep`).
+//! which hands the facts of each to the stages that want them: the ProgIDs of
+//! the file, the lists of APIs of the procedures and the count of the
+//! statements nested too deep. Such a statement, one that is nested too deep to
+//! be read in full, is no failure: the module is read, the status of the file
+//! does not follow, and the file lists one error for the module
+//! (`vba.statement.too_deep`). Nor is a list of APIs that passes a bound: the
+//! procedure has no `apis`, and the file lists one error for the module that
+//! holds such procedures (`vba.apis.left_out`).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
+mod apis;
 mod statements;
 mod text;
 mod text_file;
 
+use self::apis::{FileApis, MAX_API_MIB, MAX_APIS};
 use self::statements::{ExternalProgids, Statements, TooDeep};
 use super::{Extraction, Failure, Options, about_module, readable_status};
 use crate::report::{
-    Declarations, FileError, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport,
-    Status,
+    ApiUse, Declarations, FileError, FileReport, Metrics, ModuleReport, Orientation,
+    ProcedureReport, Status,
 };
 use crate::rules::{RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
@@ -68,6 +75,10 @@ const UNCLASSIFIED: &str = "unclassified";
 /// The code of the error that tells of the statements of a module that are
 /// nested too deep to be read in full. It is no failure.
 const TOO_DEEP: &str = "vba.statement.too_deep";
+
+/// The code of the error that tells of the procedures of a module whose list of
+/// APIs is left out, since it passed a bound. It is no failure.
+const APIS_LEFT_OUT: &str = "vba.apis.left_out";
 
 /// The most lines that the modules of one file may total, once read.
 /// [`split_lines`] bounds one module, and the sources of a project may total
@@ -153,6 +164,9 @@ struct Front {
     /// `CreateObject` and `GetObject`, those that count as external
     /// dependencies.
     external_progids: ExternalProgids,
+    /// The functions that the lists of APIs name, and the room that the modules
+    /// read so far have left them.
+    file_apis: FileApis,
     /// What the front end tells of the modules that it read: errors of the file
     /// that are no failure.
     warnings: Vec<FileError>,
@@ -168,6 +182,7 @@ impl Front {
             recovery_traits: recovery_traits(rules),
             recovered: false,
             external_progids: ExternalProgids::default(),
+            file_apis: FileApis::new(rules),
             warnings: Vec::new(),
             failures: Vec::new(),
         }
@@ -214,9 +229,10 @@ impl Front {
     }
 
     /// Puts what `analysis` shows of a module into its report: its procedures
-    /// with their spans and metrics, the metrics of the module, and its
+    /// with their spans, metrics and APIs, the metrics of the module, and its
     /// declarations. What its statements show goes to the file: the ProgIDs,
-    /// and a warning for the statements that nest too deep to be read.
+    /// a warning for the statements that nest too deep to be read, and one for
+    /// the procedures whose list of APIs passed a bound.
     ///
     /// Three things show that code did not parse cleanly (the predicate
     /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
@@ -225,12 +241,14 @@ impl Front {
     /// predicate, and so does the file once a module has one, in a procedure or
     /// outside the procedures.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
-        let statements = Statements::read(analysis, &mut self.external_progids);
+        let mut statements =
+            Statements::read(analysis, &mut self.external_progids, &mut self.file_apis);
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
         module.procedures = (found.enumerate())
             .map(|(index, (procedure, measure))| {
                 let recovered = analysis.procedure_recovered(index) || statements.is_deep(index);
-                procedure_report(procedure, measure, self.recovery_traits_if(recovered))
+                let traits = self.recovery_traits_if(recovered);
+                procedure_report(procedure, measure, traits, statements.take_apis(index))
             })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
@@ -243,6 +261,10 @@ impl Front {
         self.recovered |= analysis.is_recovered() || statements.too_deep.is_some();
         if let Some(deep) = statements.too_deep {
             self.warnings.push(too_deep_error(&module.name, deep));
+        }
+        if let Some(left_out) = LeftOut::of(&module.procedures) {
+            self.warnings
+                .push(apis_left_out_error(&module.name, left_out));
         }
     }
 
@@ -313,6 +335,47 @@ fn too_deep_error(module: &str, deep: TooDeep) -> FileError {
     }
 }
 
+/// The procedures of a module whose list of APIs is left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LeftOut {
+    /// How many there are.
+    count: u32,
+    /// The line where the first starts.
+    first_line: u32,
+}
+
+impl LeftOut {
+    /// The procedures among `procedures` that have no `apis`, if there are any.
+    fn of(procedures: &[ProcedureReport]) -> Option<Self> {
+        let mut left_out = (procedures.iter()).filter(|procedure| procedure.apis.is_none());
+        let first = left_out.next()?;
+        Some(Self {
+            count: count(left_out.count()).saturating_add(1),
+            first_line: first.start_line,
+        })
+    }
+}
+
+/// The error of the file that tells of the procedures of the module `module`
+/// whose list of APIs is left out, and why.
+fn apis_left_out_error(module: &str, left_out: LeftOut) -> FileError {
+    let LeftOut { count, first_line } = left_out;
+    let (procedures, start, lists) = if count == 1 {
+        ("procedure uses", "it starts", "its list is")
+    } else {
+        ("procedures use", "the first starts", "their lists are")
+    };
+    let message = format!(
+        "{count} {procedures} more APIs than a report lists (at most {MAX_APIS} names for a \
+         procedure and {MAX_API_MIB} MiB of names for the procedures of a file); {start} at line \
+         {first_line}, and {lists} left out, since a short list would read as a whole one"
+    );
+    FileError {
+        code: APIS_LEFT_OUT.to_owned(),
+        message: about_module(module, &message),
+    }
+}
+
 /// Reads the modules that extraction found, and completes the report of the
 /// file.
 pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileReport {
@@ -363,12 +426,14 @@ fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasur
     )
 }
 
-/// The report of a procedure, as far as its structure and its measure show it,
-/// with the `traits` that the front end gives it, if any.
+/// The report of a procedure, as far as its structure, its measure and its
+/// statements show it, with the `traits` that the front end gives it, if any,
+/// and the `apis` that it uses, unless its list passed a bound.
 fn procedure_report(
     procedure: &Procedure,
     measure: &ProcedureMeasure,
     traits: Option<Vec<String>>,
+    apis: Option<Vec<ApiUse>>,
 ) -> ProcedureReport {
     ProcedureReport {
         name: procedure.name.clone(),
@@ -381,7 +446,7 @@ fn procedure_report(
         end_line: procedure.end_line,
         metrics: measure.metrics.clone(),
         calls: None,
-        apis: None,
+        apis,
         primary_family: UNCLASSIFIED.to_owned(),
         secondary_families: None,
         families: Vec::new(),
@@ -529,6 +594,56 @@ mod tests {
         assert!(
             one.message
                 .ends_with("and a name that stands alone counts as a call")
+        );
+    }
+
+    #[test]
+    fn the_procedures_without_apis_are_counted_with_the_line_of_the_first() {
+        let analysis = Analysis::of("Sub A()\nEnd Sub\nSub B()\nEnd Sub\nSub C()\nEnd Sub\n")
+            .expect("a short module");
+        let report = |index: usize, apis| {
+            let procedure = analysis.module.procedures.get(index).expect("a procedure");
+            let measure = analysis.measures.get(index).expect("a measure");
+            procedure_report(procedure, measure, None, apis)
+        };
+        let all = [
+            report(0, Some(Vec::new())),
+            report(1, None),
+            report(2, None),
+        ];
+
+        let expected = LeftOut {
+            count: 2,
+            first_line: 3,
+        };
+        assert_eq!(LeftOut::of(&all), Some(expected));
+        assert_eq!(LeftOut::of(&all[..1]), None);
+        assert_eq!(LeftOut::of(&[]), None);
+    }
+
+    #[test]
+    fn the_error_for_lists_of_apis_left_out_names_the_module_the_count_the_line_and_the_bounds() {
+        let error =
+            |count, first_line| apis_left_out_error("Module1", LeftOut { count, first_line });
+        let bounds = format!("{MAX_APIS} names for a procedure and {MAX_API_MIB} MiB of names");
+
+        let one = error(1, 7);
+        let two = error(2, 9);
+
+        assert_eq!(one.code, "vba.apis.left_out");
+        let first = format!(
+            "module Module1: 1 procedure uses more APIs than a report lists (at most {bounds}"
+        );
+        assert!(one.message.starts_with(&first), "{}", one.message);
+        assert!(
+            one.message
+                .contains("); it starts at line 7, and its list is left out")
+        );
+        let second = "module Module1: 2 procedures use more APIs than a report lists";
+        assert!(two.message.starts_with(second), "{}", two.message);
+        assert!(
+            two.message
+                .contains("); the first starts at line 9, and their lists are left out")
         );
     }
 }

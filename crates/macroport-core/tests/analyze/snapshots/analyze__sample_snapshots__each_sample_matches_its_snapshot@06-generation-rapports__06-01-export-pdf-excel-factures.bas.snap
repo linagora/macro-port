@@ -10,24 +10,136 @@ traits: none
 file: loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 forms=0 declare_count=0 external_dependencies=1
 module 06-01-export-pdf-excel-factures (standard): loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub EXPORT_PDF_MultipleSheet_ForOne default lines 11-53: loc=43 logical_loc=28 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub test_EXPORTPDFOneByOne default lines 54-61: loc=8 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub EXPORTPDFOneByOne default lines 65-112: loc=48 logical_loc=32 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Export_Excel_MultipleSheet_ForOne default lines 113-148: loc=36 logical_loc=30 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub test_ExportExcelOneByOne default lines 151-157: loc=7 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub EXPORTExcelOneByOne default lines 158-200: loc=43 logical_loc=35 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function GetNextAvailableName default lines 201-219: loc=19 logical_loc=13 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub test_GetListProjectChecked default lines 220-224: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function GetListProjectChecked default lines 225-249: loc=25 logical_loc=22 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function NextNameSheetAvailable default lines 251-267: loc=17 logical_loc=16 cyclomatic=4 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function GetSelectedSheet default lines 268-281: loc=14 logical_loc=14 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function CreateSaveFileName private lines 282-296: loc=15 logical_loc=15 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub CREATE_FOLDER default lines 301-343: loc=43 logical_loc=32 cyclomatic=8 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function getExportName public lines 345-357: loc=13 logical_loc=10 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function GET_PATH_EXPORT public lines 360-413: loc=54 logical_loc=47 cyclomatic=12 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function getListSheet public lines 414-441: loc=28 logical_loc=27 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function CountSheet public lines 442-457: loc=16 logical_loc=16 cyclomatic=4 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub testgetpath default lines 459-461: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EXPORT_PDF_MultipleSheet_ForOne default lines 11-53: loc=43 logical_loc=28 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=12
+    api ActiveSheet.ExportAsFixedFormat*1
+    api Application.Calculation*2
+    api Application.DisplayAlerts*2
+    api Application.DisplayStatusBar*2
+    api Application.EnableAnimations*2
+    api Application.EnableEvents*2
+    api Application.ScreenUpdating*2
+    api Join*1
+    api Len*1
+    api ufExportImport.ckxOpenAfterExport.value*1
+    api wb.Sheets.Activate*1
+    api wb.Sheets.Select*2
+  sub test_EXPORTPDFOneByOne default lines 54-61: loc=8 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
+  sub EXPORTPDFOneByOne default lines 65-112: loc=48 logical_loc=32 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=12
+    api ActiveSheet.ExportAsFixedFormat*1
+    api Application.Calculation*2
+    api Application.DisplayAlerts*2
+    api Application.DisplayStatusBar*2
+    api Application.EnableAnimations*2
+    api Application.EnableEvents*2
+    api Application.ScreenUpdating*2
+    api Join*1
+    api Len*1
+    api ufExportImport.ckxOpenAfterExport.value*1
+    api wb.Sheets.Activate*1
+    api wb.Sheets.Select*2
+  sub Export_Excel_MultipleSheet_ForOne default lines 113-148: loc=36 logical_loc=30 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=16
+    api Application.Calculation*2
+    api Application.DisplayAlerts*2
+    api Application.DisplayStatusBar*2
+    api Application.EnableAnimations*2
+    api Application.EnableEvents*2
+    api Application.ScreenUpdating*2
+    api Application.Workbooks.Open*1
+    api DestWB.Close*1
+    api DestWB.Sheets*1
+    api DestWB.Sheets.count*1
+    api DestWB.Sheets.Delete*1
+    api DestWB.Sheets.Name*1
+    api Join*1
+    api Len*1
+    api OriginalWB.Sheets*1
+    api ws.Copy*1
+  sub test_ExportExcelOneByOne default lines 151-157: loc=7 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
+  sub EXPORTExcelOneByOne default lines 158-200: loc=43 logical_loc=35 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=18
+    api Application.Calculation*2
+    api Application.DisplayAlerts*2
+    api Application.DisplayStatusBar*2
+    api Application.EnableAnimations*2
+    api Application.EnableEvents*2
+    api Application.ScreenUpdating*2
+    api DestWB.Close*1
+    api DestWB.SaveAs*1
+    api DestWB.Sheets*1
+    api DestWB.Sheets.count*1
+    api DestWB.Sheets.Delete*1
+    api DestWB.Sheets.Name*1
+    api Join*1
+    api Len*1
+    api OriginalWB.Sheets*1
+    api Workbooks.Add*1
+    api ws.Copy*1
+    api ws.Name*1
+  function GetNextAvailableName default lines 201-219: loc=19 logical_loc=13 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=6
+    api CreateObject.BuildPath*1
+    api CreateObject.FileExists*1
+    api CreateObject.getbasename*1
+    api CreateObject.GetExtensionName*1
+    api CreateObject.GetParentFolderName*1
+    api CreateObject:Scripting.FileSystemObject*1
+  sub test_GetListProjectChecked default lines 220-224: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
+  function GetListProjectChecked default lines 225-249: loc=25 logical_loc=22 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=5
+    api Application.Transpose*1
+    api shProject.Cells.value*2
+    api shProject.Range.Column*3
+    api shProject.Range.Row*1
+    api ThisWorkbook.Sheets*1
+  function NextNameSheetAvailable default lines 251-267: loc=17 logical_loc=16 cyclomatic=4 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=5
+    api CreateObject:Scripting.Dictionary*1
+    api dic.Add*1
+    api dic.exists*2
+    api wb.Sheets*1
+    api ws.Name*2
+  function GetSelectedSheet default lines 268-281: loc=14 logical_loc=14 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=7
+    api CreateObject:Scripting.Dictionary*1
+    api dic.Add*1
+    api dic.exists*1
+    api dic.keys*1
+    api ufExportImport.lbxSheet.List*2
+    api ufExportImport.lbxSheet.ListCount*1
+    api ufExportImport.lbxSheet.Selected*1
+  function CreateSaveFileName private lines 282-296: loc=15 logical_loc=15 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=6
+    api CreateObject.BuildPath*1
+    api CreateObject.FileExists*1
+    api CreateObject.getbasename*1
+    api CreateObject.GetExtensionName*1
+    api CreateObject.GetParentFolderName*1
+    api CreateObject:Scripting.FileSystemObject*1
+  sub CREATE_FOLDER default lines 301-343: loc=43 logical_loc=32 cyclomatic=8 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=7
+    api CreateObject:Scripting.FileSystemObject*1
+    api Format*2
+    api fso.createFolder*4
+    api fso.Folderexists*4
+    api Shell*1
+    api ufExportImport.ckxExSeparate.value*2
+    api wb.Path*4
+  function getExportName public lines 345-357: loc=13 logical_loc=10 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=5
+    api CreateObject:Scripting.FileSystemObject*1
+    api Format*1
+    api fso.getbasename*1
+    api wb.FullName*1
+    api wb.Path*1
+  function GET_PATH_EXPORT public lines 360-413: loc=54 logical_loc=47 cyclomatic=12 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=6
+    api CreateObject:Scripting.FileSystemObject*1
+    api Format*4
+    api fso.Folderexists*6
+    api ufExportImport.cbxSaveasType.ListIndex*1
+    api ufExportImport.ckxExSeparate.value*2
+    api wb.Path*1
+  function getListSheet public lines 414-441: loc=28 logical_loc=27 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=4
+    api iSh.Name*2
+    api iSh.Visible*3
+    api wb.Sheets*2
+    api wb.Sheets.count*1
+  function CountSheet public lines 442-457: loc=16 logical_loc=16 cyclomatic=4 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=3
+    api iSh.Visible*1
+    api wb.Sheets*1
+    api wb.Sheets.count*2
+  sub testgetpath default lines 459-461: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
 parse:
   declaration Option(Explicit) line 8
   procedure sub EXPORT_PDF_MultipleSheet_ForOne default static=false parameters=2 lines 11-53 recoveries=none unbalanced_blocks=false

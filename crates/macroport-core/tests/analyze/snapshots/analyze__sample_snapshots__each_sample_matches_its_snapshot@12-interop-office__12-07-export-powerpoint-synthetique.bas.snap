@@ -10,7 +10,25 @@ traits: none
 file: loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=1
 module 12-07-export-powerpoint-synthetique (standard): loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ExporterVersPowerPoint public lines 11-38: loc=28 logical_loc=22 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ExporterVersPowerPoint public lines 11-38: loc=28 logical_loc=22 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=18
+    api Application.PathSeparator*1
+    api co.Chart.ChartArea.Copy*1
+    api co.Chart.ChartTitle.Text*1
+    api CreateObject:PowerPoint.Application*1
+    api Format*1
+    api GetObject:PowerPoint.Application*1
+    api ppApp.Presentations.Add*1
+    api ppApp.Visible*1
+    api ppPres.SaveAs*1
+    api ppPres.Slides.Add*2
+    api ppPres.Slides.Count*1
+    api ppSlide.Shapes.Paste*1
+    api ppSlide.Shapes.PasteSpecial*1
+    api ppSlide.Shapes.TextFrame.TextRange.Text*2
+    api ThisWorkbook.Path*1
+    api ThisWorkbook.Worksheets*1
+    api ws.ChartObjects*1
+    api ws.Range.CopyPicture*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub ExporterVersPowerPoint public static=false parameters=0 lines 11-38 recoveries=none unbalanced_blocks=false
