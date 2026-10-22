@@ -1,1 +1,4 @@
 /target
+
+# What insta leaves when a snapshot test fails outside CI.
+*.snap.new

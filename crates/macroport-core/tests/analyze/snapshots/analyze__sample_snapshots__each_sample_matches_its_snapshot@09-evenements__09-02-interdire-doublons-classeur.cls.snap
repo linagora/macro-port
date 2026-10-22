@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/09-evenements/09-02-interdire-doublons-classeur.cls
+---
+families/09-evenements/09-02-interdire-doublons-classeur.cls
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=47 logical_loc=25 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
+module 09-02-interdire-doublons-classeur (document): loc=47 logical_loc=25 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Workbook_SheetChange private lines 7-47: loc=41 logical_loc=25 cyclomatic=8 max_nesting=4 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub Workbook_SheetChange private static=false parameters=2 lines 7-47 recoveries=none unbalanced_blocks=false
+  recoveries: none

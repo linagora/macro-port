@@ -12,7 +12,10 @@
 //! The count is as complete as the reading of the statements: a statement
 //! nested too deep is read flat from the point where it gets too deep, so a
 //! ProgID past that point is not counted, and the procedure that holds the
-//! statement is flagged as one that did not parse.
+//! statement is flagged as one that did not parse. The file does not count
+//! them again: the ProgIDs that [`file_metrics`] adds to its references and its
+//! `Declare` statements are those that the walk of the `statements` submodule
+//! of `modules` collects.
 //!
 //! [`measure_procedure`]: crate::vba::measure_procedure
 //! [`module_metrics`]: crate::vba::module_metrics
@@ -29,21 +32,6 @@ use crate::vba::count_progids;
 /// A length as a metric: it saturates.
 pub(super) fn count(len: usize) -> u32 {
     u32::try_from(len).unwrap_or(u32::MAX)
-}
-
-/// The ProgIDs that the statements of `project` pass to `CreateObject` and
-/// `GetObject`, as the front end read them: those of the declarations of each
-/// module, then those of its procedures. The metrics of the file count the
-/// distinct ones ([`file_metrics`](crate::vba::file_metrics)).
-pub(super) fn progids(project: &ProjectInput) -> impl Iterator<Item = &String> {
-    let lines = project.modules.iter().flat_map(|module| {
-        let procedures = module
-            .procedures
-            .iter()
-            .flat_map(|procedure| &procedure.lines);
-        module.declarations.iter().chain(procedures)
-    });
-    lines.flat_map(|line| &line.progids)
 }
 
 /// The metrics of the project for the rule engine: those of each procedure,
@@ -108,9 +96,7 @@ fn procedure_dependencies(procedure: &ProcedureInput, declared: &NameSet) -> u32
 mod tests {
     use super::*;
     use crate::engine::{CallSite, CodeLine, ModuleInput, ParserPredicates};
-    use crate::report::VbaProject;
     use crate::rules::ModuleType;
-    use crate::vba::file_metrics;
 
     fn line(progids: &[&str], calls: &[&str]) -> CodeLine {
         CodeLine {
@@ -199,67 +185,6 @@ mod tests {
         let lines = vec![line(&["C:\\Reports\\book.xlsx", "winmgmts:"], &[])];
 
         assert_eq!(procedure_dependencies(&procedure(lines), &declared), 0);
-    }
-
-    #[test]
-    fn the_progids_of_a_project_are_those_of_all_its_statements() {
-        let project = ProjectInput {
-            references: Vec::new(),
-            modules: vec![
-                module(
-                    vec![line(&["Outlook.Application"], &[])],
-                    vec![procedure(vec![line(
-                        &["Word.Application", "outlook.application"],
-                        &[],
-                    )])],
-                ),
-                module(
-                    Vec::new(),
-                    vec![procedure(vec![line(&["Scripting.Dictionary"], &[])])],
-                ),
-            ],
-        };
-
-        let found: Vec<&str> = progids(&project).map(String::as_str).collect();
-        assert_eq!(
-            found,
-            [
-                "Outlook.Application",
-                "Word.Application",
-                "outlook.application",
-                "Scripting.Dictionary"
-            ]
-        );
-        assert_eq!(progids(&ProjectInput::default()).count(), 0);
-    }
-
-    #[test]
-    fn the_dependencies_of_a_file_count_the_progids_of_its_statements() {
-        let project = ProjectInput {
-            references: Vec::new(),
-            modules: vec![module(
-                vec![line(&["Outlook.Application"], &[])],
-                vec![procedure(vec![line(
-                    &["Word.Application", "outlook.application"],
-                    &[],
-                )])],
-            )],
-        };
-        let vba = VbaProject {
-            name: None,
-            protected: false,
-            code_page: None,
-            references: Some(vec![
-                "Visual Basic For Applications".to_owned(),
-                "Microsoft Outlook 16.0 Object Library".to_owned(),
-            ]),
-            modules: Vec::new(),
-        };
-
-        let metrics = file_metrics(&vba, progids(&project));
-
-        // Two ProgIDs, and one reference that every project has not.
-        assert_eq!(metrics.external_dependencies, Some(3));
     }
 
     #[test]

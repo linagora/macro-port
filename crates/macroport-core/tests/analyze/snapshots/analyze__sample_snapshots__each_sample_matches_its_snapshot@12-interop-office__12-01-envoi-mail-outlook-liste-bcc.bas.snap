@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/12-interop-office/12-01-envoi-mail-outlook-liste-bcc.bas
+---
+families/12-interop-office/12-01-envoi-mail-outlook-liste-bcc.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=40 logical_loc=25 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=3 forms=0 declare_count=0 external_dependencies=1
+module 12-01-envoi-mail-outlook-liste-bcc (standard): loc=40 logical_loc=25 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=3 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Sample default lines 7-40: loc=34 logical_loc=25 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub Sample default static=false parameters=0 lines 7-40 recoveries=none unbalanced_blocks=false
+  recoveries: none

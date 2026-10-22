@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), with what measuring the procedures
-//! showed ([`Analysis::measures`]). Seven conventions matter to the engine:
+//! showed ([`Analysis::measures`]). Eight conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -16,6 +16,9 @@
 //!   of the block (`.Font` under `With Range("A1")` is `Range.Font`). The
 //!   blocks are followed within a procedure, and within each run of lines
 //!   between two procedures: a block never outlives the run that opens it.
+//! - A call that follows a dot is `after_dot`, unless every name before it is a
+//!   name of the VBA library: `VBA.Shell "calc"` is a call of `Shell`, as
+//!   `Shell "calc"` is, and not the member of an object (ADR-0010).
 //! - The ProgIDs of a statement are the classes that it passes to
 //!   `CreateObject` and `GetObject`, folded like its strings. The dependencies
 //!   of the procedures and of the file are counted from them (see
@@ -25,12 +28,13 @@
 //!   `chr_obfuscation` by its position among the lines of its procedure. The
 //!   engine cites the statements of procedures only, so a mark outside any
 //!   procedure is cited nowhere.
-//! - `parse_recovered` holds for a procedure when the parser recovered in it,
-//!   when a statement of it nests expressions deeper than the reader follows
-//!   (it reads the rest of that statement flat, so the statement has no ProgID
-//!   and no mark of obfuscation past that point), or when its blocks do not
-//!   match (SPEC M2 item 6). It holds for the module when it holds for one of
-//!   its procedures, or when the parser recovered outside any.
+//! - `parse_recovered` holds for a procedure when the parser recovered in it or
+//!   when its blocks do not match (SPEC M2 item 6), and for the module when the
+//!   parser recovered in it, outside the procedures too, or the blocks of one of
+//!   them do not match. A statement nested deeper than the reader follows is a
+//!   third cause: only the statements show it, so the caller adds it. The
+//!   reader reads the rest of such a statement flat, so the statement has no
+//!   ProgID and no mark of obfuscation past that point.
 //!
 //! What the front end does not read yet is left empty, not guessed: the
 //! predicate `possibly_unused`.
@@ -312,22 +316,17 @@ fn read_module(
     };
 
     let mut input = module_input(name, module_type);
-    // Whether a statement of the module is too deep to be read. The analysis
-    // knows what the parser and the measure found, not that.
-    let mut suspect = false;
     // A mark of obfuscation in a statement outside the procedures is dropped
     // with its run: the engine cites the statements of procedures only.
     for gap in &outside {
         let run = converter.code_lines(slice(logical, gap))?;
         input.declarations.extend(run.lines);
-        suspect |= run.too_deep;
     }
     let mut procedures = Vec::with_capacity(parsed.procedures.len());
     let mut metrics = Vec::with_capacity(parsed.procedures.len());
     let found = parsed.procedures.iter().zip(&analysis.measures);
     for (index, (procedure, measure)) in found.enumerate() {
         let run = converter.code_lines(slice(logical, &procedure.lines))?;
-        suspect |= run.too_deep;
         procedures.push(ProcedureInput {
             name: procedure.name.clone(),
             kind: procedure.kind,
@@ -338,14 +337,14 @@ fn read_module(
                 udf_candidate: vba::is_udf_candidate(module_type, procedure, &analysis.lines),
                 chr_obfuscation: run.chr_obfuscation,
                 nested_loop_compare: measure.nested_loop_compare.clone(),
-                parse_recovered: analysis.procedure_recovered(index) || run.too_deep,
+                parse_recovered: analysis.procedure_recovered(index),
                 ..ParserPredicates::default()
             },
         });
         metrics.push(measure.metrics.clone());
     }
     input.procedures = procedures;
-    input.parse_recovered = analysis.is_recovered() || suspect;
+    input.parse_recovered = analysis.is_recovered();
 
     let with_events =
         parsed
@@ -409,8 +408,6 @@ struct Converter<'c, 'r> {
 /// facts that its line holds.
 struct Statement {
     line: CodeLine,
-    /// The statement nests expressions deeper than the reader follows.
-    too_deep: bool,
     /// An expression of the statement shows a mark of obfuscation (SPEC section
     /// 7, `chr_obfuscation`).
     chr_obfuscation: bool,
@@ -420,8 +417,6 @@ struct Statement {
 /// showed.
 struct Run {
     lines: Vec<CodeLine>,
-    /// A statement of the run nests expressions deeper than the reader follows.
-    too_deep: bool,
     /// The position among `lines` of each statement that shows a mark of
     /// obfuscation: what the predicate `chr_obfuscation` cites. A position takes
     /// a `usize`, which the room does not count: the line of its statement was
@@ -434,7 +429,6 @@ impl Run {
     fn new(capacity: usize) -> Self {
         Self {
             lines: Vec::with_capacity(capacity),
-            too_deep: false,
             chr_obfuscation: Vec::new(),
         }
     }
@@ -442,7 +436,6 @@ impl Run {
     /// Adds the next statement of the run. A mark is cited by the position that
     /// the statement takes among the lines.
     fn push(&mut self, statement: Statement) {
-        self.too_deep |= statement.too_deep;
         if statement.chr_obfuscation {
             self.chr_obfuscation.push(self.lines.len());
         }
@@ -492,7 +485,6 @@ impl Converter<'_, '_> {
             self.room.take(line_bytes(&code))?;
             return Ok(Statement {
                 line: code,
-                too_deep: false,
                 chr_obfuscation: false,
             });
         }
@@ -518,7 +510,6 @@ impl Converter<'_, '_> {
         self.room.take(line_bytes(&converted))?;
         Ok(Statement {
             line: converted,
-            too_deep: facts.too_deep,
             chr_obfuscation: facts.chr_obfuscation,
         })
     }
@@ -532,11 +523,13 @@ fn member(found: vba::MemberUse) -> MemberUse {
     }
 }
 
-/// A call that the statement reader found, as the engine reads it.
+/// A call that the statement reader found, as the engine reads it. The engine
+/// knows no library: a call qualified by the names of the VBA library alone is
+/// one of the library, not of a member of an object (ADR-0010).
 fn call(found: vba::CallSite) -> CallSite {
     CallSite {
         name: found.name,
-        after_dot: found.after_dot,
+        after_dot: found.after_dot && !found.library,
     }
 }
 
@@ -803,7 +796,6 @@ mod tests {
         let adapted = adapted(&format!("Sub Run()\n    {deep}\nEnd Sub\n"));
 
         let procedure = &adapted.input.procedures[0];
-        assert!(procedure.predicates.parse_recovered);
         assert_eq!(procedure.predicates.chr_obfuscation, [1]);
     }
 
@@ -912,27 +904,51 @@ mod tests {
         assert_eq!(adapted.input.procedures[0].lines[1].chains, [["A", "B"]]);
     }
 
+    /// The names of the members of a line.
+    fn members(line: &CodeLine) -> Vec<&str> {
+        (line.members.iter())
+            .map(|member| member.name.as_str())
+            .collect()
+    }
+
+    /// The calls of a line as (name, after_dot) pairs.
+    fn calls(line: &CodeLine) -> Vec<(&str, bool)> {
+        (line.calls.iter())
+            .map(|call| (call.name.as_str(), call.after_dot))
+            .collect()
+    }
+
     #[test]
     fn the_members_and_the_calls_of_a_statement_are_those_the_reader_finds() {
         let adapted =
             adapted("Sub Run()\n    Shell \"calc\"\n    ws.Cells(1, 1).Value = 2\nEnd Sub\n");
 
-        fn members(line: &CodeLine) -> Vec<&str> {
-            (line.members.iter())
-                .map(|member| member.name.as_str())
-                .collect()
-        }
-        fn calls(line: &CodeLine) -> Vec<(&str, bool)> {
-            (line.calls.iter())
-                .map(|call| (call.name.as_str(), call.after_dot))
-                .collect()
-        }
         let lines = &adapted.input.procedures[0].lines;
         assert_eq!(members(&lines[1]), ["Shell"]);
         assert_eq!(calls(&lines[1]), [("Shell", false)]);
         assert_eq!(members(&lines[2]), ["ws", "Cells", "Value"]);
         assert_eq!(calls(&lines[2]), [("Cells", true)]);
         assert!(lines[2].members.iter().all(|member| !member.named_argument));
+    }
+
+    #[test]
+    fn a_call_qualified_by_the_vba_library_alone_is_not_the_call_of_a_member() {
+        let adapted = adapted(
+            "Sub Run()\n    VBA.Shell \"calc\"\n    x = VBA.Interaction.Shell(\"calc\")\n    \
+             y = Foo.VBA.Shell(\"calc\")\n    z = ws.Range(\"A1\")\n    t = Shell(\"calc\")\n\
+             End Sub\n",
+        );
+
+        let lines = &adapted.input.procedures[0].lines;
+        // The library is no object: its `Shell` is `Shell` written in full, in
+        // the statement form as in the function form (ADR-0010).
+        assert_eq!(calls(&lines[1]), [("Shell", false)]);
+        assert_eq!(calls(&lines[2]), [("Shell", false)]);
+        // A member of an object is one whatever its name, and so is the
+        // `Shell` of a `VBA` that is itself the member of an object.
+        assert_eq!(calls(&lines[3]), [("Shell", true)]);
+        assert_eq!(calls(&lines[4]), [("Range", true)]);
+        assert_eq!(calls(&lines[5]), [("Shell", false)]);
     }
 
     #[test]
@@ -983,22 +999,6 @@ mod tests {
 
         let clean = adapted("Sub Fine()\nEnd Sub\n").input;
         assert!(!clean.parse_recovered);
-    }
-
-    #[test]
-    fn a_statement_too_deep_to_be_read_counts_as_one_that_did_not_parse() {
-        let deep = format!(
-            "x = {}1{}",
-            "(".repeat(MAX_NESTING + 1),
-            ")".repeat(MAX_NESTING + 1)
-        );
-
-        let inside = adapted(&format!("Sub Run()\n    {deep}\nEnd Sub\n")).input;
-        assert!(inside.procedures[0].predicates.parse_recovered);
-        assert!(inside.parse_recovered);
-        let outside = adapted(&format!("{deep}\nSub Run()\nEnd Sub\n")).input;
-        assert!(!outside.procedures[0].predicates.parse_recovered);
-        assert!(outside.parse_recovered);
     }
 
     #[test]

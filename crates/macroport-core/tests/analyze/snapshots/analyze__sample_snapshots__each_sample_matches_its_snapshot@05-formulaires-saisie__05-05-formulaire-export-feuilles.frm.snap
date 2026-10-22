@@ -1,0 +1,50 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/05-formulaires-saisie/05-05-formulaire-export-feuilles.frm
+---
+families/05-formulaires-saisie/05-05-formulaire-export-feuilles.frm
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 forms=1 declare_count=0 external_dependencies=1
+module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub Label2_Click private lines 27-29: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub MultiPage1_Change private lines 31-33: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub tbxNameFile_Change private lines 35-37: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UserForm_Initialize private lines 42-63: loc=22 logical_loc=18 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub lbxSheet_AfterUpdate private lines 72-74: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ckxShowOnly_Change private lines 76-154: loc=79 logical_loc=69 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ckxShowSheetHidden_Change private lines 158-233: loc=76 logical_loc=63 cyclomatic=20 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbxSaveasType_Change private lines 235-288: loc=54 logical_loc=49 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ckxExSeparate_Change private lines 290-331: loc=42 logical_loc=40 cyclomatic=9 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbCancelExport_Click private lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbOkExport_Click private lines 345-393: loc=49 logical_loc=44 cyclomatic=11 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbCreateFolder_Click private lines 394-402: loc=9 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbOpenFile_Click private lines 404-416: loc=13 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cbSelectFileToExport_Click private lines 417-441: loc=25 logical_loc=23 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ckxAll_Click private lines 442-454: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ckxUnCheckAll_Click private lines 456-468: loc=13 logical_loc=11 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UserForm_QueryClose private lines 470-474: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 22
+  declaration Variable line 23
+  procedure sub Label2_Click private static=false parameters=0 lines 27-29 recoveries=none unbalanced_blocks=false
+  procedure sub MultiPage1_Change private static=false parameters=0 lines 31-33 recoveries=none unbalanced_blocks=false
+  procedure sub tbxNameFile_Change private static=false parameters=0 lines 35-37 recoveries=none unbalanced_blocks=false
+  procedure sub UserForm_Initialize private static=false parameters=0 lines 42-63 recoveries=none unbalanced_blocks=false
+  procedure sub lbxSheet_AfterUpdate private static=false parameters=0 lines 72-74 recoveries=none unbalanced_blocks=false
+  procedure sub ckxShowOnly_Change private static=false parameters=0 lines 76-154 recoveries=none unbalanced_blocks=false
+  procedure sub ckxShowSheetHidden_Change private static=false parameters=0 lines 158-233 recoveries=none unbalanced_blocks=false
+  procedure sub cbxSaveasType_Change private static=false parameters=0 lines 235-288 recoveries=none unbalanced_blocks=false
+  procedure sub ckxExSeparate_Change private static=false parameters=0 lines 290-331 recoveries=none unbalanced_blocks=false
+  procedure sub cbCancelExport_Click private static=false parameters=0 lines 341-343 recoveries=none unbalanced_blocks=false
+  procedure sub cbOkExport_Click private static=false parameters=0 lines 345-393 recoveries=none unbalanced_blocks=false
+  procedure sub cbCreateFolder_Click private static=false parameters=0 lines 394-402 recoveries=none unbalanced_blocks=false
+  procedure sub cbOpenFile_Click private static=false parameters=0 lines 404-416 recoveries=none unbalanced_blocks=false
+  procedure sub cbSelectFileToExport_Click private static=false parameters=0 lines 417-441 recoveries=none unbalanced_blocks=false
+  procedure sub ckxAll_Click private static=false parameters=0 lines 442-454 recoveries=none unbalanced_blocks=false
+  procedure sub ckxUnCheckAll_Click private static=false parameters=0 lines 456-468 recoveries=none unbalanced_blocks=false
+  procedure sub UserForm_QueryClose private static=false parameters=2 lines 470-474 recoveries=none unbalanced_blocks=false
+  recoveries: none

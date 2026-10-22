@@ -88,6 +88,21 @@ fn the_auto_exec_procedure_raises_its_signal_and_gives_the_file_its_severity() {
 }
 
 #[test]
+fn a_call_written_through_the_vba_library_raises_the_signal_of_the_call() {
+    let bare = report_of("Sub Run()\n    Shell \"calc\"\nEnd Sub\n");
+    let statement = report_of("Sub Run()\n    VBA.Shell \"calc\"\nEnd Sub\n");
+    let function = report_of("Sub Run()\n    x = VBA.Interaction.Shell(\"calc\")\nEnd Sub\n");
+    let member = report_of("Sub Run()\n    x = ws.Shell(\"calc\")\nEnd Sub\n");
+
+    // The library in front of the function launches the same program (ADR-0010).
+    assert_eq!(signal_ids(first(&bare)), ["sec.shell"]);
+    assert_eq!(signal_ids(first(&statement)), ["sec.shell"]);
+    assert_eq!(signal_ids(first(&function)), ["sec.shell"]);
+    // The method of an object that bears the name is another matter.
+    assert!(signal_ids(first(&member)).is_empty());
+}
+
+#[test]
 fn the_event_handler_of_a_document_module_is_an_auto_exec_procedure() {
     let handler = "Private Sub Workbook_Open()\n    x = 1\nEnd Sub\n";
 
@@ -308,7 +323,8 @@ fn a_declare_statement_makes_the_file_high() {
 
     let metrics = file.metrics.as_ref().expect("the metrics of the file");
     assert_eq!(metrics.declare_count, Some(1));
-    // A `Declare` statement is one dependency, whatever the routines it names.
+    // The file counts one dependency for its `Declare` statements, however many,
+    // and the level follows.
     assert_eq!(metrics.external_dependencies, Some(1));
     assert_eq!(file.complexity_level, Some(Level::High));
 }

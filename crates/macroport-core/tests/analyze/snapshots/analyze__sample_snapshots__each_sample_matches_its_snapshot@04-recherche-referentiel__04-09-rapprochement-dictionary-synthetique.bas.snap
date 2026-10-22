@@ -1,0 +1,17 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/04-recherche-referentiel/04-09-rapprochement-dictionary-synthetique.bas
+---
+families/04-recherche-referentiel/04-09-rapprochement-dictionary-synthetique.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
+module 04-09-rapprochement-dictionary-synthetique (standard): loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub RapprocherPaieEtRH public lines 12-60: loc=49 logical_loc=43 cyclomatic=7 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub RapprocherPaieEtRH public static=false parameters=0 lines 12-60 recoveries=none unbalanced_blocks=false
+  recoveries: none

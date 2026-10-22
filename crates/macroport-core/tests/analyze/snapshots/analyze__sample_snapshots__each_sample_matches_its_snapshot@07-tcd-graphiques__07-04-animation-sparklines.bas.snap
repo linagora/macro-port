@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/07-tcd-graphiques/07-04-animation-sparklines.bas
+---
+families/07-tcd-graphiques/07-04-animation-sparklines.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=32 logical_loc=14 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
+module 07-04-animation-sparklines (standard): loc=32 logical_loc=14 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub SparkAnimation default lines 7-32: loc=26 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub SparkAnimation default static=false parameters=0 lines 7-32 recoveries=none unbalanced_blocks=false
+  recoveries: none

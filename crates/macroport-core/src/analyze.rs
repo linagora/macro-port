@@ -39,7 +39,9 @@
 //! Nothing here executes or evaluates anything from the file, and nothing
 //! panics on its content: every failure is a status and an error code in the
 //! report. The codes that this module gives, besides those of the container
-//! and MS-OVBA layers:
+//! and MS-OVBA layers (one whose status is `unchanged` is no failure: it tells
+//! of something that was read all the same, and the status of the file stays
+//! what the rest of the report makes it):
 //!
 //! | code | status | meaning |
 //! | --- | --- | --- |
@@ -55,6 +57,7 @@
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
 //! | `vba.too_much_code` | `too_large` | a module would take the statements of the file past what the rule engine may read |
+//! | `vba.statement.too_deep` | `unchanged` | a module has statements nested too deep to be read in full; the rest of each is read flat |
 //!
 //! The message of an error about a module starts with `module <name>:`.
 
@@ -235,9 +238,15 @@ impl Failure {
 
     /// The same failure, said to be that of the module `name`.
     fn in_module(mut self, name: &str) -> Self {
-        self.error.message = format!("module {name}: {}", self.error.message);
+        self.error.message = about_module(name, &self.error.message);
         self
     }
+}
+
+/// `message`, said to be about the module `name`: how the message of every
+/// error about a module starts.
+fn about_module(name: &str, message: &str) -> String {
+    format!("module {name}: {message}")
 }
 
 impl From<VbaError> for Failure {
