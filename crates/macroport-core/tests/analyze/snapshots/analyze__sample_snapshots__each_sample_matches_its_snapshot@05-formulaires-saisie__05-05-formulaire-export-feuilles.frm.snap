@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 forms=1 declare_count=0
+file: loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 forms=1 declare_count=0 external_dependencies=1
 module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedures=17 cyclomatic=20 cyclomatic_total=89 max_nesting=5 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub Label2_Click private lines 27-29: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

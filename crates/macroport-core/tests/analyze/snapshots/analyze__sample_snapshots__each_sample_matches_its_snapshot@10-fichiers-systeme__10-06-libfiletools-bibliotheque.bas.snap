@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=3623 logical_loc=2932 procedures=75 cyclomatic=65 cyclomatic_total=559 max_nesting=7 forms=0 declare_count=36
+file: loc=3623 logical_loc=2932 procedures=75 cyclomatic=65 cyclomatic_total=559 max_nesting=7 forms=0 declare_count=36 external_dependencies=2
 module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 procedures=75 cyclomatic=65 cyclomatic_total=559 max_nesting=7 declare_count=36
   declarations: declare_count=36 with_events_count=0 option_explicit=true option_vba_support=false
   function BrowseForFiles public lines 482-531: loc=50 logical_loc=36 cyclomatic=8 max_nesting=3 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
