@@ -1,0 +1,36 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/10-fichiers-systeme/10-04-renommage-versions-fso.bas
+---
+families/10-fichiers-systeme/10-04-renommage-versions-fso.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=74 logical_loc=50 procedures=2 cyclomatic=5 cyclomatic_total=8 max_nesting=2 forms=0 declare_count=0 external_dependencies=1
+module 10-04-renommage-versions-fso (standard): loc=74 logical_loc=50 procedures=2 cyclomatic=5 cyclomatic_total=8 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub VersionRename default lines 9-45: loc=37 logical_loc=27 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=8
+    api Application.FileDialog*1
+    api CreateObject:Scripting.FileSystemObject*1
+    api FSO.GetFolder*1
+    api RenamingFolder.SubFolders*1
+    api SelectedFolder.ButtonName*1
+    api SelectedFolder.SelectedItems*1
+    api SelectedFolder.Show*1
+    api SelectedFolder.Title*1
+  sub File_Renamer private lines 46-74: loc=29 logical_loc=22 cyclomatic=5 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=9
+    api Application.InputBox*2
+    api File.Name*3
+    api Folder.Files*1
+    api Format*1
+    api InStrRev*4
+    api Left*2
+    api Len*2
+    api Replace*1
+    api Right*2
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub VersionRename default static=false parameters=0 lines 9-45 recoveries=none unbalanced_blocks=false
+  procedure sub File_Renamer private static=false parameters=1 lines 46-74 recoveries=none unbalanced_blocks=false
+  recoveries: none

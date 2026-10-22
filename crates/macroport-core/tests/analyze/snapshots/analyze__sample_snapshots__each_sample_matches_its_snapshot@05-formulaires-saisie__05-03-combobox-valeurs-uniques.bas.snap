@@ -1,0 +1,25 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/05-formulaires-saisie/05-03-combobox-valeurs-uniques.bas
+---
+families/05-formulaires-saisie/05-03-combobox-valeurs-uniques.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=49 logical_loc=26 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
+module 05-03-combobox-valeurs-uniques (standard): loc=49 logical_loc=26 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Populate_Combobox_Worksheet_Collection default lines 7-49: loc=43 logical_loc=26 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=9
+    api CStr*1
+    api ncData.Add*1
+    api rnData.Value*1
+    api wbBook.Worksheets*1
+    api wsSheet.OLEObjects.Object*1
+    api wsSheet.OLEObjects.Object.AddItem*1
+    api wsSheet.OLEObjects.Object.Clear*1
+    api wsSheet.Range*2
+    api wsSheet.Range.End*1
+parse:
+  procedure sub Populate_Combobox_Worksheet_Collection default static=false parameters=0 lines 7-49 recoveries=none unbalanced_blocks=false
+  recoveries: none

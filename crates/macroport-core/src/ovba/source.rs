@@ -19,7 +19,8 @@ use super::text::decode_text;
 /// `max_output` does for [`decompress`]. The text takes up to three times as
 /// many bytes, and while it is made the bytes and two copies of the text are
 /// held: up to seven times `max_source` at the peak, three times for ASCII.
-/// The caller that reads many modules keeps its own total.
+/// The caller that reads many modules keeps its own total, and charges to it
+/// the bytes that a read had produced when it failed ([`OvbaError::produced`]).
 ///
 /// A stream that ends at `text_offset` holds no source: the result is empty.
 ///
