@@ -84,7 +84,7 @@ families:
       - { id: rpt.pdf-export, match: member, pattern: [ExportAsFixedFormat], weight: 5 }
       - { id: rpt.pdf-constant, match: regex, pattern: '\bxlTypePDF\b', weight: 2 }
       - { id: rpt.print, match: member, pattern: [PrintOut, PrintPreview], weight: 3 }
-      - { id: rpt.page-setup, match: member, pattern: [PageSetup, PrintArea, PrintTitleRows, PrintTitleColumns, CenterFooter, LeftFooter, RightFooter, CenterHeader, LeftHeader, RightHeader, FitToPagesWide, FitToPagesTall], weight: 2 }
+      - { id: rpt.page-setup, match: member, pattern: [PageSetup, PrintArea, PrintTitleRows, PrintTitleColumns, CenterFooter, LeftFooter, RightFooter, CenterHeader, LeftHeader, RightHeader, FitToPagesWide, FitToPagesTall], weight: 3 }
       - { id: rpt.page-breaks, match: member, pattern: [HPageBreaks, VPageBreaks, ResetAllPageBreaks], weight: 2 }
       - { id: rpt.save-copy, match: member, pattern: [SaveCopyAs], weight: 2 }
       - { id: rpt.new-report-sheet, match: chain, pattern: [Worksheets.Add, Sheets.Add, Workbooks.Add], weight: 1 }
