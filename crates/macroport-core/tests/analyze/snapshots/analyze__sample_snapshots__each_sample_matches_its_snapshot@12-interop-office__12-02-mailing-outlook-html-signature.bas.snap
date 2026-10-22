@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 forms=0 declare_count=0
+file: loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 forms=0 declare_count=0 external_dependencies=2
 module 12-02-mailing-outlook-html-signature (standard): loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub GenerateInfoToCreateEmail default lines 18-53: loc=36 logical_loc=27 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

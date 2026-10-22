@@ -816,6 +816,7 @@ mod tests {
                 .map(|&name| CallSite {
                     name: name.to_owned(),
                     after_dot: false,
+                    library: false,
                 })
                 .collect(),
             ..Facts::default()
@@ -950,6 +951,7 @@ mod tests {
         let call = |name: &str| CallSite {
             name: name.to_owned(),
             after_dot: false,
+            library: false,
         };
         let left = |facts: &Facts| -> Vec<String> {
             uninvoked(facts).map(|member| member.name.clone()).collect()

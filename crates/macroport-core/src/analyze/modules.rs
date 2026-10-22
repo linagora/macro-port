@@ -18,32 +18,44 @@
 //! report of a module that no stage measured, and its failure gives the file its
 //! status.
 //!
-//! Only what the parser and the metrics show is filled so far: the spans of the
-//! procedures and their metrics (sizes, cyclomatic complexity, nesting,
-//! parameters and `GoTo`s), the metrics of the modules and of the file (their
-//! sizes, their counts and what their procedures add up to), the declarations
-//! of the modules (and the count of their `Declare` statements, a metric), and
-//! the trait that the recoveries of the parser and the blocks that do not match
-//! give. The other fields are left out until the stages that measure them run,
-//! since a missing value is not a zero. The external dependencies of a file are
-//! such a field: the ProgIDs of its statements are not read yet. The exceptions
-//! are three fields of a procedure that the schema requires and that only the
-//! rule engine can decide: until it runs, `primary_family` is `unclassified`,
-//! and `families` and `signals` are empty.
+//! Only what the parser, the metrics and the statements show is filled so far:
+//! the spans of the procedures and their metrics (sizes, cyclomatic complexity,
+//! nesting, parameters and `GoTo`s), the metrics of the modules and of the file
+//! (their sizes, their counts, what their procedures add up to, and the
+//! external dependencies of the file: the ProgIDs of its statements, its
+//! references and its `Declare` statements), the declarations of the modules
+//! (and the count of their `Declare` statements, a metric), and the trait that
+//! the recoveries of the parser, the blocks that do not match and the statements
+//! nested too deep to be read give. The other fields are left out until the
+//! stages that measure them run, since a missing value is not a zero: the
+//! external dependencies of a procedure are such a field. The exceptions are
+//! three fields of a procedure that the schema requires and that only the rule
+//! engine can decide: until it runs, `primary_family` is `unclassified`, and
+//! `families` and `signals` are empty.
+//!
+//! The statements of a module are read once, in the `statements` submodule,
+//! which hands the facts of each to the stages that want them. A statement
+//! nested too deep to be read in full is no failure: the module is read, the
+//! status of the file does not follow, and the file lists one error for the
+//! module (`vba.statement.too_deep`).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
+mod statements;
 mod text;
 mod text_file;
 
-use super::{Extraction, Failure, Options, readable_status};
+use self::statements::{ExternalProgids, Statements, TooDeep};
+use super::{Extraction, Failure, Options, about_module, readable_status};
 use crate::report::{
-    Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
+    Declarations, FileError, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport,
+    Status,
 };
 use crate::rules::{RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, ProcedureMeasure,
-    SourceLines, VbaError, file_metrics, measure_procedure, module_metrics, parse, split_lines,
+    Declaration, DeclarationKind, MAX_NESTING, OptionKind, ParsedModule, Procedure,
+    ProcedureMeasure, SourceLines, VbaError, file_metrics, measure_procedure, module_metrics,
+    parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -52,6 +64,10 @@ pub(super) use self::text_file::{analyze_text, is_text_module};
 /// The family of a procedure that no rule has scored: the rule engine (M3)
 /// classifies the procedures, so until it runs none is.
 const UNCLASSIFIED: &str = "unclassified";
+
+/// The code of the error that tells of the statements of a module that are
+/// nested too deep to be read in full. It is no failure.
+const TOO_DEEP: &str = "vba.statement.too_deep";
 
 /// The most lines that the modules of one file may total, once read.
 /// [`split_lines`] bounds one module, and the sources of a project may total
@@ -93,16 +109,21 @@ impl Analysis {
         })
     }
 
-    /// Whether the structural predicate `parse_recovered` holds for the
-    /// procedure at `index` (SPEC M2 item 6): the parser stepped over something
-    /// in it, or its blocks do not match.
+    /// Whether the parser or the metrics show that the procedure at `index` did
+    /// not parse cleanly (the structural predicate `parse_recovered`, SPEC M2
+    /// item 6): the parser stepped over something in it, or its blocks do not
+    /// match. A statement nested too deep to be read is a third cause, which
+    /// only the statements show ([`Statements::is_deep`]): [`Front::fill`] puts
+    /// the three together.
     pub(super) fn procedure_recovered(&self, index: usize) -> bool {
         let parsed = (self.module.procedures.get(index)).is_some_and(Procedure::is_recovered);
         parsed || (self.measures.get(index)).is_some_and(|measure| measure.unbalanced_blocks)
     }
 
-    /// Whether `parse_recovered` holds for the module as a whole: for a
-    /// procedure, or for the code outside the procedures.
+    /// Whether the parser or the metrics show that the module did not parse
+    /// cleanly: in a procedure, or in the code outside the procedures. As for a
+    /// procedure, a statement nested too deep to be read is a third cause that
+    /// they do not show.
     pub(super) fn is_recovered(&self) -> bool {
         self.module.is_recovered()
             || (self.measures.iter()).any(|measure| measure.unbalanced_blocks)
@@ -122,12 +143,19 @@ struct Front {
     /// The procedures that the modules may still report.
     procedures_left: u32,
     /// The ids of the traits that the rules give to the predicate
-    /// `parse_recovered`. The parser and the metrics decide that one, so the
-    /// procedures and the file that have it can be marked before the rule engine
-    /// runs.
+    /// `parse_recovered`. The parser, the metrics and the statements decide
+    /// that one, so the procedures and the file that have it can be marked
+    /// before the rule engine runs.
     recovery_traits: Vec<String>,
     /// Whether `parse_recovered` holds for a module read so far.
     recovered: bool,
+    /// The ProgIDs that the statements of the modules read so far pass to
+    /// `CreateObject` and `GetObject`, those that count as external
+    /// dependencies.
+    external_progids: ExternalProgids,
+    /// What the front end tells of the modules that it read: errors of the file
+    /// that are no failure.
+    warnings: Vec<FileError>,
     /// Why modules were not read, in the order they were met.
     failures: Vec<Failure>,
 }
@@ -139,6 +167,8 @@ impl Front {
             procedures_left: MAX_FILE_PROCEDURES,
             recovery_traits: recovery_traits(rules),
             recovered: false,
+            external_progids: ExternalProgids::default(),
+            warnings: Vec::new(),
             failures: Vec::new(),
         }
     }
@@ -185,13 +215,22 @@ impl Front {
 
     /// Puts what `analysis` shows of a module into its report: its procedures
     /// with their spans and metrics, the metrics of the module, and its
-    /// declarations.
+    /// declarations. What its statements show goes to the file: the ProgIDs,
+    /// and a warning for the statements that nest too deep to be read.
+    ///
+    /// Three things show that code did not parse cleanly (the predicate
+    /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
+    /// the blocks of a procedure do not match, and a statement nests too deep to
+    /// be read. A procedure that has one of them gets the traits of the
+    /// predicate, and so does the file once a module has one, in a procedure or
+    /// outside the procedures.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
+        let statements = Statements::read(analysis, &mut self.external_progids);
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
         module.procedures = (found.enumerate())
             .map(|(index, (procedure, measure))| {
-                let traits = self.recovery_traits_if(analysis.procedure_recovered(index));
-                procedure_report(procedure, measure, traits)
+                let recovered = analysis.procedure_recovered(index) || statements.is_deep(index);
+                procedure_report(procedure, measure, self.recovery_traits_if(recovered))
             })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
@@ -201,7 +240,10 @@ impl Front {
             ..module_metrics(&analysis.lines, procedure_metrics)
         };
         module.declarations = Some(declarations);
-        self.recovered |= analysis.is_recovered();
+        self.recovered |= analysis.is_recovered() || statements.too_deep.is_some();
+        if let Some(deep) = statements.too_deep {
+            self.warnings.push(too_deep_error(&module.name, deep));
+        }
     }
 
     /// The traits of a procedure or of a file that `recovered` says did not
@@ -213,26 +255,22 @@ impl Front {
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file follow from those of its modules and of their procedures, the
-    /// errors of the front end join those of the extraction, and the status
-    /// follows from the procedures.
+    /// the file follow from those of its modules and of their procedures and
+    /// from the ProgIDs of their statements, the errors of the front end join
+    /// those of the extraction, and the status follows from the procedures.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
     /// and without one the file is `ok` if a module has a procedure or is
     /// suspected of having lost its source, or the file has macro sheets or a
-    /// workbook whose encryption hides them, and `no_macros` if not.
+    /// workbook whose encryption hides them, and `no_macros` if not. The
+    /// warnings on the modules that were read do not change the status.
     ///
     /// The signals of the file are not touched: extraction made them from the
     /// container indicators.
     fn seal(self, file: &mut FileReport) {
         if let Some(project) = &file.vba_project {
-            file.metrics = Some(Metrics {
-                // The ProgIDs that the statements pass to `CreateObject` and
-                // `GetObject` are not read yet, so the count would fall short.
-                external_dependencies: None,
-                ..file_metrics(project, std::iter::empty::<&str>())
-            });
+            file.metrics = Some(file_metrics(project, self.external_progids.iter()));
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match self.failures.first() {
@@ -249,6 +287,29 @@ impl Front {
         }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(self.failures.into_iter().map(|failure| failure.error));
+        errors.extend(self.warnings);
+    }
+}
+
+/// The error of the file that tells of the statements of the module `module`
+/// that are nested too deep to be read in full. The reader reads the rest of
+/// such a statement flat, and the message says what that loses.
+fn too_deep_error(module: &str, deep: TooDeep) -> FileError {
+    let TooDeep { count, first_line } = deep;
+    let nest = if count == 1 {
+        "statement nests"
+    } else {
+        "statements nest"
+    };
+    let message = format!(
+        "{count} {nest} expressions deeper than {MAX_NESTING} levels, the first at line \
+         {first_line}; the rest of such a statement is read flat: no chain, ProgID or mark of \
+         obfuscation is found in it, its string literals are listed one by one with none \
+         folded, and a name that stands alone counts as a call"
+    );
+    FileError {
+        code: TOO_DEEP.to_owned(),
+        message: about_module(module, &message),
     }
 }
 
@@ -450,5 +511,24 @@ mod tests {
 
         let clean = of("Sub A()\n    If x Then\n    End If\nEnd Sub\n");
         assert!(!clean.procedure_recovered(0) && !clean.is_recovered());
+    }
+
+    #[test]
+    fn the_error_for_statements_nested_too_deep_names_the_module_the_count_and_the_line() {
+        let error = |count, first_line| too_deep_error("Module1", TooDeep { count, first_line });
+        let past = format!("expressions deeper than {MAX_NESTING} levels");
+
+        let one = error(1, 7);
+        let two = error(2, 9);
+
+        assert_eq!(one.code, "vba.statement.too_deep");
+        let first = format!("module Module1: 1 statement nests {past}, the first at line 7;");
+        assert!(one.message.starts_with(&first), "{}", one.message);
+        let second = format!("module Module1: 2 statements nest {past}, the first at line 9;");
+        assert!(two.message.starts_with(&second), "{}", two.message);
+        assert!(
+            one.message
+                .ends_with("and a name that stands alone counts as a call")
+        );
     }
 }
