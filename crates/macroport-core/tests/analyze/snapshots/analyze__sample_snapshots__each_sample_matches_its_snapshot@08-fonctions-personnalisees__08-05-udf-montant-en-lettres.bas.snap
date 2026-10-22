@@ -10,7 +10,15 @@ traits: none
 file: loc=99 logical_loc=46 procedures=1 cyclomatic=9 cyclomatic_total=9 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 08-05-udf-montant-en-lettres (standard): loc=99 logical_loc=46 procedures=1 cyclomatic=9 cyclomatic_total=9 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  function spellNumberAsCurrency default lines 17-99: loc=83 logical_loc=46 cyclomatic=9 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function spellNumberAsCurrency default lines 17-99: loc=83 logical_loc=46 cyclomatic=9 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+    api common.threeDigitNumberToText*1
+    api common.twoDigitNumberToText*1
+    api InStr*1
+    api Left*3
+    api Len*2
+    api Mid*1
+    api Right*1
+    api Trim*2
 parse:
   procedure function spellNumberAsCurrency default static=false parameters=2 lines 17-99 recoveries=none unbalanced_blocks=false
   recoveries: none
