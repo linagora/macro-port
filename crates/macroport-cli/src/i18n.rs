@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use fluent_bundle::{FluentBundle, FluentResource};
+use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
 use macroport_core::report::{Container, Lang, Level, ProcedureKind, Status, Visibility};
 use macroport_core::rules::{Label, ModuleType, RuleSet, Severity};
 use serde::Serialize;
@@ -59,6 +59,11 @@ pub const RESOURCES: &[Resource] = &[
         name: "html.ftl",
         en: include_str!("../../../i18n/en/html.ftl"),
         fr: include_str!("../../../i18n/fr/html.ftl"),
+    },
+    Resource {
+        name: "cli.ftl",
+        en: include_str!("../../../i18n/en/cli.ftl"),
+        fr: include_str!("../../../i18n/fr/cli.ftl"),
     },
 ];
 
@@ -107,17 +112,17 @@ impl Messages {
 
     /// The message `id`, or `id` itself when there is none.
     pub fn text(&self, id: &str) -> String {
-        let pattern = self
-            .bundle
-            .get_message(id)
-            .and_then(|message| message.value());
-        match pattern {
-            Some(pattern) => self
-                .bundle
-                .format_pattern(pattern, None, &mut Vec::new())
-                .into_owned(),
-            None => self.missing("message", id),
+        self.format(id, None)
+    }
+
+    /// The message `id` with a value for each of its variables (`{ $name }`),
+    /// given as `(name, value)`, or `id` itself when there is no such message.
+    pub fn text_with(&self, id: &str, values: &[(&str, &str)]) -> String {
+        let mut arguments = FluentArgs::new();
+        for (name, value) in values {
+            arguments.set(*name, *value);
         }
+        self.format(id, Some(&arguments))
     }
 
     /// The outcome of the analysis of a file.
@@ -186,6 +191,21 @@ impl Messages {
     /// The words that were asked for and do not exist, sorted.
     pub fn problems(&self) -> Vec<String> {
         self.problems.borrow().iter().cloned().collect()
+    }
+
+    /// The message `id` with `arguments`, or `id` itself when there is none.
+    fn format(&self, id: &str, arguments: Option<&FluentArgs<'_>>) -> String {
+        let pattern = self
+            .bundle
+            .get_message(id)
+            .and_then(|message| message.value());
+        match pattern {
+            Some(pattern) => self
+                .bundle
+                .format_pattern(pattern, arguments, &mut Vec::new())
+                .into_owned(),
+            None => self.missing("message", id),
+        }
     }
 
     /// The message for a value of an enumeration of the schema, named after

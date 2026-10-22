@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use fluent_bundle::{FluentBundle, FluentResource};
+use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
 use macroport_cli::i18n::{Messages, RESOURCES};
 use macroport_core::report::{Container, Lang, Level, ProcedureKind, Status, Visibility};
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity, parse_value};
@@ -70,6 +70,39 @@ fn is_identifier(text: &str) -> bool {
         && text
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+}
+
+/// The names of the variables (`$name`) that a Fluent file mentions.
+fn variables(source: &str) -> BTreeSet<String> {
+    source
+        .split('$')
+        .skip(1)
+        .map(|rest| {
+            let name = rest.chars();
+            name.take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .collect::<String>()
+        })
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// The Rust files under `directory`, recursively, in the order of their paths.
+fn rust_files(directory: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![directory.to_owned()];
+    while let Some(directory) = pending.pop() {
+        let entries = fs::read_dir(&directory)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", directory.display()));
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 /// The Fluent files of `lang` loaded strictly: a file that does not parse, or
@@ -181,18 +214,73 @@ fn every_message_formats_to_a_text_without_an_error() {
                 .filter(|key| !key.starts_with('-') && !key.contains('.'))
                 .collect();
             assert!(!ids.is_empty(), "{} ({lang:?}) has messages", resource.name);
+            // A message that has variables gets a value for each of them.
+            let mut arguments = FluentArgs::new();
+            for name in variables(resource.source(lang)) {
+                arguments.set(name, "x");
+            }
             for id in ids {
                 let pattern = bundle
                     .get_message(&id)
                     .and_then(|message| message.value())
                     .unwrap_or_else(|| panic!("{id} ({lang:?}) has a value"));
                 let mut errors = Vec::new();
-                let text = bundle.format_pattern(pattern, None, &mut errors);
+                let text = bundle.format_pattern(pattern, Some(&arguments), &mut errors);
                 assert!(errors.is_empty(), "{id} ({lang:?}): {errors:?}");
                 assert!(!text.trim().is_empty(), "{id} ({lang:?}) is empty");
             }
         }
     }
+}
+
+#[test]
+fn every_message_of_the_command_line_that_the_code_names_exists_in_both_languages() {
+    let mut ids = BTreeSet::new();
+    for file in rust_files(&repo_root().join("crates/macroport-cli/src")) {
+        let source = read(&file);
+        for (quote, _) in source.match_indices("\"cli-") {
+            let rest = source.get(quote + 1..).unwrap_or_default();
+            ids.insert(
+                rest.chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+                    .collect::<String>(),
+            );
+        }
+    }
+    assert!(
+        !ids.is_empty(),
+        "the code names messages of the command line"
+    );
+    let cli = RESOURCES.iter().find(|resource| resource.name == "cli.ftl");
+    let cli = cli.expect("cli.ftl is embedded");
+    for lang in LANGS {
+        let defined = keys(cli.source(lang));
+        let missing: Vec<&String> = ids.iter().filter(|id| !defined.contains(*id)).collect();
+        assert!(
+            missing.is_empty(),
+            "{lang:?}: the code names messages that cli.ftl does not define: {missing:?}"
+        );
+    }
+}
+
+#[test]
+fn a_message_takes_the_values_it_is_given() {
+    let rules = rules();
+    let en = Messages::new(Lang::En, &rules);
+    let fr = Messages::new(Lang::Fr, &rules);
+    let values = [("path", "out/x"), ("reason", "denied")];
+
+    assert_eq!(
+        en.text_with("cli-error-create", &values),
+        "cannot create the directory out/x: denied"
+    );
+    // French puts a space before the colon, and the message knows it.
+    assert_eq!(
+        fr.text_with("cli-error-create", &values),
+        "impossible de créer le répertoire out/x : denied"
+    );
+    assert_eq!(en.text_with("no-such-message", &values), "no-such-message");
+    assert_eq!(en.problems(), ["no message 'no-such-message'"]);
 }
 
 /// Asks for the word of every value that `schema` lists at `pointer`, through
