@@ -4,11 +4,13 @@
 //!
 //! [`report_problems`] validates reports offline: jsonschema is built without
 //! its HTTP and file resolvers, and the report schema only refers to itself.
-//! [`corpus`] reads the test corpus.
+//! [`corpus`] reads the test corpus. [`linear`] checks that the work of a
+//! function grows with its input and no more, by the clock.
 
 #![forbid(unsafe_code)]
 
 pub mod corpus;
+pub mod linear;
 
 use std::sync::LazyLock;
 
