@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 forms=0 declare_count=0
+file: loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 01-05-common-print-settings (standard): loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   sub Rand_CommonPrintSettings default lines 7-68: loc=62 logical_loc=58 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

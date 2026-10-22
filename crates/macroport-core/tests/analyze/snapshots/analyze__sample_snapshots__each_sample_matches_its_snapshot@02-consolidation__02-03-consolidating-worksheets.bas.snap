@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=49 logical_loc=32 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 forms=0 declare_count=0
+file: loc=49 logical_loc=32 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 02-03-consolidating-worksheets (standard): loc=49 logical_loc=32 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub ConsolidatingMultipleWS default lines 9-49: loc=41 logical_loc=31 cyclomatic=4 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

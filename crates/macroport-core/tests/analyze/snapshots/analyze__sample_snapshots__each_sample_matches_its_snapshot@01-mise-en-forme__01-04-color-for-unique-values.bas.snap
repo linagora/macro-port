@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=73 logical_loc=39 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=3 forms=0 declare_count=0
+file: loc=73 logical_loc=39 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 01-04-color-for-unique-values (standard): loc=73 logical_loc=39 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   sub ColorForUnique public lines 7-73: loc=67 logical_loc=39 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
