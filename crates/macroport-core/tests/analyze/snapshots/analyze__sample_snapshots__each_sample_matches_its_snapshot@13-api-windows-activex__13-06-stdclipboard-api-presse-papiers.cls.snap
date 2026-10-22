@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=1005 logical_loc=696 procedures=37 cyclomatic=29 cyclomatic_total=164 max_nesting=3 forms=0 declare_count=58
+file: loc=1005 logical_loc=696 procedures=37 cyclomatic=29 cyclomatic_total=164 max_nesting=3 forms=0 declare_count=58 external_dependencies=1
 module 13-06-stdclipboard-api-presse-papiers (class): loc=1005 logical_loc=696 procedures=37 cyclomatic=29 cyclomatic_total=164 max_nesting=3 declare_count=58
   declarations: declare_count=58 with_events_count=0 option_explicit=false option_vba_support=false
   property_get ClipboardID public lines 225-227: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

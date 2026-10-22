@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=58 logical_loc=34 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0
+file: loc=58 logical_loc=34 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 12-05-remplissage-signets-word (standard): loc=58 logical_loc=34 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub Add_Single_Values_Word default lines 12-58: loc=47 logical_loc=33 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
