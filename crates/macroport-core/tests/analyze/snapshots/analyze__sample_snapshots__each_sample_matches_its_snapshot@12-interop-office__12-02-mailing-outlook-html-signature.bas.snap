@@ -10,13 +10,13 @@ traits: none
 file: loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 forms=0 declare_count=0 external_dependencies=2
 module 12-02-mailing-outlook-html-signature (standard): loc=121 logical_loc=77 procedures=3 cyclomatic=3 cyclomatic_total=6 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub GenerateInfoToCreateEmail default lines 18-53: loc=36 logical_loc=27 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=5
+  sub GenerateInfoToCreateEmail default lines 18-53: loc=36 logical_loc=27 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=SendEmail apis=5
     api Application.ScreenUpdating*2
     api WS.Range.End.Row*1
     api WS.Range.Font.Color*2
     api WS.Range.value*7
     api WS.Rows.Count*1
-  sub SendEmail private lines 54-112: loc=59 logical_loc=33 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=14
+  sub SendEmail private lines 54-112: loc=59 logical_loc=33 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetBoiler apis=14
     api CreateObject:Outlook.Application*1
     api Dir*1
     api Environ*1
@@ -31,7 +31,7 @@ module 12-02-mailing-outlook-html-signature (standard): loc=121 logical_loc=77 p
     api outlookMail.ReadReceiptRequested*1
     api outlookMail.Subject*1
     api outlookMail.To*1
-  function GetBoiler default lines 113-121: loc=9 logical_loc=8 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=4
+  function GetBoiler default lines 113-121: loc=9 logical_loc=8 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api CreateObject:Scripting.FileSystemObject*1
     api fso.GetFile.OpenAsTextStream*1
     api ts.Close*1
