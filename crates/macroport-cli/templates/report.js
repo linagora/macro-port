@@ -14,10 +14,11 @@
   }
 
   // What the closed line of each file shows: its path and the value of each
-  // chip, without the word that says what the chip is about.
+  // chip, without the word that says what the chip is about. The first summary
+  // of a file is its own: the modules and procedures inside have theirs.
   var rows = [];
   for (var i = 0; i < files.length; i++) {
-    var parts = files[i].querySelectorAll("summary .path, summary .value");
+    var parts = files[i].querySelector("summary").querySelectorAll(".path, .value");
     var words = [];
     for (var j = 0; j < parts.length; j++) {
       words.push(parts[j].textContent);
@@ -42,6 +43,10 @@
     for (var i = 0; i < files.length; i++) {
       if (!files[i].hidden) {
         files[i].open = open;
+        var inner = files[i].querySelectorAll("details");
+        for (var j = 0; j < inner.length; j++) {
+          inner[j].open = open;
+        }
       }
     }
   }

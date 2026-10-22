@@ -36,7 +36,10 @@ use askama::Template;
 use askama::filters::Safe;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use macroport_core::report::{Evidence, FamilyScore, FileError, FileReport, Report, Signal};
+use macroport_core::report::{
+    Evidence, FamilyScore, FileError, FileReport, Metrics, ModuleReport, ProcedureReport, Report,
+    Signal,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -108,9 +111,9 @@ struct Distribution {
     max: u32,
 }
 
-/// A file with the words of its format and chips, its families, signals and
-/// traits with their labels, and the lists of its report that are empty when it
-/// has none.
+/// A file with the words of its format and chips, its metrics, families,
+/// signals and traits with their labels, its modules, and the lists of its
+/// report that are empty when it has none.
 struct FileView<'a> {
     file: &'a FileReport,
     container: String,
@@ -118,7 +121,53 @@ struct FileView<'a> {
     references: &'a [String],
     errors: &'a [FileError],
     notes: &'a [String],
+    metrics: Vec<Fact>,
     traits: Vec<String>,
+    families: Vec<FamilyView<'a>>,
+    signals: Vec<SignalView<'a>>,
+    modules: Vec<ModuleView<'a>>,
+}
+
+/// A word and its value: what a file, a module or a procedure has.
+struct Fact {
+    label: String,
+    value: String,
+}
+
+impl Fact {
+    fn new(messages: &Messages, id: &str, value: impl ToString) -> Self {
+        Self {
+            label: messages.text(id),
+            value: value.to_string(),
+        }
+    }
+}
+
+/// What a list of metrics or signals belongs to. A file or a module gives the
+/// highest cyclomatic complexity of its procedures, a procedure its own; a
+/// signal listed in its own module or procedure need not say where it was raised.
+#[derive(Clone, Copy, PartialEq)]
+enum Scope {
+    File,
+    Module,
+    Procedure,
+}
+
+/// A module with its chips, metrics and signals, and its procedures.
+struct ModuleView<'a> {
+    module: &'a ModuleReport,
+    chips: Vec<Chip>,
+    metrics: Vec<Fact>,
+    signals: Vec<SignalView<'a>>,
+    procedures: Vec<ProcedureView<'a>>,
+}
+
+/// A procedure with its chips and facts, and the families and signals with
+/// the lines that raised them.
+struct ProcedureView<'a> {
+    procedure: &'a ProcedureReport,
+    chips: Vec<Chip>,
+    facts: Vec<Fact>,
     families: Vec<FamilyView<'a>>,
     signals: Vec<SignalView<'a>>,
 }
@@ -147,6 +196,15 @@ impl Chip {
             hint,
             label,
             class: format!("chip {kind}-{}", wire_name(value)),
+        }
+    }
+
+    /// A chip with no colour.
+    fn plain(hint: Option<String>, label: String) -> Self {
+        Self {
+            hint,
+            label,
+            class: "chip".to_owned(),
         }
     }
 }
@@ -262,11 +320,19 @@ fn file_views<'a>(report: &'a Report, messages: &Messages) -> Vec<FileView<'a>> 
                 .unwrap_or_default(),
             errors: file.errors.as_deref().unwrap_or_default(),
             notes: file.notes.as_deref().unwrap_or_default(),
-            traits: (file.traits.iter().flatten())
-                .map(|id| messages.trait_label(id))
-                .collect(),
+            metrics: (file.metrics.as_ref())
+                .map(|metrics| metric_facts(metrics, messages, Scope::File))
+                .unwrap_or_default(),
+            traits: trait_labels(file.traits.as_deref(), messages),
             families: family_views(file.families.as_deref().unwrap_or_default(), messages),
-            signals: signal_views(file.signals.as_deref().unwrap_or_default(), messages),
+            signals: signal_views(
+                file.signals.as_deref().unwrap_or_default(),
+                messages,
+                Scope::File,
+            ),
+            modules: (file.vba_project.as_ref())
+                .map(|project| module_views(&project.modules, messages))
+                .unwrap_or_default(),
         })
         .collect()
 }
@@ -298,13 +364,16 @@ fn chips(file: &FileReport, messages: &Messages) -> Vec<Chip> {
         ));
     }
     if let Some(family) = &file.primary_family {
-        chips.push(Chip {
-            hint: hint("html-family"),
-            label: messages.family(family),
-            class: "chip".to_owned(),
-        });
+        chips.push(Chip::plain(hint("html-family"), messages.family(family)));
     }
     chips
+}
+
+/// The labels of the traits `ids`, if the report has any.
+fn trait_labels(ids: Option<&[String]>, messages: &Messages) -> Vec<String> {
+    (ids.into_iter().flatten())
+        .map(|id| messages.trait_label(id))
+        .collect()
 }
 
 /// A view of each of `scores`, in the order of the report.
@@ -318,8 +387,14 @@ fn family_views<'a>(scores: &'a [FamilyScore], messages: &Messages) -> Vec<Famil
         .collect()
 }
 
-/// A view of each of `signals`, in the order of the report.
-fn signal_views<'a>(signals: &'a [Signal], messages: &Messages) -> Vec<SignalView<'a>> {
+/// A view of each of `signals`, in the order of the report. A signal listed
+/// with its file tells where it was raised (`place`); one listed in its module
+/// or its procedure does not.
+fn signal_views<'a>(
+    signals: &'a [Signal],
+    messages: &Messages,
+    scope: Scope,
+) -> Vec<SignalView<'a>> {
     (signals.iter())
         .map(|signal| SignalView {
             id: &signal.signal_id,
@@ -331,6 +406,7 @@ fn signal_views<'a>(signals: &'a [Signal], messages: &Messages) -> Vec<SignalVie
                 messages.severity(signal.severity),
             ),
             place: match (&signal.module, &signal.procedure) {
+                _ if scope != Scope::File => None,
                 (Some(module), Some(procedure)) => Some(format!("{module}.{procedure}")),
                 (Some(name), None) | (None, Some(name)) => Some(name.clone()),
                 (None, None) => None,
@@ -338,6 +414,136 @@ fn signal_views<'a>(signals: &'a [Signal], messages: &Messages) -> Vec<SignalVie
             evidence: signal.evidence.as_deref().unwrap_or_default(),
         })
         .collect()
+}
+
+/// A view of each of `modules`, in the order of the report.
+fn module_views<'a>(modules: &'a [ModuleReport], messages: &Messages) -> Vec<ModuleView<'a>> {
+    (modules.iter())
+        .map(|module| ModuleView {
+            module,
+            chips: [
+                Some(Chip::plain(None, messages.module_type(module.module_type))),
+                flag(
+                    !module.source_available,
+                    "html-source-unavailable",
+                    messages,
+                ),
+                flag(
+                    module.source_missing_suspected == Some(true),
+                    "html-source-missing",
+                    messages,
+                ),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+            metrics: metric_facts(&module.metrics, messages, Scope::Module),
+            signals: signal_views(
+                module.signals.as_deref().unwrap_or_default(),
+                messages,
+                Scope::Module,
+            ),
+            procedures: (module.procedures.iter())
+                .map(|procedure| procedure_view(procedure, messages))
+                .collect(),
+        })
+        .collect()
+}
+
+/// The view of `procedure`.
+fn procedure_view<'a>(procedure: &'a ProcedureReport, messages: &Messages) -> ProcedureView<'a> {
+    let hint = |id| Some(messages.text(id));
+    let secondary = (procedure.secondary_families.iter().flatten())
+        .map(|family| messages.family(family))
+        .collect();
+    let lists: [(&str, Vec<String>); 4] = [
+        ("html-secondary-families", secondary),
+        (
+            "html-calls",
+            procedure.calls.iter().flatten().cloned().collect(),
+        ),
+        (
+            "html-apis",
+            (procedure.apis.iter().flatten())
+                .map(|api| format!("{} ×{}", api.name, api.count))
+                .collect(),
+        ),
+        (
+            "html-traits",
+            trait_labels(procedure.traits.as_deref(), messages),
+        ),
+    ];
+    let lines = format!("{}-{}", procedure.start_line, procedure.end_line);
+    let mut facts = vec![Fact::new(messages, "html-lines", lines)];
+    facts.extend(metric_facts(&procedure.metrics, messages, Scope::Procedure));
+    facts.extend(
+        (lists.into_iter().filter(|(_, items)| !items.is_empty()))
+            .map(|(id, items)| Fact::new(messages, id, items.join(", "))),
+    );
+    ProcedureView {
+        procedure,
+        chips: [
+            Some(Chip::plain(None, messages.procedure_kind(procedure.kind))),
+            (procedure.visibility).map(|visibility| {
+                Chip::plain(hint("html-visibility"), messages.visibility(visibility))
+            }),
+            Some(Chip::plain(
+                hint("html-family"),
+                messages.family(&procedure.primary_family),
+            )),
+            flag(
+                procedure.is_entry_point == Some(true),
+                "html-entry-point",
+                messages,
+            ),
+            flag(
+                procedure.is_event_handler == Some(true),
+                "html-event-handler",
+                messages,
+            ),
+            flag(
+                procedure.possibly_unused == Some(true),
+                "html-procedure-unused",
+                messages,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        facts,
+        families: family_views(&procedure.families, messages),
+        signals: signal_views(&procedure.signals, messages, Scope::Procedure),
+    }
+}
+
+/// A chip with no colour that says `id`, when `on`.
+fn flag(on: bool, id: &str, messages: &Messages) -> Option<Chip> {
+    on.then(|| Chip::plain(None, messages.text(id)))
+}
+
+/// The metrics that a report has, with the label of the cyclomatic complexity
+/// that fits `scope`.
+fn metric_facts(metrics: &Metrics, messages: &Messages, scope: Scope) -> Vec<Fact> {
+    let cyclomatic = match scope {
+        Scope::Procedure => "html-cyclomatic",
+        Scope::File | Scope::Module => "html-cyclomatic-max",
+    };
+    [
+        ("html-loc", Some(metrics.loc)),
+        ("html-logical-loc", Some(metrics.logical_loc)),
+        ("html-procedures", metrics.procedures),
+        (cyclomatic, metrics.cyclomatic),
+        ("html-cyclomatic-total", metrics.cyclomatic_total),
+        ("html-max-nesting", metrics.max_nesting),
+        ("html-parameters", metrics.parameters),
+        ("html-goto", metrics.goto_count),
+        ("html-forms", metrics.forms),
+        ("html-declares", metrics.declare_count),
+        ("html-external-dependencies", metrics.external_dependencies),
+    ]
+    .into_iter()
+    .filter_map(|(id, value)| Some(Fact::new(messages, id, value?)))
+    .collect()
 }
 
 /// The Content-Security-Policy of the page: the one inline script and the one
