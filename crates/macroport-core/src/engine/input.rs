@@ -1,0 +1,189 @@
+// SPDX-License-Identifier: Apache-2.0
+//! The input of the rule engine: a VBA project as the matchers of SPEC
+//! section 7 read it.
+//!
+//! The engine owns this model. It is plain data, with no reference to the
+//! lexer or the parser: `analyze` (#43) converts the parser's output into it,
+//! so each field below says what the parser must put there. Tests build it by
+//! hand.
+//!
+//! Conventions that hold for the whole model:
+//!
+//! - A `line` is a 1-based physical line of the module source as the file
+//!   presents it, never renumbered (SPEC section 5): export headers,
+//!   `Attribute` lines and the corpus header block count. Evidence quotes it.
+//! - Names keep the spelling of the source. The engine compares them
+//!   case-insensitively and ignores a type-declaration character at their end
+//!   (`Chr$` is `Chr`), so the parser need not normalise them. A bracketed name
+//!   (`[Sheet 1]`) is given without its brackets.
+//! - Everything here comes from a hostile file. The engine only reads it, and
+//!   must not panic whatever it holds.
+
+use std::collections::BTreeSet;
+
+use crate::report::ProcedureKind;
+use crate::rules::ModuleType;
+
+/// A VBA project: its references and its modules.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectInput {
+    /// Display names of the references, such as `Microsoft Outlook 16.0 Object
+    /// Library`, without paths (SPEC M1 item 7). Read by `reference`. Empty for
+    /// a text module.
+    pub references: Vec<String>,
+    /// The modules, in the order of the report. The index of a module in this
+    /// list is the `module` of the hits found in it.
+    pub modules: Vec<ModuleInput>,
+}
+
+/// A module of the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInput {
+    /// The module name. Read by `module_type`, whose hits quote it.
+    pub name: String,
+    /// Read by `module_type`, `auto_exec` and `event_handler`.
+    pub module_type: ModuleType,
+    /// Names of the `WithEvents` variables declared in the module, such as
+    /// `App` for `Private WithEvents App As Application`. Read by
+    /// `event_handler`.
+    pub with_events: BTreeSet<String>,
+    /// Names of the controls of a form (`CommandButton1`). Empty for any other
+    /// module, and for a form whose controls are not known: as specified
+    /// today nothing reads them (M1 reads no form designer, and #38 skips the
+    /// `Begin` blocks of a text `.frm`), so a handler named after a control is
+    /// not recognised as an event handler until something fills this. Read by
+    /// `event_handler`.
+    pub controls: BTreeSet<String>,
+    /// The logical lines outside any procedure, in source order: `Option`,
+    /// `Declare`, `Const`, variables, `Type` and `Enum` blocks, `#If`, and
+    /// the comments between procedures. Module-scope signals read them too.
+    pub declarations: Vec<CodeLine>,
+    /// The procedures, in source order.
+    pub procedures: Vec<ProcedureInput>,
+}
+
+/// A `Sub`, `Function` or `Property` procedure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcedureInput {
+    /// The name in the declaration. Read by `procedure_name`, `auto_exec` and
+    /// `event_handler`.
+    pub name: String,
+    /// How the procedure is declared. The matchers do not read it: it is
+    /// carried for the callers that describe the procedure.
+    pub kind: ProcedureKind,
+    /// The physical line of the `Sub`, `Function` or `Property` keyword: the
+    /// line that the hits about the whole procedure cite.
+    pub start_line: u32,
+    /// The physical line of the matching `End`, or of the last line of the
+    /// procedure when the parser recovered without finding one. Callers check
+    /// with it that a hit is inside the procedure (A4).
+    pub end_line: u32,
+    /// The logical lines from the declaration to the `End` line, both
+    /// included, in source order.
+    pub lines: Vec<CodeLine>,
+    /// What the parser found about the procedure as a whole.
+    pub predicates: ParserPredicates,
+}
+
+/// One logical code line, the unit of the line-based matchers (SPEC section
+/// 7): a statement, after joining `_` continuations and splitting `:`
+/// separators (SPEC M2 item 1). The comment is kept apart in `comment` and
+/// left out of `code`. A comment-only line is a logical line with an empty
+/// `code`.
+///
+/// Every item below belongs to the statement it was found in: with
+/// `a = 1: b = Shell(c)`, the call `Shell` goes to the second line. The hits
+/// of the item quote this line.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodeLine {
+    /// The first physical line of the statement. Statements split from one
+    /// physical line share its number.
+    pub line: u32,
+    /// The statement as written, comment and string literals intact, its
+    /// continuation markers removed and its physical lines joined by one
+    /// space. Read by `regex` with `text: raw`, and quoted by the hits found
+    /// in the statement.
+    pub raw: String,
+    /// `raw` for `regex` with `text: code`: each string literal replaced by
+    /// `""` and the comment removed. The empty literal stays, so that
+    /// `Open "" For Output` still matches `Open\s+.+\s+For`.
+    pub code: String,
+    /// The text after the comment marker (`'` or `Rem`), as written, if the
+    /// statement ends with a comment. Read by `comment`.
+    pub comment: Option<String>,
+    /// The contents of the string literals, with `""` read as `"`. A literal
+    /// that is part of a foldable expression (SPEC M2 item 4) is replaced by
+    /// the folded value, once for the whole expression: `"WScr" & "ipt.Sh" &
+    /// "ell"` gives `WScript.Shell`. Without folding, each literal is listed.
+    /// Read by `string` and by `long_hex_or_base64_literal`, which both see
+    /// the folded value.
+    pub strings: Vec<String>,
+    /// Every identifier used as a member (`.X`, `!X`) or as a standalone
+    /// object name, in source order, including a type name after `As` or `New`
+    /// (the rules were calibrated that way: `office.mail-members` lists
+    /// `MailItem`). Not keywords. A name that is invoked is listed here and in
+    /// `calls`. Read by `member`.
+    pub members: Vec<MemberUse>,
+    /// The member chains of the statement after `With` resolution (nested
+    /// `With` included), each as its elements in order, call arguments
+    /// dropped: the statement `.Interior.Color = 1` in `With
+    /// Worksheets(1).Range("A1")` gives `["Worksheets", "Range", "Interior",
+    /// "Color"]`. A `!` access is an element like a `.` access. An element is
+    /// a whole name, so a bracketed name that holds a dot stays one element.
+    /// Chains found in call arguments are listed as chains of their own. A
+    /// lone name is not a chain. Read by `chain`.
+    pub chains: Vec<Vec<String>>,
+    /// The names invoked in the statement: `Shell(x)`, `Kill path`, `Call
+    /// Helper`. A name that is assigned to (`Dir = 1`), followed by `.`, or
+    /// declared (`Dim Kill As Long`) is not a call (the calibration prototype
+    /// left those out). Read by `call`.
+    pub calls: Vec<CallSite>,
+    /// The ProgID passed to `CreateObject` or `GetObject`, after constant
+    /// folding, once per call. A call whose argument does not fold has none.
+    /// Read by `progid`.
+    pub progids: Vec<String>,
+}
+
+/// An identifier used as a member or as a standalone object name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberUse {
+    /// The identifier.
+    pub name: String,
+    /// The identifier names an argument, as `Pattern` in `Pattern:=xlSolid`.
+    /// The `member` matcher never matches it (SPEC section 7): the parser may
+    /// flag such a name or leave it out.
+    pub named_argument: bool,
+}
+
+/// A name invoked as a procedure, a function or a statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallSite {
+    /// The name.
+    pub name: String,
+    /// The name follows `.` or `!`, as `Replace` in `Range.Replace What:="a"`.
+    /// The `call` matcher never matches it (SPEC section 7): the parser may
+    /// flag such a call or leave it out.
+    pub after_dot: bool,
+}
+
+/// What the parser found about a procedure as a whole, for the structural
+/// predicates that need the parse structure. The engine computes
+/// `auto_exec`, `event_handler` and `long_hex_or_base64_literal` itself.
+///
+/// A predicate that holds once for the procedure is a `bool`, and its hit
+/// cites the declaration. A predicate that holds at several places lists the
+/// line of each; none means it does not hold.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ParserPredicates {
+    /// `udf_candidate` holds.
+    pub udf_candidate: bool,
+    /// `chr_obfuscation`: the line of each obfuscated expression.
+    pub chr_obfuscation: Vec<u32>,
+    /// `nested_loop_compare`: the line of each comparison in a nested loop.
+    pub nested_loop_compare: Vec<u32>,
+    /// `possibly_unused` holds: not an entry point and never referenced.
+    pub possibly_unused: bool,
+    /// `parse_recovered` holds: the parser recovered from unbalanced blocks
+    /// or an unparseable statement in the procedure.
+    pub parse_recovered: bool,
+}
