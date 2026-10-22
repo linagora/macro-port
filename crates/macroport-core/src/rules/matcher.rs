@@ -37,7 +37,8 @@ pub(super) enum Patterns {
 pub enum Matcher {
     /// Identifiers used as members (`.X`, `!X`) or standalone object names.
     Member(Vec<String>),
-    /// Member chain suffixes, such as `Workbooks.Open`.
+    /// Dot-separated member chains, such as `Workbooks.Open`, that the rule
+    /// engine finds anywhere in a chain, not only at its end.
     Chain(Vec<String>),
     /// Procedures, functions or statements invoked by name.
     Call(Vec<String>),
@@ -262,7 +263,7 @@ fn syntax_cause(detail: &str) -> &str {
 }
 
 /// Finds `name` in a closed list of values.
-fn closed<T: Copy, const N: usize>(
+pub(super) fn closed<T: Copy, const N: usize>(
     what: &str,
     name: &str,
     all: [T; N],
