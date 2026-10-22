@@ -1,0 +1,15 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/13-api-windows-activex/13-02-shell-sendkeys-calculatrice.bas
+---
+families/13-api-windows-activex/13-02-shell-sendkeys-calculatrice.bas
+status: no_macros
+container: text_module
+errors: none
+traits: none
+file: loc=14 logical_loc=8 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 forms=0 declare_count=0 external_dependencies=0
+module 13-02-shell-sendkeys-calculatrice (standard): loc=14 logical_loc=8 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+parse:
+  declaration Variable line 7
+  recoveries: none

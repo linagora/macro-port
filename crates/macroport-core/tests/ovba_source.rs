@@ -329,6 +329,8 @@ fn bounds_the_size_of_the_decompressed_source() {
     let error = module_source(&stream, 0, None, 4_999).unwrap_err();
     assert_eq!(error.code, "ovba.decompress.too_large");
     assert_eq!(error.status, Status::SuspiciousArchive);
+    // The caller is told what the read decompressed before it failed.
+    assert_eq!(error.produced, 5_000);
 }
 
 #[test]
