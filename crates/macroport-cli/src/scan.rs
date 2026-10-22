@@ -119,11 +119,17 @@ fn execute(args: &Args, rules: &RuleSet, messages: &Messages) -> Result<ExitCode
     let report = scan(&args.paths, &settings, &|progress| {
         print_progress(&label, progress);
     })
-    .map_err(|error| messages.text_with("cli-error-threads", &[("reason", &error.to_string())]))?;
+    .map_err(|error| threads_error(messages, &error))?;
 
     write_reports(&args.output, &args.format, &report, messages)?;
     print_summary(&report, &args.output, messages);
     Ok(command::exit_code_of(&report))
+}
+
+/// The text of the fatal error that the analysis raises when its threads cannot
+/// be started.
+pub fn threads_error(messages: &Messages, error: &rayon::ThreadPoolBuildError) -> String {
+    messages.text_with("cli-error-threads", &[("reason", &error.to_string())])
 }
 
 /// Scans `paths` and gives the fleet report.

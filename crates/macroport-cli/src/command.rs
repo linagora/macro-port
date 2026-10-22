@@ -47,6 +47,17 @@ pub fn with_rules(
     }
 }
 
+/// Prints `document`, the result of a command, on stdout.
+///
+/// # Errors
+///
+/// The text of the fatal error, when stdout cannot be written for another
+/// reason than a reader that went away.
+pub fn print_document(messages: &Messages, document: &[u8]) -> Result<(), String> {
+    console::write_document_on_stdout(document)
+        .map_err(|error| messages.text_with("cli-error-print", &[("reason", &error.to_string())]))
+}
+
 /// The exit code of an analysis that ended with `report`: 1 when a file failed
 /// (SPEC M4), else 0.
 pub fn exit_code_of(report: &Report) -> ExitCode {

@@ -8,7 +8,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use macroport_cli::args::existing_dir;
-use macroport_cli::{rules_check, scan};
+use macroport_cli::{file, rules_check, scan, schema};
 
 /// Inventory of Excel VBA macros, for migrations to OnlyOffice, Grist and LibreOffice Calc.
 #[derive(Parser)]
@@ -22,11 +22,15 @@ struct Cli {
 enum Command {
     /// Analyse the Excel files and VBA modules under some paths, and write the reports.
     Scan(scan::Args),
+    /// Analyse one file and print its report on stdout.
+    File(file::Args),
     /// Work with the rules files.
     Rules {
         #[command(subcommand)]
         command: RulesCommand,
     },
+    /// Print the JSON Schema of the report on stdout.
+    Schema,
 }
 
 #[derive(Subcommand)]
@@ -42,8 +46,10 @@ enum RulesCommand {
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Scan(args) => scan::run(&args),
+        Command::File(args) => file::run(&args),
         Command::Rules {
             command: RulesCommand::Check { rules },
         } => rules_check::run(rules.as_deref()),
+        Command::Schema => schema::run(),
     }
 }
