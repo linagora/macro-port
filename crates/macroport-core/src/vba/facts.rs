@@ -53,14 +53,14 @@ pub struct Facts {
     /// The names invoked in the statement, in source order: `Shell(x)`,
     /// `Kill path`, `Call Helper`, and a name used without being assigned to,
     /// such as `Dir` in `x = Dir`. After a dot, only a name with arguments
-    /// (`ws.Cells(1, 1)`): `ws.Name` reads a property. The exception is the
-    /// function of the VBA library, which a call may qualify by the names of
-    /// the library only (`CallSite::library`): `VBA.Shell "calc"` is a call as
-    /// `Shell "calc"` is. Not a name followed by `=` (`Dir = 1`: assigned to,
-    /// or compared), by a `.` that touches it (`Kill.Count`), declared (`Dim
-    /// Kill As Long`) or the name of a constant of the module that holds a
-    /// string, and none in a statement that declares something (`Dim`,
-    /// `Const`, `Sub`, `Declare`...).
+    /// (`ws.Cells(1, 1)`): `ws.Name` reads a property. A name that only names
+    /// of the VBA library qualify is read as a name alone is, so `VBA.Shell
+    /// "calc"` is a call as `Shell "calc"` is (see `CallSite::library`). Not a
+    /// name followed by `=` (`Dir = 1`: assigned to, or compared), by a `.`
+    /// that touches it (`Kill.Count`), declared (`Dim Kill As Long`) or the
+    /// name of a constant of the module that holds a string, and none in a
+    /// statement that declares something (`Dim`, `Const`, `Sub`,
+    /// `Declare`...).
     pub calls: Vec<CallSite>,
     /// The member chains of the statement, in the order of their first token:
     /// the names of `a.b(c).d` are `["a", "b", "d"]`. The arguments of the
