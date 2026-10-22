@@ -490,3 +490,37 @@ fn each_predicate_of_the_parser_reads_its_own_flag_and_no_other() {
         }
     }
 }
+
+#[test]
+fn a_module_that_the_parser_recovered_in_gives_parse_recovered_a_hit_of_its_own() {
+    // A stray `End Sub` is no procedure's: the module carries the flag, and the
+    // procedure of the module is whole.
+    let stray = module(
+        "Stray",
+        ModuleType::Standard,
+        vec![procedure("Whole", 3, vec![line(4, "x = 1")])],
+    )
+    .with_declarations(vec![line(1, "End Sub")])
+    .recovered();
+    let project = project(vec![stray]);
+    let matcher = structurals(&[StructuralPredicate::ParseRecovered]);
+    let evaluator = Evaluator::new(&project);
+
+    // The hit is at the first line of the module, which it quotes by name.
+    let over_module = evaluator.module_hits(0, &matcher, TextMode::Code);
+    let over_project = evaluator.project_hits(&matcher, TextMode::Code);
+    for hits in [over_module, over_project] {
+        assert_eq!(places(&hits), [(0, 1)]);
+        assert_eq!(snippets(&hits), ["Stray"]);
+    }
+    assert!(
+        evaluator
+            .procedure_hits(0, 0, &matcher, TextMode::Code)
+            .is_empty()
+    );
+    for read in StructuralPredicate::ALL {
+        let hits = project_hits(&project, &[read]);
+        let flagged = read == StructuralPredicate::ParseRecovered;
+        assert_eq!(!hits.is_empty(), flagged, "{read:?}");
+    }
+}
