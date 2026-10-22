@@ -776,3 +776,38 @@ fn a_procedure_that_the_parser_could_not_name_is_unused() {
     let unused: Vec<_> = links[0].iter().map(|links| links.possibly_unused).collect();
     assert_eq!(unused, [Some(true), Some(true)]);
 }
+
+#[test]
+fn a_module_that_was_not_read_keeps_its_place_and_leaves_the_calls_unknown() {
+    let main = Module::read(Standard, "Sub Main()\n    Helper\nEnd Sub\n");
+    let helper = Module::read(Standard, "Sub Helper()\nEnd Sub\n");
+    let mut graph = CallGraph::new();
+    main.add_to(&mut graph, &[]);
+    // A module with no source, or one that the caller refuses.
+    graph.skip_module();
+    helper.add_to(&mut graph, &[]);
+
+    let links = graph.resolve();
+
+    let sizes: Vec<_> = links.iter().map(Vec::len).collect();
+    assert_eq!(sizes, [1, 0, 1]);
+    // What `Main` calls, and what calls `Helper`, may be in that module. The host
+    // may run both, whatever was read.
+    for links in links.iter().flatten() {
+        assert_eq!(links.calls, None);
+        assert_eq!(links.possibly_unused, None);
+        assert!(links.is_entry_point);
+    }
+}
+
+#[test]
+fn the_statements_of_a_module_that_was_not_read_are_ignored() {
+    let main = Module::read(Standard, "Sub Main()\n    Helper\nEnd Sub\n");
+    let mut graph = CallGraph::new();
+    let skipped = graph.skip_module();
+    let (line, statement) = &main.statements[0][1];
+
+    graph.read(skipped, 0, *line, statement);
+
+    assert_eq!(graph.resolve(), vec![Vec::new()]);
+}
