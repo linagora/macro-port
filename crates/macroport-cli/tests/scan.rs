@@ -564,11 +564,8 @@ fn the_corpus_is_scanned_into_every_report() {
     );
 }
 
-/// A6 takes the malformed fixtures to end the scan with code 1. Until
-/// `analyze()` reads the containers (ticket #36), it reports each file as
-/// unsupported, none as corrupted, so the scan ends with 0.
+/// A6 takes the malformed fixtures to end the scan with code 1.
 #[test]
-#[ignore = "needs analyze() to read the containers (ticket #36)"]
 fn the_malformed_fixtures_end_the_scan_of_the_corpus_with_code_1() {
     let out = scratch("scan_corpus_malformed").join("out");
 
