@@ -11,6 +11,7 @@
 
 pub mod complexity;
 mod eval;
+pub mod families;
 mod glob;
 mod hit;
 mod input;
