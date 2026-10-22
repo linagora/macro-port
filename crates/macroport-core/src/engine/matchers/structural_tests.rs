@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Tests of the structural predicates.
 
-use crate::engine::testing::{lines_of, module, places, procedure, project, snippets, structurals};
+use crate::engine::testing::{
+    line, lines_hit, lines_of, module, places, procedure, project, snippets, structurals,
+};
 use crate::engine::{
-    Evaluator, Hit, ModuleInput, NameSet, ProjectInput, is_auto_exec, is_event_handler,
+    CodeLine, Evaluator, Hit, ModuleInput, NameSet, ProjectInput, is_auto_exec, is_event_handler,
 };
 use crate::rules::{ModuleType, StructuralPredicate, TextMode};
 
@@ -55,6 +57,11 @@ fn assert_holds_for(module: ModuleInput, predicate: StructuralPredicate, table: 
         .map(|(name, _)| (*name).to_owned())
         .collect();
     assert_eq!(holding(module, predicate), expected);
+}
+
+/// A statement that assigns the string literal `text`.
+fn assigning(number: u32, text: &str) -> CodeLine {
+    line(number, &format!("s = \"{text}\""))
 }
 
 #[test]
@@ -244,21 +251,6 @@ fn a_list_of_predicates_holds_where_any_of_them_does() {
 }
 
 #[test]
-fn the_other_predicates_give_no_hit_yet() {
-    // `Workbook_Open` is an auto-exec procedure and an event handler.
-    let table = [("Workbook_Open", true), ("Helper", false)];
-    let project = project(vec![module_of(ModuleType::Document, &table)]);
-    for predicate in StructuralPredicate::ALL {
-        let decided = matches!(
-            predicate,
-            StructuralPredicate::AutoExec | StructuralPredicate::EventHandler
-        );
-        let hits = project_hits(&project, &[predicate]);
-        assert_eq!(!hits.is_empty(), decided, "{predicate:?}");
-    }
-}
-
-#[test]
 fn a_predicate_about_a_procedure_is_read_at_the_scope_of_the_signal() {
     let table = [("Auto_Open", true), ("Helper", false)];
     let project = project(vec![
@@ -277,4 +269,224 @@ fn a_predicate_about_a_procedure_is_read_at_the_scope_of_the_signal() {
     assert_eq!(places(&hits), [(0, 10), (1, 10)]);
     // The hit cites the declaration and quotes it.
     assert_eq!(snippets(&hits), ["Sub Auto_Open()", "Sub AutoClose()"]);
+}
+
+#[test]
+fn long_literal_is_two_hundred_characters_of_the_hex_or_base64_alphabet() {
+    let hex = "4D5A9000".repeat(25);
+    let short_hex = format!("{}4D5A900", "4D5A9000".repeat(24));
+    let padded = format!("{}==", "Qm9v+/".repeat(33));
+    let padded_by_one = format!("{}=", "A".repeat(199));
+    let over_padded = format!("{}===", "Qm9v+/".repeat(33));
+    let equal_inside = format!("{}={}", "A".repeat(100), "A".repeat(99));
+    let with_space = format!("{} {}", "A".repeat(100), "A".repeat(99));
+    let url_safe = format!("{}-", "A".repeat(199));
+    let not_ascii = format!("{}é", "A".repeat(199));
+    let body = [
+        assigning(2, &hex),
+        assigning(3, &short_hex),
+        assigning(4, &padded),
+        assigning(5, &over_padded),
+        assigning(6, &equal_inside),
+        assigning(7, &with_space),
+        assigning(8, &url_safe),
+        assigning(9, &not_ascii),
+        // One hit for each literal.
+        line(10, &format!("Call Use(\"{hex}\", \"{hex}\")")),
+        // The parser folds the pieces into the value that is read.
+        line(11, "s = \"AAAA\" & \"BBBB\"").with_strings(&[&hex]),
+        // Without folding, each piece is short.
+        line(
+            12,
+            &format!("s = \"{}\" & \"{}\"", "A".repeat(100), "B".repeat(100)),
+        ),
+        // Only the alphabet counts: plain letters make a long literal.
+        assigning(13, &"x".repeat(200)),
+        assigning(14, &padded_by_one),
+    ];
+    let matcher = structurals(&[StructuralPredicate::LongHexOrBase64Literal]);
+    assert_eq!(lines_hit(&body, &matcher), [2, 4, 10, 10, 11, 13, 14]);
+}
+
+#[test]
+fn long_literal_is_read_in_the_declarations_at_module_scope_only() {
+    let hex = "4D5A9000".repeat(25);
+    let main = procedure("Main", 5, vec![line(6, "x = 1")]);
+    let declarations = vec![assigning(2, &hex)];
+    let module = module("Module1", ModuleType::Standard, vec![main]);
+    let project = project(vec![module.with_declarations(declarations)]);
+    let evaluator = Evaluator::new(&project);
+    let matcher = structurals(&[StructuralPredicate::LongHexOrBase64Literal]);
+    let text = TextMode::Code;
+    assert!(evaluator.procedure_hits(0, 0, &matcher, text).is_empty());
+    let hits = evaluator.module_hits(0, &matcher, text);
+    assert_eq!(places(&hits), [(0, 2)]);
+    // The statement is longer than the 200 characters of a snippet.
+    assert_eq!(snippets(&hits)[0].chars().count(), 200);
+}
+
+#[test]
+fn the_literals_are_read_for_long_hex_or_base64_literal_only() {
+    let body = [assigning(2, &"4D5A9000".repeat(25))];
+    let others: Vec<_> = StructuralPredicate::ALL
+        .into_iter()
+        .filter(|&predicate| predicate != StructuralPredicate::LongHexOrBase64Literal)
+        .collect();
+    assert!(lines_hit(&body, &structurals(&others)).is_empty());
+}
+
+#[test]
+fn the_predicates_of_the_parser_cite_the_declaration_or_the_statements_given() {
+    // The lines of `Flagged`: the declaration, the two statements, `End Sub`.
+    let body = vec![line(11, "x = 1"), line(12, "y = Chr(1) & Chr(2) & Chr(3)")];
+    let mut flagged = procedure("Flagged", 10, body);
+    flagged.predicates.udf_candidate = true;
+    flagged.predicates.chr_obfuscation = vec![2];
+    flagged.predicates.nested_loop_compare = vec![1];
+    flagged.predicates.possibly_unused = true;
+    flagged.predicates.parse_recovered = true;
+    let plain = procedure("Plain", 20, vec![line(21, "x = 1")]);
+    let modules = vec![module(
+        "Module1",
+        ModuleType::Standard,
+        vec![flagged, plain],
+    )];
+    let project = project(modules);
+    for predicate in [
+        StructuralPredicate::UdfCandidate,
+        StructuralPredicate::PossiblyUnused,
+        StructuralPredicate::ParseRecovered,
+    ] {
+        let hits = project_hits(&project, &[predicate]);
+        assert_eq!(places(&hits), [(0, 10)], "{predicate:?}");
+        assert_eq!(snippets(&hits), ["Sub Flagged()"], "{predicate:?}");
+    }
+    let hits = project_hits(&project, &[StructuralPredicate::ChrObfuscation]);
+    assert_eq!(places(&hits), [(0, 12)]);
+    assert_eq!(snippets(&hits), ["y = Chr(1) & Chr(2) & Chr(3)"]);
+    let hits = project_hits(&project, &[StructuralPredicate::NestedLoopCompare]);
+    assert_eq!(places(&hits), [(0, 11)]);
+    assert_eq!(snippets(&hits), ["x = 1"]);
+}
+
+/// A project whose second module holds a procedure `Flagged` with these
+/// statements, for which the parser cites these positions for
+/// `chr_obfuscation`. The first module has a procedure that the parser cites
+/// too, to show that a statement is looked for in its own module.
+fn cited_by_chr_obfuscation(body: Vec<CodeLine>, positions: Vec<usize>) -> ProjectInput {
+    let mut other = procedure("Other", 1, vec![line(2, "o = 1")]);
+    other.predicates.chr_obfuscation = vec![1];
+    let mut flagged = procedure("Flagged", 10, body);
+    flagged.predicates.chr_obfuscation = positions;
+    project(vec![
+        module("Module1", ModuleType::Standard, vec![other]),
+        module("Module2", ModuleType::Standard, vec![flagged]),
+    ])
+}
+
+#[test]
+fn a_cited_position_tells_apart_the_statements_that_share_a_line() {
+    // `x = 1: y = Chr(1) & Chr(2) & Chr(3)` on line 11: the lines of the
+    // procedure are the declaration, the two statements and `End Sub`.
+    let body = vec![line(11, "x = 1"), line(11, "y = Chr(1) & Chr(2) & Chr(3)")];
+    let project = cited_by_chr_obfuscation(body.clone(), vec![2]);
+    let hits = project_hits(&project, &[StructuralPredicate::ChrObfuscation]);
+    assert_eq!(places(&hits), [(0, 2), (1, 11)]);
+    assert_eq!(snippets(&hits)[1], "y = Chr(1) & Chr(2) & Chr(3)");
+    // Both cited, in any order: the hits come in the order of the statements.
+    let project = cited_by_chr_obfuscation(body, vec![2, 1]);
+    let hits = project_hits(&project, &[StructuralPredicate::ChrObfuscation]);
+    let shown = snippets(&hits);
+    assert_eq!(shown[1..], ["x = 1", "y = Chr(1) & Chr(2) & Chr(3)"]);
+}
+
+#[test]
+fn a_cited_position_outside_the_lines_cites_nothing() {
+    // Four lines with the declaration and `End Sub`: positions 0 to 3.
+    let body = vec![line(11, "x = 1"), line(12, "y = 2")];
+    let project = cited_by_chr_obfuscation(body, vec![4, usize::MAX, 1]);
+    let hits = project_hits(&project, &[StructuralPredicate::ChrObfuscation]);
+    assert_eq!(places(&hits), [(0, 2), (1, 11)]);
+    assert_eq!(snippets(&hits)[1], "x = 1");
+}
+
+#[test]
+fn nested_loop_compare_gives_one_hit_at_the_last_comparison_among_the_lines() {
+    let body = vec![line(11, "x = 1"), line(12, "y = 2"), line(13, "z = 3")];
+    let cited_lines = |positions: Vec<usize>| {
+        let mut flagged = procedure("Flagged", 10, body.clone());
+        flagged.predicates.nested_loop_compare = positions;
+        let modules = vec![module("Module1", ModuleType::Standard, vec![flagged])];
+        let project = project(modules);
+        lines_of(&project_hits(
+            &project,
+            &[StructuralPredicate::NestedLoopCompare],
+        ))
+    };
+    // The positions come in any order: the last comparison is the last line.
+    assert_eq!(cited_lines(vec![2, 3, 1]), [13]);
+    assert_eq!(cited_lines(vec![3, 1, 2]), [13]);
+    assert_eq!(cited_lines(vec![1]), [11]);
+    // A position outside the lines is a comparison that the procedure lacks.
+    // The procedure has five lines: `End Sub` at position 4 is the last of them.
+    assert_eq!(cited_lines(vec![2, 4]), [14]);
+    assert_eq!(cited_lines(vec![2, 5]), [12]);
+    assert_eq!(cited_lines(vec![2, 9, usize::MAX]), [12]);
+    assert!(cited_lines(vec![9]).is_empty());
+    assert!(cited_lines(Vec::new()).is_empty());
+}
+
+#[test]
+fn a_statement_that_several_predicates_cite_gives_one_hit() {
+    let body = vec![line(11, "x = 1"), line(12, "y = 2"), line(13, "z = 3")];
+    let mut flagged = procedure("Flagged", 10, body);
+    flagged.predicates.chr_obfuscation = vec![3, 1, 3];
+    flagged.predicates.nested_loop_compare = vec![3];
+    let project = project(vec![module("Module1", ModuleType::Standard, vec![flagged])]);
+    let both = [
+        StructuralPredicate::NestedLoopCompare,
+        StructuralPredicate::ChrObfuscation,
+    ];
+    // The statements come in the order of the procedure.
+    let hits = project_hits(&project, &both);
+    assert_eq!(places(&hits), [(0, 11), (0, 13)]);
+    // Without the predicate in the list, its positions are not read.
+    let hits = project_hits(&project, &both[..1]);
+    assert_eq!(places(&hits), [(0, 13)]);
+}
+
+/// A standard module whose one procedure is flagged by the parser for `set`
+/// and for nothing else, or `None` when the engine decides `set` itself.
+fn flagged_for(set: StructuralPredicate) -> Option<ModuleInput> {
+    let mut flagged = procedure("Flagged", 10, vec![line(11, "x = 1")]);
+    let flags = &mut flagged.predicates;
+    match set {
+        StructuralPredicate::UdfCandidate => flags.udf_candidate = true,
+        StructuralPredicate::ChrObfuscation => flags.chr_obfuscation = vec![1],
+        StructuralPredicate::NestedLoopCompare => flags.nested_loop_compare = vec![1],
+        StructuralPredicate::PossiblyUnused => flags.possibly_unused = true,
+        StructuralPredicate::ParseRecovered => flags.parse_recovered = true,
+        StructuralPredicate::EventHandler
+        | StructuralPredicate::AutoExec
+        | StructuralPredicate::LongHexOrBase64Literal => return None,
+    }
+    Some(module("Module1", ModuleType::Standard, vec![flagged]))
+}
+
+#[test]
+fn each_predicate_of_the_parser_reads_its_own_flag_and_no_other() {
+    for set in StructuralPredicate::ALL {
+        let Some(flagged) = flagged_for(set) else {
+            continue;
+        };
+        let project = project(vec![flagged]);
+        for read in StructuralPredicate::ALL {
+            let hits = project_hits(&project, &[read]);
+            assert_eq!(
+                !hits.is_empty(),
+                read == set,
+                "{read:?} with only {set:?} flagged"
+            );
+        }
+    }
 }

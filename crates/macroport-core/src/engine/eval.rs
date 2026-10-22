@@ -13,9 +13,6 @@ use crate::rules::{Families, Matcher, TextMode};
 /// The three methods give the hits of a signal by its scope (SPEC section 7).
 /// A module-scope or project-scope signal is evaluated once, not once per
 /// procedure: callers keep the result and give it to each procedure.
-///
-/// Every matcher is implemented, but for now `structural` gives hits for
-/// `auto_exec` and `event_handler` only.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'p> {
     project: &'p ProjectInput,
