@@ -14,10 +14,12 @@
 mod apis;
 mod calls;
 mod corpus;
+mod entry_points;
 mod failures;
 mod file_report;
 mod fixtures;
 mod indicators;
+mod judgments;
 mod modules;
 mod robustness;
 mod sample_snapshots;

@@ -271,6 +271,10 @@ fn a_procedure_may_call_a_thousand_procedures_and_one_that_calls_more_has_no_lis
     // The others are read, and the file tells of the one list that did not fit.
     assert_eq!((length_of("P0"), length_of("P1000")), (Some(0), Some(0)));
     assert_eq!(codes(&file), ["vba.calls.left_out"]);
+    // The graph is whole all the same: a list too long to keep is no reason to
+    // leave `possibly_unused` out, and the error does not say that it is.
+    assert!(procedures(&file).all(|procedure| procedure.possibly_unused.is_some()));
+    assert!(!only_message(&file).contains("possibly_unused"));
     let line = (procedures(&file).find(|procedure| procedure.name == "More"))
         .map(|procedure| procedure.start_line)
         .expect("a procedure called More");
@@ -309,6 +313,12 @@ fn names_past_the_bound_of_the_graph_leave_every_list_out_and_the_file_tells_of_
         "{}",
         only_message(&file)
     );
+    // Nor does the graph tell which procedures nothing calls: the names it did
+    // not keep may be calls. The error says so, and the entry points are known.
+    assert!(procedures(&file).all(|procedure| procedure.possibly_unused.is_none()));
+    assert!(procedures(&file).all(|procedure| procedure.is_entry_point == Some(true)));
+    let too = "; `possibly_unused` is left out of them too, since";
+    assert!(only_message(&file).contains(too), "{}", only_message(&file));
 }
 
 #[test]
