@@ -21,28 +21,37 @@
 //! Only what the parser, the metrics and the statements show is filled so far:
 //! the spans of the procedures and their metrics (sizes, cyclomatic complexity,
 //! nesting, parameters and `GoTo`s), the APIs that they use (the `apis`
-//! submodule, ADR-0011), the metrics of the modules and of the file (their
-//! sizes, their counts, what their procedures add up to, and the external
-//! dependencies of the file: the ProgIDs of its statements, its references and
-//! its `Declare` statements), the declarations of the modules (and the count of
-//! their `Declare` statements, a metric), and the trait that the recoveries of
-//! the parser, the blocks that do not match and the statements nested too deep
-//! to be read give. The other fields are left out until the stages that measure
+//! submodule, ADR-0011), the procedures that they call (the call graph,
+//! ADR-0012), the metrics of the modules and of the file (their sizes, their
+//! counts, what their procedures add up to, and the external dependencies of
+//! the file: the ProgIDs of its statements, its references and its `Declare`
+//! statements), the declarations of the modules (and the count of their
+//! `Declare` statements, a metric), and the trait that the recoveries of the
+//! parser, the blocks that do not match and the statements nested too deep to
+//! be read give. The other fields are left out until the stages that measure
 //! them run, since a missing value is not a zero: the external dependencies of
-//! a procedure are such a field. The exceptions are three fields of a procedure
+//! a procedure are such a field, and so are its entry point, its event handler
+//! and whether nothing uses it, which wait for the rule engine to tell which
+//! procedures the host starts. The exceptions are three fields of a procedure
 //! that the schema requires and that only the rule engine can decide: until it
 //! runs, `primary_family` is `unclassified`, and `families` and `signals` are
 //! empty.
 //!
 //! The statements of a module are read once, in the `statements` submodule,
 //! which hands the facts of each to the stages that want them: the ProgIDs of
-//! the file, the lists of APIs of the procedures and the count of the
-//! statements nested too deep. Such a statement, one that is nested too deep to
-//! be read in full, is no failure: the module is read, the status of the file
-//! does not follow, and the file lists one error for the module
+//! the file, the lists of APIs of the procedures, the call graph and the count
+//! of the statements nested too deep. Such a statement, one that is nested too
+//! deep to be read in full, is no failure: the module is read, the status of
+//! the file does not follow, and the file lists one error for the module
 //! (`vba.statement.too_deep`). Nor is a list of APIs that passes a bound: the
 //! procedure has no `apis`, and the file lists one error for the module that
 //! holds such procedures (`vba.apis.left_out`).
+//!
+//! The call graph knows a procedure by its name in the whole project, so it
+//! answers only once every module is read, and only if every module was. One
+//! that has no source, that a budget refuses or whose source is suspected to be
+//! lost leaves it unable to say what any procedure calls, and then the `calls`
+//! of all the procedures of the file are left out (ADR-0012).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
@@ -60,9 +69,9 @@ use crate::report::{
 };
 use crate::rules::{RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    Declaration, DeclarationKind, MAX_NESTING, OptionKind, ParsedModule, Procedure,
-    ProcedureMeasure, SourceLines, VbaError, file_metrics, measure_procedure, module_metrics,
-    parse, split_lines,
+    CallGraph, Declaration, DeclarationKind, MAX_NESTING, ModuleId, OptionKind, ParsedModule,
+    Procedure, ProcedureLinks, ProcedureMeasure, SourceLines, VbaError, file_metrics,
+    measure_procedure, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -167,6 +176,9 @@ struct Front {
     /// The functions that the lists of APIs name, and the room that the modules
     /// read so far have left them.
     file_apis: FileApis,
+    /// The calls of the procedures of the modules read so far. It has a place
+    /// for each module of the file, read or not, in the order of the report.
+    graph: CallGraph,
     /// What the front end tells of the modules that it read: errors of the file
     /// that are no failure.
     warnings: Vec<FileError>,
@@ -183,6 +195,7 @@ impl Front {
             recovered: false,
             external_progids: ExternalProgids::default(),
             file_apis: FileApis::new(rules),
+            graph: CallGraph::new(),
             warnings: Vec::new(),
             failures: Vec::new(),
         }
@@ -198,9 +211,20 @@ impl Front {
         }
     }
 
-    /// Keeps, for the file, why the module called `name` was not read.
+    /// Keeps, for the file, why the module called `name` was not read, and
+    /// gives the module its place in the call graph as one that was not read
+    /// ([`Front::skip`]).
     fn fail(&mut self, name: &str, error: VbaError) {
+        self.skip();
         self.failures.push(Failure::from(error).in_module(name));
+    }
+
+    /// Gives the call graph the place of a module that was not read, so that it
+    /// has a place for each module of the file, in the order of the report. Such
+    /// a module may declare and call any procedure, so the graph then says
+    /// nothing of what the procedures call (ADR-0012).
+    fn skip(&mut self) -> ModuleId {
+        self.graph.skip_module()
     }
 
     /// Reads the next module. One that crosses the budget of lines is read
@@ -231,8 +255,9 @@ impl Front {
     /// Puts what `analysis` shows of a module into its report: its procedures
     /// with their spans, metrics and APIs, the metrics of the module, and its
     /// declarations. What its statements show goes to the file: the ProgIDs,
-    /// a warning for the statements that nest too deep to be read, and one for
-    /// the procedures whose list of APIs passed a bound.
+    /// the calls (the graph tells them in [`Front::seal`], once every module is
+    /// read), a warning for the statements that nest too deep to be read, and
+    /// one for the procedures whose list of APIs passed a bound.
     ///
     /// Three things show that code did not parse cleanly (the predicate
     /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
@@ -241,8 +266,14 @@ impl Front {
     /// predicate, and so does the file once a module has one, in a procedure or
     /// outside the procedures.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
-        let mut statements =
-            Statements::read(analysis, &mut self.external_progids, &mut self.file_apis);
+        let id = self.place_in_graph(module, analysis);
+        let mut statements = Statements::read(
+            analysis,
+            &mut self.external_progids,
+            &mut self.file_apis,
+            &mut self.graph,
+            id,
+        );
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
         module.procedures = (found.enumerate())
             .map(|(index, (procedure, measure))| {
@@ -268,6 +299,18 @@ impl Front {
         }
     }
 
+    /// Gives `module` its place in the call graph. One whose source is
+    /// suspected to be lost has procedures that are compiled, out of sight, and
+    /// the graph cannot tell what they call: it takes the module for one that
+    /// was not read. No procedure is given as started by the host: the rule
+    /// engine (M3) decides that, and the calls do not depend on it.
+    fn place_in_graph(&mut self, module: &ModuleReport, analysis: &Analysis) -> ModuleId {
+        if module.source_missing_suspected == Some(true) {
+            return self.skip();
+        }
+        (self.graph).add_module(module.module_type, &analysis.module.procedures, &[])
+    }
+
     /// The traits of a procedure or of a file that `recovered` says did not
     /// parse cleanly: those that the rules tie to the predicate
     /// `parse_recovered`. `None` if it parsed cleanly, or if no rule has that
@@ -278,8 +321,9 @@ impl Front {
 
     /// Completes the report of a file once its modules are read: the metrics of
     /// the file follow from those of its modules and of their procedures and
-    /// from the ProgIDs of their statements, the errors of the front end join
-    /// those of the extraction, and the status follows from the procedures.
+    /// from the ProgIDs of their statements, the calls of the procedures follow
+    /// from the call graph, the errors of the front end join those of the
+    /// extraction, and the status follows from the procedures.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
@@ -307,9 +351,24 @@ impl Front {
         if let Some(traits) = self.recovery_traits_if(self.recovered) {
             file.traits = Some(traits);
         }
+        if let Some(project) = file.vba_project.as_mut() {
+            put_calls(&mut project.modules, self.graph.resolve());
+        }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(self.failures.into_iter().map(|failure| failure.error));
         errors.extend(self.warnings);
+    }
+}
+
+/// Puts the calls that the call graph found into the procedures of `modules`.
+/// `links` has the modules of the file in their order, and for each of them its
+/// procedures in theirs. A procedure that the graph has no answer for keeps its
+/// `calls` as `None`.
+fn put_calls(modules: &mut [ModuleReport], links: Vec<Vec<ProcedureLinks>>) {
+    for (module, links) in modules.iter_mut().zip(links) {
+        for (procedure, links) in module.procedures.iter_mut().zip(links) {
+            procedure.calls = links.calls;
+        }
     }
 }
 
@@ -385,8 +444,11 @@ pub(super) fn finish(extraction: Extraction, options: &Options<'_>) -> FileRepor
     let mut front = Front::new(options.rules);
     if let Some(project) = file.vba_project.as_mut() {
         for (module, source) in project.modules.iter_mut().zip(&sources) {
-            if let Some(text) = source {
-                front.read(module, text);
+            match source {
+                Some(text) => front.read(module, text),
+                None => {
+                    front.skip();
+                }
             }
         }
     }
@@ -488,12 +550,51 @@ fn count(len: usize) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use super::text::{text_extraction, text_module};
     use super::*;
-    use crate::rules::RulesSources;
+    use crate::rules::{ModuleType, RulesSources};
 
     fn front() -> Front {
         let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
         Front::new(&rules)
+    }
+
+    /// A module that calls `B`, and one that declares it.
+    const CALLER: &str = "Sub A()\n    B\nEnd Sub\n";
+    const CALLED: &str = "Public Sub B()\nEnd Sub\n";
+
+    /// The report of the standard module `name` as extraction gives it.
+    fn standard(name: &str, text: &str) -> ModuleReport {
+        text_module(name, ModuleType::Standard, text)
+    }
+
+    /// The `calls` of the procedures of each module, after `finish` read the
+    /// modules of these reports and these sources.
+    fn finished_calls(
+        reports: Vec<ModuleReport>,
+        sources: Vec<Option<String>>,
+    ) -> Vec<Vec<Option<Vec<String>>>> {
+        let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
+        let extraction = text_extraction("Book.bas", 0, String::new(), reports, sources, &rules);
+        let file = finish(extraction, &Options::new(&rules));
+        let project = file.vba_project.expect("a VBA project");
+        (project.modules.into_iter())
+            .map(|module| {
+                (module.procedures.into_iter())
+                    .map(|procedure| procedure.calls)
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The calls of the procedure `A` of `CALLER`, and of `B` of `CALLED`, when
+    /// every module is read: `A` calls `B`.
+    fn read_in_full() -> Vec<Vec<Option<Vec<String>>>> {
+        vec![
+            vec![Some(vec!["B".to_owned()])],
+            Vec::new(),
+            vec![Some(Vec::new())],
+        ]
     }
 
     #[test]
@@ -645,5 +746,88 @@ mod tests {
             two.message
                 .contains("); the first starts at line 9, and their lists are left out")
         );
+    }
+
+    #[test]
+    fn the_call_graph_keeps_a_place_for_each_module_whether_it_was_read_or_not() {
+        let mut front = front();
+        let two = "Sub A()\nEnd Sub\nSub B()\nEnd Sub\n";
+        let one = "Sub C()\nEnd Sub\n";
+        let (mut first, mut last) = (standard("First", two), standard("Last", one));
+        let refused = VbaError::new(Status::TooLarge, "vba.too_many_lines", "too many");
+
+        front.read(&mut first, two);
+        front.fail("Refused", refused);
+        front.skip();
+        front.read(&mut last, one);
+
+        // The failure is the only thing kept for the file: a module that has no
+        // source is no failure of the front end, and the extraction tells of it.
+        assert_eq!(front.failures.len(), 1);
+        let places: Vec<_> = front.graph.resolve().iter().map(Vec::len).collect();
+        assert_eq!(places, [2, 0, 0, 1]);
+    }
+
+    #[test]
+    fn a_module_that_the_budget_refuses_leaves_no_procedure_a_list_of_calls() {
+        let mut front = front();
+        front.budget = 3;
+        let (mut caller, mut called) = (standard("First", CALLER), standard("Last", CALLED));
+
+        front.read(&mut caller, CALLER);
+        front.read(&mut called, CALLED);
+
+        assert_eq!(front.failures.len(), 1);
+        let links = front.graph.resolve();
+        // The refused module has its place, and nothing is said of the other.
+        assert_eq!(links.iter().map(Vec::len).collect::<Vec<_>>(), [1, 0]);
+        assert_eq!(links[0][0].calls, None);
+    }
+
+    #[test]
+    fn a_module_without_source_leaves_the_calls_of_the_file_unknown() {
+        let reports = || {
+            vec![
+                standard("First", CALLER),
+                standard("Middle", ""),
+                standard("Last", CALLED),
+            ]
+        };
+        let sources = |middle: Option<&str>| {
+            vec![
+                Some(CALLER.to_owned()),
+                middle.map(str::to_owned),
+                Some(CALLED.to_owned()),
+            ]
+        };
+
+        // With a source, empty as it is, the module in the middle changes nothing.
+        assert_eq!(finished_calls(reports(), sources(Some(""))), read_in_full());
+        // Without one, it may hold any procedure.
+        let unknown = vec![vec![None], Vec::new(), vec![None]];
+        assert_eq!(finished_calls(reports(), sources(None)), unknown);
+    }
+
+    #[test]
+    fn a_module_suspected_of_having_lost_its_source_leaves_the_calls_of_the_file_unknown() {
+        let reports = |suspected| {
+            let mut middle = standard("Middle", "");
+            middle.source_missing_suspected = Some(suspected);
+            vec![standard("First", CALLER), middle, standard("Last", CALLED)]
+        };
+        // What is left of a stomped module is `Attribute` lines and blank ones.
+        let left = "Attribute VB_Name = \"Middle\"\n\n";
+        let sources = vec![
+            Some(CALLER.to_owned()),
+            Some(left.to_owned()),
+            Some(CALLED.to_owned()),
+        ];
+
+        let seen = finished_calls(reports(false), sources.clone());
+        let lost = finished_calls(reports(true), sources);
+
+        // Its compiled procedures are out of sight, and may call and be called.
+        assert_eq!(seen, read_in_full());
+        assert_eq!(lost, [vec![None], Vec::new(), vec![None]]);
     }
 }

@@ -10,7 +10,7 @@ traits: none
 file: loc=48 logical_loc=26 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 04-03-categorical-coloring-lookup (standard): loc=48 logical_loc=26 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub CategoricalColoring public lines 7-48: loc=42 logical_loc=26 cyclomatic=5 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=10
+  sub CategoricalColoring public lines 7-48: loc=42 logical_loc=26 cyclomatic=5 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
     api Application.Match*1
     api Application.ScreenUpdating*3
     api coloredRange.Cells.Font.Color*1

@@ -269,7 +269,7 @@ fn fingerprint(procedure: &ProcedureReport) -> String {
     let metrics = &procedure.metrics;
     format!(
         "{} {:?} {:?} loc={} logical_loc={} cyclomatic={:?} max_nesting={:?} \
-         parameters={:?} goto_count={:?} traits={:?} apis={:?}",
+         parameters={:?} goto_count={:?} traits={:?} calls={:?} apis={:?}",
         procedure.name,
         procedure.kind,
         procedure.visibility,
@@ -280,6 +280,7 @@ fn fingerprint(procedure: &ProcedureReport) -> String {
         metrics.parameters,
         metrics.goto_count,
         procedure.traits,
+        procedure.calls,
         lowercase_apis(procedure),
     )
 }
