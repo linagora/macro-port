@@ -151,7 +151,7 @@ families:
       - { id: ext.json, match: call, pattern: [ParseJson, ConvertToJson], weight: 2 }
       - { id: ext.web-query, match: string, pattern: '(?i)^URL;https?://', weight: 3 }
       - { id: ext.references, match: reference, pattern: '(?i)(ActiveX Data Objects|Microsoft XML|WinHTTP)', weight: 2, scope: project }
-      - { id: ext.sql, match: string, pattern: '(?i)^\s*(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b', weight: 2 }
+      - { id: ext.sql, match: string, pattern: '(?i)^\s*(SELECT\b.+\bFROM|INSERT\s+INTO|UPDATE\s+\S+\s+SET|DELETE\s+FROM)\b', weight: 2 }
 
   - id: 12-office-interop
     corpus_slug: 12-interop-office
