@@ -41,6 +41,13 @@ fn some<'a>(names: &[&'a str]) -> Called<'a> {
     Some(names.to_vec())
 }
 
+/// The message of the only error of `file`.
+fn only_message(file: &FileReport) -> &str {
+    let errors = file.errors.as_deref().unwrap_or_default();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    errors.first().map_or("", |error| error.message.as_str())
+}
+
 /// A module that calls `Helper` twice, spelled two ways, and `Twice` once.
 const CALLER: &str = "\
 Sub Start()
@@ -261,9 +268,47 @@ fn a_procedure_may_call_a_thousand_procedures_and_one_that_calls_more_has_no_lis
     };
     assert_eq!(length_of("Thousand"), Some(1_000));
     assert_eq!(length_of("More"), None);
-    // The others are read, and nothing tells of the list that did not fit.
+    // The others are read, and the file tells of the one list that did not fit.
     assert_eq!((length_of("P0"), length_of("P1000")), (Some(0), Some(0)));
-    assert_eq!(codes(&file), Vec::<&str>::new());
+    assert_eq!(codes(&file), ["vba.calls.left_out"]);
+    let line = (procedures(&file).find(|procedure| procedure.name == "More"))
+        .map(|procedure| procedure.start_line)
+        .expect("a procedure called More");
+    let expected =
+        format!("1 procedure has no list of calls (it starts at line {line} of module Module1):");
+    assert!(
+        only_message(&file).starts_with(&expected),
+        "{}",
+        only_message(&file)
+    );
+}
+
+#[test]
+fn names_past_the_bound_of_the_graph_leave_every_list_out_and_the_file_tells_of_it() {
+    // 5,600 distinct names of 200 characters weigh more than the 1 MiB of names
+    // that the graph keeps.
+    let names: Vec<_> = (0..5_600)
+        .map(|n| format!("    {}{n:04}", "x".repeat(196)))
+        .collect();
+    let big = format!("Sub A()\n{}\nEnd Sub\n", names.join("\n"));
+    let small = "Sub B()\n    A\nEnd Sub\n";
+
+    let file = report_of(&[
+        ("Big", ModuleType::Standard, &big),
+        ("Small", ModuleType::Standard, small),
+    ]);
+
+    // Both modules are read and their procedures measured, and no list is known.
+    assert_eq!(calls(&file), [("A", None), ("B", None)]);
+    let complexity = procedures(&file).map(|procedure| procedure.metrics.cyclomatic);
+    assert_eq!(complexity.collect::<Vec<_>>(), [Some(1), Some(1)]);
+    assert_eq!(codes(&file), ["vba.calls.left_out"]);
+    let expected = "2 procedures have no list of calls (the first starts at line 1 of module Big):";
+    assert!(
+        only_message(&file).starts_with(expected),
+        "{}",
+        only_message(&file)
+    );
 }
 
 #[test]
