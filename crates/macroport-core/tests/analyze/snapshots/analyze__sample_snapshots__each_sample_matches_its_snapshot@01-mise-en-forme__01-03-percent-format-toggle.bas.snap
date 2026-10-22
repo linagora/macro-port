@@ -10,7 +10,7 @@ traits: none
 file: loc=57 logical_loc=30 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 01-03-percent-format-toggle (standard): loc=57 logical_loc=30 procedures=1 cyclomatic=8 cyclomatic_total=8 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub PercentToggle default lines 7-57: loc=51 logical_loc=30 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  sub PercentToggle default lines 7-57: loc=51 logical_loc=30 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=2
     api Selection.NumberFormat*8
     api ThisWorkbook.Sheets.Range.Value*1
 parse:
