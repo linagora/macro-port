@@ -11,11 +11,14 @@
 // counter in a test adds one.
 #![allow(clippy::arithmetic_side_effects, clippy::expect_used)]
 
+mod corpus;
 mod failures;
 mod file_report;
 mod fixtures;
 mod indicators;
 mod modules;
 mod robustness;
+mod sample_snapshots;
+mod statements;
 mod support;
 mod text_files;

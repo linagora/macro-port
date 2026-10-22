@@ -1,0 +1,19 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/08-fonctions-personnalisees/08-03-udf-cle-controle-upc.bas
+---
+families/08-fonctions-personnalisees/08-03-udf-cle-controle-upc.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=34 logical_loc=24 procedures=2 cyclomatic=3 cyclomatic_total=5 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
+module 08-03-udf-cle-controle-upc (standard): loc=34 logical_loc=24 procedures=2 cyclomatic=3 cyclomatic_total=5 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  function CalculateCheckDigitUPC default lines 9-23: loc=15 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub GenerateCheckDigit default lines 24-34: loc=11 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure function CalculateCheckDigitUPC default static=false parameters=1 lines 9-23 recoveries=none unbalanced_blocks=false
+  procedure sub GenerateCheckDigit default static=false parameters=0 lines 24-34 recoveries=none unbalanced_blocks=false
+  recoveries: none

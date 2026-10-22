@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The VBA front end (SPEC M2): the text of a module becomes logical lines,
-//! which the lexer cuts into tokens and the parser reads into procedures. It
-//! only reads text. Nothing from an analysed file is ever executed or
-//! evaluated, constant folding apart.
+//! which the lexer cuts into tokens and the parser reads into procedures and
+//! declarations. It only reads text. Nothing from an analysed file is ever
+//! executed or evaluated, constant folding apart.
 
+mod aggregate;
+mod callgraph;
+mod dependencies;
 mod expr;
 mod facts;
 mod fold;
@@ -12,12 +15,16 @@ mod lines;
 mod metrics;
 mod parse;
 mod scan;
+mod udf;
 
 use crate::report::Status;
 use crate::rules::ModuleType;
 
+pub use aggregate::{file_metrics, module_metrics};
+pub use callgraph::{CallGraph, ModuleId, ProcedureLinks};
+pub(crate) use dependencies::is_external_progid;
 pub use expr::MAX_NESTING;
-pub use facts::{CallSite, Facts, MemberUse, StatementReader};
+pub use facts::{CallSite, Facts, MAX_WITH_BLOCKS, MemberUse, StatementReader};
 pub use fold::ConstTable;
 pub use lexer::{Keyword, MAX_TOKENS, Token, TokenKind, tokenize};
 pub use lines::{
@@ -29,6 +36,7 @@ pub use parse::{
     Declaration, DeclarationKind, Directive, MAX_RECOVERIES, OptionKind, ParsedModule, Procedure,
     Recovery, RecoveryKind, parse,
 };
+pub use udf::is_udf_candidate;
 
 /// The source of one module: what the extraction layer, or a text file,
 /// hands to the front end.

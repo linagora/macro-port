@@ -245,15 +245,19 @@ impl Token {
     /// `None` for any other token, and for a string whose closing quote is
     /// missing: it is not a literal, and nothing is made of it.
     pub fn string_value(&self, source: &str) -> Option<String> {
-        if self.kind != TokenKind::String {
+        if self.kind != TokenKind::String || self.is_unclosed_string(source) {
             return None;
         }
-        let text = self.text(source);
-        if string_len(text) != Some(text.len()) {
-            return None;
-        }
-        let inside = text.strip_prefix('"')?.strip_suffix('"')?;
+        let inside = self.text(source).strip_prefix('"')?.strip_suffix('"')?;
         Some(inside.replace("\"\"", "\""))
+    }
+
+    /// Whether the token is a string literal whose closing quote is missing,
+    /// which is when [`Token::string_value`] is `None` for a string. It reads
+    /// the literal but builds no value, so a long one costs no copy.
+    pub(super) fn is_unclosed_string(&self, source: &str) -> bool {
+        let text = self.text(source);
+        self.kind == TokenKind::String && string_len(text) != Some(text.len())
     }
 
     /// What a comment says, as [`Comment::text`](super::Comment::text) does
@@ -458,6 +462,14 @@ pub fn tokenize(text: &str) -> Vec<Token> {
         last.kind = TokenKind::Unknown;
         last.end = text.len();
     }
+    tokens
+}
+
+/// The tokens of [`tokenize`] that are code: the comments are left out, since
+/// nothing in them is read.
+pub(super) fn code_tokens(text: &str) -> Vec<Token> {
+    let mut tokens = tokenize(text);
+    tokens.retain(|token| token.kind != TokenKind::Comment);
     tokens
 }
 
@@ -737,7 +749,14 @@ mod tests {
             let tokens = tokenize(text);
             assert_eq!(tokens.len(), 1, "{text:?}");
             assert_eq!(tokens[0].string_value(text).as_deref(), value, "{text:?}");
+            assert_eq!(
+                tokens[0].is_unclosed_string(text),
+                value.is_none(),
+                "{text:?}"
+            );
         }
+        // Any other token is no string, closed or not.
+        assert!(!tokenize("abc")[0].is_unclosed_string("abc"));
     }
 
     #[test]

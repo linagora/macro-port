@@ -1,0 +1,181 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/05-formulaires-saisie/05-01-formulaire-pressing-employes.frm
+---
+families/05-formulaires-saisie/05-01-formulaire-pressing-employes.frm
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 forms=1 declare_count=0 external_dependencies=0
+module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  property_let FormDataEnabled public lines 45-53: loc=9 logical_loc=6 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let FormDataMode public lines 54-103: loc=50 logical_loc=36 cyclomatic=7 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EmployeeDropDownList_AfterUpdate private lines 106-123: loc=18 logical_loc=15 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function CollectionDate public lines 124-143: loc=20 logical_loc=14 cyclomatic=5 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub GenerateOrderNo private lines 144-159: loc=16 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UserForm_Initialize private lines 213-235: loc=23 logical_loc=15 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub FillInItemsToClean private lines 236-268: loc=33 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EmployeeDropDownList_DropButtonClick private lines 269-284: loc=16 logical_loc=9 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UpdateEmployeeItemsToClean private lines 285-410: loc=126 logical_loc=109 cyclomatic=31 max_nesting=8 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewEmployeeBtnPressed_Click private lines 411-418: loc=8 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewEmployeeFirstName_AfterUpdate private lines 419-426: loc=8 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewEmployeeLastName_AfterUpdate private lines 427-435: loc=9 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewEmployeePosition_AfterUpdate private lines 436-444: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewEmployeeToListBtnPressed_Click private lines 445-467: loc=23 logical_loc=17 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function UniqueEmployeeNames private lines 468-482: loc=15 logical_loc=11 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function EverythingFilledIn private lines 483-523: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddEmployeeToList private lines 524-541: loc=18 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CreateNewEmployeeSheet private lines 542-554: loc=13 logical_loc=10 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function sheetExists private lines 555-565: loc=11 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ActivateSheet default lines 566-569: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewEmployeeCancelBtn_Click private lines 571-587: loc=17 logical_loc=14 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeBtnPressed_Click private lines 588-594: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeDropDownList_DropButtonClick private lines 595-605: loc=11 logical_loc=8 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeDropDownList_AfterUpdate private lines 606-618: loc=13 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeRecordBtnPressed_Click private lines 619-632: loc=14 logical_loc=9 cyclomatic=3 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function EverythingFilledInRemoveEmployee private lines 633-673: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeFromList private lines 674-692: loc=19 logical_loc=13 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveEmployeeCancelBtn_Click private lines 693-706: loc=14 logical_loc=11 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewItemBtnPressed_Click private lines 707-713: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewItemPosition_DropButtonClick private lines 714-717: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UniquePositionTitle private lines 718-748: loc=31 logical_loc=23 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewItemBtnPressed_Click private lines 749-772: loc=24 logical_loc=17 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function EverythingFilledInItem private lines 773-813: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewItemPosition_AfterUpdate private lines 814-824: loc=11 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewItem_AfterUpdate private lines 825-833: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddNewItemsToList private lines 834-856: loc=23 logical_loc=21 cyclomatic=10 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function UniqueItemNames private lines 857-888: loc=32 logical_loc=27 cyclomatic=11 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub NewItemCancelBtnPressed_Click private lines 889-902: loc=14 logical_loc=11 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemBtnPress_Click private lines 903-909: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemPosition_DropButtonClick private lines 910-913: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItem_DropButtonClick private lines 914-917: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SelectItemFromDropDownList private lines 918-947: loc=30 logical_loc=25 cyclomatic=9 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemFromList private lines 948-986: loc=39 logical_loc=30 cyclomatic=11 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemBtnPressed_Click private lines 987-1010: loc=24 logical_loc=17 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function EverythingFilledInRemoveItem private lines 1011-1038: loc=28 logical_loc=23 cyclomatic=6 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemPosition_AfterUpdate private lines 1039-1047: loc=9 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItem_AfterUpdate private lines 1048-1056: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RemoveItemCancelBtnPressed_Click private lines 1057-1070: loc=14 logical_loc=11 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ShowHideTogglePressed_Click private lines 1072-1091: loc=20 logical_loc=19 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModeBtnPressed_Click private lines 1092-1102: loc=11 logical_loc=8 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModeLoginAddBtn_Click private lines 1103-1131: loc=29 logical_loc=21 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModeAdminName_AfterUpdate private lines 1132-1142: loc=11 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModePassword_AfterUpdate private lines 1143-1151: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModeNewUserProfile_AfterUpdate private lines 1152-1160: loc=9 logical_loc=8 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub LoginUser private lines 1161-1227: loc=67 logical_loc=51 cyclomatic=9 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AddUserProfile private lines 1228-1241: loc=14 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function isUniqueUser default lines 1242-1245: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function EverythingFilledInAdminMode private lines 1246-1280: loc=35 logical_loc=28 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub AdminModeCancelPressed_Click private lines 1281-1298: loc=18 logical_loc=14 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub FillingInForm private lines 1299-1379: loc=81 logical_loc=73 cyclomatic=18 max_nesting=7 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item1_AfterUpdate private lines 1380-1382: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item2_AfterUpdate private lines 1383-1385: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item3_AfterUpdate private lines 1386-1388: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item4_AfterUpdate private lines 1389-1391: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item5_AfterUpdate private lines 1392-1394: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item6_AfterUpdate private lines 1395-1397: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item7_AfterUpdate private lines 1398-1400: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item8_AfterUpdate private lines 1401-1403: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item9_AfterUpdate private lines 1404-1406: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item10_AfterUpdate private lines 1407-1409: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item11_AfterUpdate private lines 1410-1412: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item12_AfterUpdate private lines 1413-1415: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Item13_AfterUpdate private lines 1416-1418: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EnabledItemsToClean private lines 1419-1468: loc=50 logical_loc=46 cyclomatic=16 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UnitPrice1_AfterUpdate private lines 1469-1472: loc=4 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UpdateSubTotal private lines 1473-1495: loc=23 logical_loc=19 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SaveBtnPressed_Click private lines 1497-1502: loc=6 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CloseEntireFormBtnPressed_Click private lines 1503-1507: loc=5 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub UserForm_Terminate private lines 1508-1522: loc=15 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 22
+  declaration Variable line 23
+  declaration Variable line 24
+  declaration Variable line 25
+  declaration Variable line 26
+  declaration Enum line 28
+  declaration Enum line 37
+  declaration Variable line 42
+  declaration Variable line 44
+  procedure property_let FormDataEnabled public static=false parameters=1 lines 45-53 recoveries=none unbalanced_blocks=false
+  procedure property_let FormDataMode public static=false parameters=1 lines 54-103 recoveries=none unbalanced_blocks=false
+  procedure sub EmployeeDropDownList_AfterUpdate private static=false parameters=0 lines 106-123 recoveries=none unbalanced_blocks=false
+  procedure function CollectionDate public static=false parameters=1 lines 124-143 recoveries=none unbalanced_blocks=false
+  procedure sub GenerateOrderNo private static=false parameters=0 lines 144-159 recoveries=none unbalanced_blocks=false
+  procedure sub UserForm_Initialize private static=false parameters=0 lines 213-235 recoveries=none unbalanced_blocks=false
+  procedure sub FillInItemsToClean private static=false parameters=0 lines 236-268 recoveries=none unbalanced_blocks=false
+  procedure sub EmployeeDropDownList_DropButtonClick private static=false parameters=0 lines 269-284 recoveries=none unbalanced_blocks=false
+  procedure sub UpdateEmployeeItemsToClean private static=false parameters=0 lines 285-410 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewEmployeeBtnPressed_Click private static=false parameters=0 lines 411-418 recoveries=none unbalanced_blocks=false
+  procedure sub NewEmployeeFirstName_AfterUpdate private static=false parameters=0 lines 419-426 recoveries=none unbalanced_blocks=false
+  procedure sub NewEmployeeLastName_AfterUpdate private static=false parameters=0 lines 427-435 recoveries=none unbalanced_blocks=false
+  procedure sub NewEmployeePosition_AfterUpdate private static=false parameters=0 lines 436-444 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewEmployeeToListBtnPressed_Click private static=false parameters=0 lines 445-467 recoveries=none unbalanced_blocks=false
+  procedure function UniqueEmployeeNames private static=false parameters=0 lines 468-482 recoveries=none unbalanced_blocks=false
+  procedure function EverythingFilledIn private static=false parameters=0 lines 483-523 recoveries=none unbalanced_blocks=false
+  procedure sub AddEmployeeToList private static=false parameters=0 lines 524-541 recoveries=none unbalanced_blocks=false
+  procedure sub CreateNewEmployeeSheet private static=false parameters=0 lines 542-554 recoveries=none unbalanced_blocks=false
+  procedure function sheetExists private static=false parameters=1 lines 555-565 recoveries=none unbalanced_blocks=false
+  procedure sub ActivateSheet default static=false parameters=1 lines 566-569 recoveries=none unbalanced_blocks=false
+  procedure sub NewEmployeeCancelBtn_Click private static=false parameters=0 lines 571-587 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeBtnPressed_Click private static=false parameters=0 lines 588-594 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeDropDownList_DropButtonClick private static=false parameters=0 lines 595-605 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeDropDownList_AfterUpdate private static=false parameters=0 lines 606-618 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeRecordBtnPressed_Click private static=false parameters=0 lines 619-632 recoveries=none unbalanced_blocks=false
+  procedure function EverythingFilledInRemoveEmployee private static=false parameters=0 lines 633-673 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeFromList private static=false parameters=0 lines 674-692 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveEmployeeCancelBtn_Click private static=false parameters=0 lines 693-706 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewItemBtnPressed_Click private static=false parameters=0 lines 707-713 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewItemPosition_DropButtonClick private static=false parameters=0 lines 714-717 recoveries=none unbalanced_blocks=false
+  procedure sub UniquePositionTitle private static=false parameters=0 lines 718-748 recoveries=none unbalanced_blocks=false
+  procedure sub NewItemBtnPressed_Click private static=false parameters=0 lines 749-772 recoveries=none unbalanced_blocks=false
+  procedure function EverythingFilledInItem private static=false parameters=0 lines 773-813 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewItemPosition_AfterUpdate private static=false parameters=0 lines 814-824 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewItem_AfterUpdate private static=false parameters=0 lines 825-833 recoveries=none unbalanced_blocks=false
+  procedure sub AddNewItemsToList private static=false parameters=0 lines 834-856 recoveries=none unbalanced_blocks=false
+  procedure function UniqueItemNames private static=false parameters=0 lines 857-888 recoveries=none unbalanced_blocks=false
+  procedure sub NewItemCancelBtnPressed_Click private static=false parameters=0 lines 889-902 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemBtnPress_Click private static=false parameters=0 lines 903-909 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemPosition_DropButtonClick private static=false parameters=0 lines 910-913 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItem_DropButtonClick private static=false parameters=0 lines 914-917 recoveries=none unbalanced_blocks=false
+  procedure sub SelectItemFromDropDownList private static=false parameters=0 lines 918-947 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemFromList private static=false parameters=0 lines 948-986 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemBtnPressed_Click private static=false parameters=0 lines 987-1010 recoveries=none unbalanced_blocks=false
+  procedure function EverythingFilledInRemoveItem private static=false parameters=0 lines 1011-1038 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemPosition_AfterUpdate private static=false parameters=0 lines 1039-1047 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItem_AfterUpdate private static=false parameters=0 lines 1048-1056 recoveries=none unbalanced_blocks=false
+  procedure sub RemoveItemCancelBtnPressed_Click private static=false parameters=0 lines 1057-1070 recoveries=none unbalanced_blocks=false
+  procedure sub ShowHideTogglePressed_Click private static=false parameters=0 lines 1072-1091 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModeBtnPressed_Click private static=false parameters=0 lines 1092-1102 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModeLoginAddBtn_Click private static=false parameters=0 lines 1103-1131 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModeAdminName_AfterUpdate private static=false parameters=0 lines 1132-1142 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModePassword_AfterUpdate private static=false parameters=0 lines 1143-1151 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModeNewUserProfile_AfterUpdate private static=false parameters=0 lines 1152-1160 recoveries=none unbalanced_blocks=false
+  procedure sub LoginUser private static=false parameters=0 lines 1161-1227 recoveries=none unbalanced_blocks=false
+  procedure sub AddUserProfile private static=false parameters=0 lines 1228-1241 recoveries=none unbalanced_blocks=false
+  procedure function isUniqueUser default static=false parameters=1 lines 1242-1245 recoveries=none unbalanced_blocks=false
+  procedure function EverythingFilledInAdminMode private static=false parameters=0 lines 1246-1280 recoveries=none unbalanced_blocks=false
+  procedure sub AdminModeCancelPressed_Click private static=false parameters=0 lines 1281-1298 recoveries=none unbalanced_blocks=false
+  procedure sub FillingInForm private static=false parameters=0 lines 1299-1379 recoveries=none unbalanced_blocks=false
+  procedure sub Item1_AfterUpdate private static=false parameters=0 lines 1380-1382 recoveries=none unbalanced_blocks=false
+  procedure sub Item2_AfterUpdate private static=false parameters=0 lines 1383-1385 recoveries=none unbalanced_blocks=false
+  procedure sub Item3_AfterUpdate private static=false parameters=0 lines 1386-1388 recoveries=none unbalanced_blocks=false
+  procedure sub Item4_AfterUpdate private static=false parameters=0 lines 1389-1391 recoveries=none unbalanced_blocks=false
+  procedure sub Item5_AfterUpdate private static=false parameters=0 lines 1392-1394 recoveries=none unbalanced_blocks=false
+  procedure sub Item6_AfterUpdate private static=false parameters=0 lines 1395-1397 recoveries=none unbalanced_blocks=false
+  procedure sub Item7_AfterUpdate private static=false parameters=0 lines 1398-1400 recoveries=none unbalanced_blocks=false
+  procedure sub Item8_AfterUpdate private static=false parameters=0 lines 1401-1403 recoveries=none unbalanced_blocks=false
+  procedure sub Item9_AfterUpdate private static=false parameters=0 lines 1404-1406 recoveries=none unbalanced_blocks=false
+  procedure sub Item10_AfterUpdate private static=false parameters=0 lines 1407-1409 recoveries=none unbalanced_blocks=false
+  procedure sub Item11_AfterUpdate private static=false parameters=0 lines 1410-1412 recoveries=none unbalanced_blocks=false
+  procedure sub Item12_AfterUpdate private static=false parameters=0 lines 1413-1415 recoveries=none unbalanced_blocks=false
+  procedure sub Item13_AfterUpdate private static=false parameters=0 lines 1416-1418 recoveries=none unbalanced_blocks=false
+  procedure sub EnabledItemsToClean private static=false parameters=0 lines 1419-1468 recoveries=none unbalanced_blocks=false
+  procedure sub UnitPrice1_AfterUpdate private static=false parameters=0 lines 1469-1472 recoveries=none unbalanced_blocks=false
+  procedure sub UpdateSubTotal private static=false parameters=0 lines 1473-1495 recoveries=none unbalanced_blocks=false
+  procedure sub SaveBtnPressed_Click private static=false parameters=0 lines 1497-1502 recoveries=none unbalanced_blocks=false
+  procedure sub CloseEntireFormBtnPressed_Click private static=false parameters=0 lines 1503-1507 recoveries=none unbalanced_blocks=false
+  procedure sub UserForm_Terminate private static=false parameters=0 lines 1508-1522 recoveries=none unbalanced_blocks=false
+  recoveries: none

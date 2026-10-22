@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 //! What the front end makes of the modules of a file (SPEC M2): their
-//! procedures with spans and sizes, the status that follows from them, and the
-//! trait of what did not parse cleanly. The modules come as text, through
-//! `analyze_modules`, or from a workbook, through `analyze`.
+//! procedures with their spans and metrics, the status that follows from them,
+//! and the trait of what did not parse cleanly. The modules come as text,
+//! through `analyze_modules`, or from a workbook, through `analyze`.
 
 use macroport_core::analyze::{Options, analyze, analyze_modules};
 use macroport_core::report::{
-    Container, FileError, FileReport, ModuleReport, ProcedureKind, Status, Visibility,
+    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, Status, Visibility,
 };
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
-use macroport_core::vba::{MAX_LINES, ModuleSource};
+use macroport_core::vba::MAX_LINES;
 use macroport_testkit::corpus;
 
-use crate::support::{HELLO, checked, module, modules, options, sha256};
-
-fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
-    ModuleSource {
-        name: name.to_owned(),
-        module_type,
-        text: text.to_owned(),
-    }
-}
-
-/// The report of `modules` as a text file.
-fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
-    checked(analyze_modules(modules, "Book.bas", &options()))
-}
+use crate::support::{
+    HELLO, checked, module, modules, options, procedures, recovery_traits, report_of_modules,
+    sha256, source,
+};
 
 /// The report of `text` as the only module of a file.
 fn report_of(text: &str) -> FileReport {
     report_of_modules(vec![source("Module1", ModuleType::Standard, text)])
+}
+
+/// The complexity that `metrics` give: the highest cyclomatic complexity, their
+/// sum, and the deepest nesting.
+fn complexity(metrics: &Metrics) -> (Option<u32>, Option<u32>, Option<u32>) {
+    (
+        metrics.cyclomatic,
+        metrics.cyclomatic_total,
+        metrics.max_nesting,
+    )
 }
 
 /// The names of the procedures of `module`, with whether each has a trait.
@@ -136,6 +136,91 @@ fn the_metrics_of_a_module_and_of_its_file_sum_up_the_lines() {
     let metrics = file.metrics.as_ref().expect("the metrics of the file");
     assert_eq!((metrics.loc, metrics.logical_loc), (7, 6));
     assert_eq!((metrics.procedures, metrics.forms), (Some(2), Some(2)));
+}
+
+/// A procedure with two parameters and seven decision points: an `If` with an
+/// `And`, a loop, a one-line `If`, an `ElseIf` and two `Case` clauses (`Case
+/// Else` is none). Its blocks nest twice, and it has one `GoTo`.
+const BRANCHING: &str = "\
+Sub Work(a As Long, b As Long)
+    If a > 0 And b > 0 Then
+        For i = 1 To a
+            If i = 2 Then GoTo Done
+        Next i
+    ElseIf a = 0 Then
+        Select Case b
+            Case 1
+                x = 1
+            Case 2, 3
+                x = 2
+            Case Else
+                x = 3
+        End Select
+    End If
+Done:
+End Sub
+";
+
+#[test]
+fn a_procedure_reports_its_complexity_nesting_parameters_and_jumps() {
+    let file = report_of(BRANCHING);
+
+    let work = &module(&file).procedures[0].metrics;
+    assert_eq!(work.cyclomatic, Some(8));
+    assert_eq!(work.max_nesting, Some(2));
+    assert_eq!((work.parameters, work.goto_count), (Some(2), Some(1)));
+    assert_eq!((work.loc, work.logical_loc), (17, 17));
+}
+
+/// A procedure whose blocks nest three times, with three decision points.
+const NESTED: &str = "\
+Sub Deep()
+    If a Then
+        If b Then
+            If c Then
+                x = 1
+            End If
+        End If
+    End If
+End Sub
+";
+
+#[test]
+fn the_complexity_of_a_module_and_of_its_file_follows_from_its_procedures() {
+    let branching = format!("{BRANCHING}Sub Flat()\nEnd Sub\n");
+    let file = report_of_modules(vec![
+        source("Branching", ModuleType::Standard, &branching),
+        source("Nested", ModuleType::Standard, NESTED),
+        source("Plain", ModuleType::Standard, "Option Explicit\n"),
+    ]);
+
+    // The greatest complexity and nesting, and the complexities summed.
+    let found: Vec<_> = (modules(&file).iter())
+        .map(|m| complexity(&m.metrics))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (Some(8), Some(9), Some(2)),
+            (Some(4), Some(4), Some(3)),
+            // A module with no procedure measures zero: it has no complexity to
+            // add up.
+            (Some(0), Some(0), Some(0)),
+        ]
+    );
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(complexity(metrics), (Some(8), Some(13), Some(3)));
+    // The jumps and the parameters belong to the procedures.
+    assert_eq!((metrics.goto_count, metrics.parameters), (None, None));
+}
+
+#[test]
+fn a_label_and_its_statement_on_one_line_count_once_in_a_procedure_and_in_its_module() {
+    let file = report_of("Sub A()\nDone: x = 1\nEnd Sub\n");
+
+    let module = module(&file);
+    assert_eq!(module.procedures[0].metrics.logical_loc, 3);
+    assert_eq!(module.metrics.logical_loc, 3);
 }
 
 #[test]
@@ -285,8 +370,36 @@ fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected
 
         assert_eq!(file.status, Status::Ok, "{text:?}");
         let first = &module(&file).procedures[0];
-        let traits = expected.then(|| vec!["compile_error_suspected".to_owned()]);
+        let traits = expected.then(recovery_traits);
         assert_eq!(first.traits, traits, "{text:?}");
+        assert_eq!(file.traits, traits, "{text:?}");
+    }
+}
+
+#[test]
+fn a_procedure_whose_blocks_do_not_match_gets_the_trait_and_marks_the_file() {
+    for (text, expected) in [
+        // An `If` that nothing ends, an `End If` that nothing opened, an `Else`
+        // outside any `If`.
+        (
+            "Sub Open_If()\n    If x Then\n        y = 1\nEnd Sub\n",
+            true,
+        ),
+        ("Sub Spare_End()\n    y = 1\n    End If\nEnd Sub\n", true),
+        ("Sub Spare_Else()\n    Else\nEnd Sub\n", true),
+        (
+            "Sub Fine()\n    If x Then\n        y = 1\n    End If\nEnd Sub\n",
+            false,
+        ),
+    ] {
+        let file = report_of(&format!("{text}Sub Other()\nEnd Sub\n"));
+
+        let traits = expected.then(recovery_traits);
+        let [first, other] = &module(&file).procedures[..] else {
+            panic!("two procedures expected");
+        };
+        assert_eq!(first.traits, traits, "{text:?}");
+        assert_eq!(other.traits, None, "{text:?}");
         assert_eq!(file.traits, traits, "{text:?}");
     }
 }
@@ -296,10 +409,7 @@ fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
     assert_eq!(names(module(&file)), [("Fine", false), ("Later", false)]);
-    assert_eq!(
-        file.traits,
-        Some(vec!["compile_error_suspected".to_owned()])
-    );
+    assert_eq!(file.traits, Some(recovery_traits()));
 }
 
 #[test]
@@ -393,6 +503,17 @@ fn a_module_reports_the_declarations_outside_its_procedures() {
 }
 
 #[test]
+fn the_declares_of_a_file_count_as_one_external_dependency() {
+    let file = report_of(DECLARING);
+
+    // Three `Declare` statements make one dependency, the file having no
+    // reference and its statements passing no ProgID.
+    let metrics = file.metrics.as_ref().expect("the metrics of the file");
+    assert_eq!(metrics.declare_count, Some(3));
+    assert_eq!(metrics.external_dependencies, Some(1));
+}
+
+#[test]
 fn a_module_without_declarations_says_so_and_does_not_leave_them_out() {
     let file = report_of("Sub Run()\nEnd Sub\n");
 
@@ -454,8 +575,7 @@ fn analyze_reads_the_procedures_of_the_modules_of_a_workbook() {
 
     assert_eq!((file.container, file.status), (Container::Xlsm, Status::Ok));
     assert_eq!(file.errors, Some(Vec::new()));
-    let found: Vec<_> = (modules(&file).iter())
-        .flat_map(|module| &module.procedures)
+    let found: Vec<_> = procedures(&file)
         .map(|p| (p.name.as_str(), p.start_line))
         .collect();
     // Excel's export of the module has them at these lines.

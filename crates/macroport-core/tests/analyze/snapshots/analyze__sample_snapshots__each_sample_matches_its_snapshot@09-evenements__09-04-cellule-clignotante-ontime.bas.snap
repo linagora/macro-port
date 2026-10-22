@@ -1,0 +1,21 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/09-evenements/09-04-cellule-clignotante-ontime.bas
+---
+families/09-evenements/09-04-cellule-clignotante-ontime.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=39 logical_loc=22 procedures=2 cyclomatic=2 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
+module 09-04-cellule-clignotante-ontime (standard): loc=39 logical_loc=22 procedures=2 cyclomatic=2 cyclomatic_total=3 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub StartBlinking private lines 14-28: loc=15 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub StopBlinking private lines 31-39: loc=9 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 7
+  declaration Variable line 9
+  declaration Const line 11
+  procedure sub StartBlinking private static=false parameters=0 lines 14-28 recoveries=none unbalanced_blocks=false
+  procedure sub StopBlinking private static=false parameters=0 lines 31-39 recoveries=none unbalanced_blocks=false
+  recoveries: none

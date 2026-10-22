@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/02-consolidation/02-06-combine-all-sheets-by-key.bas
+---
+families/02-consolidation/02-06-combine-all-sheets-by-key.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=95 logical_loc=47 procedures=1 cyclomatic=9 cyclomatic_total=9 max_nesting=5 forms=0 declare_count=0 external_dependencies=0
+module 02-06-combine-all-sheets-by-key (standard): loc=95 logical_loc=47 procedures=1 cyclomatic=9 cyclomatic_total=9 max_nesting=5 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub CombineAllSheetsData public lines 7-95: loc=89 logical_loc=47 cyclomatic=9 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub CombineAllSheetsData public static=false parameters=0 lines 7-95 recoveries=none unbalanced_blocks=false
+  recoveries: none
