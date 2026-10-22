@@ -10,7 +10,7 @@ traits: none
 file: loc=105 logical_loc=68 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 12-03-import-contacts-outlook (standard): loc=105 logical_loc=68 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Import_Contacts default lines 7-105: loc=99 logical_loc=68 cyclomatic=4 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=27
+  sub Import_Contacts default lines 7-105: loc=99 logical_loc=68 cyclomatic=4 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=27
     api Application.ScreenUpdating*2
     api Cells.End*1
     api Cells.Value*8
