@@ -32,6 +32,9 @@ fn parse_in_linear_time(what: &str, size: usize, text: impl Fn(usize) -> String)
 /// one piece: for `MAX_TOKENS`, a line just past the most that the lexer keeps.
 fn repeated(piece: &str, tokens: usize) -> String {
     let in_a_piece = tokenize(piece).len();
+    // The count below holds only if the pieces do not run together.
+    let in_two = tokenize(&piece.repeat(2)).len();
+    assert_eq!(in_two, in_a_piece.saturating_mul(2), "{piece:?}");
     let pieces = tokens.checked_div(in_a_piece).unwrap_or(tokens);
     piece.repeat(pieces.saturating_add(1))
 }

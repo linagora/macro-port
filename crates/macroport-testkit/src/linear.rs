@@ -7,7 +7,8 @@
 //! times as long when it is quadratic. [`assert_linear_time`] times the same
 //! work on an input and on one four times as large, and fails when, in each of
 //! [`ATTEMPTS`] attempts, the larger takes [`MAX_RATIO`] times as long as the
-//! smaller, or more.
+//! smaller, or more. The smaller is run before and after the larger, and the
+//! lower of its two times counts.
 //!
 //! A test of the core that checks a time goes through this module and not
 //! through the clock: the `clippy.toml` of the core keeps the clock out of the
@@ -26,13 +27,13 @@ pub const GROWTH: usize = 4;
 /// them, with room on both sides for the noise of a machine.
 pub const MAX_RATIO: u32 = 8;
 
-/// The most times that the two runs are made. A rise of the load between them
-/// makes the work look worse than it is, and a busy spell lasts a while: an
-/// attempt that fails is made again, and the first that shows linear time ends
-/// the check. A fall of the load makes the work look better, and this rule
-/// gives that more than one chance: quadratic work gives twice [`MAX_RATIO`],
-/// so it passes only when the load swings by a factor of 2 between the two runs
-/// of an attempt.
+/// The most times that the runs are made. Noise only ever lengthens a run. On
+/// the large run it makes the work look worse than it is, and a busy spell lasts
+/// a while: an attempt that fails is made again, and the first that shows linear
+/// time ends the check. On the small run it makes the work look better, and
+/// quadratic work then passes by luck, which the several attempts make likelier:
+/// the small input is run before and after the large one for that, and the lower
+/// time counts, so that the noise must hit both.
 pub const ATTEMPTS: usize = 3;
 
 /// What the small run counts for at least. Below it the clock and the scheduler
@@ -49,11 +50,13 @@ pub fn is_linear(small: Duration, large: Duration) -> bool {
     large < small.max(FLOOR).saturating_mul(MAX_RATIO)
 }
 
-/// Runs `work` on the input that `make` gives for `size / GROWTH`, then on the
-/// one it gives for `size`, and does both again until the two times show
-/// linear time (see [`is_linear`]), in [`ATTEMPTS`] attempts at most: `work` is
-/// called up to twice that many times. Gives what `work` made of the large
-/// input in the attempt that passed, for the test to check.
+/// Runs `work` on the input that `make` gives for `size / GROWTH`, on the one it
+/// gives for `size`, and on the small one again. The attempt shows linear time
+/// when the large run is under [`MAX_RATIO`] times the lower of the two small
+/// runs (see [`is_linear`]). Makes [`ATTEMPTS`] attempts at most and stops at
+/// the first that shows linear time, so `work` is called up to three times that
+/// many times. Gives what `work` made of the large input in that attempt, for
+/// the test to check.
 ///
 /// `make(n)` builds an input that makes `work` do about `n` units of work,
 /// whatever a unit is: lines, bytes, tokens. Both inputs are built before the
@@ -79,9 +82,10 @@ pub fn assert_linear_time<I, R>(
     let small = make(size / GROWTH);
     let large = make(size);
     let attempt = || {
-        let (small_time, _) = timed(|| work(&small));
+        let (before, _) = timed(|| work(&small));
         let (large_time, made) = timed(|| work(&large));
-        (small_time, large_time, made)
+        let (after, _) = timed(|| work(&small));
+        (before.min(after), large_time, made)
     };
     match first_linear(attempt) {
         Ok(made) => made,
@@ -91,7 +95,8 @@ pub fn assert_linear_time<I, R>(
 
 /// What `attempt` gives, the time on the small input, the time on the large
 /// one and a result, on the first of [`ATTEMPTS`] calls in which the times show
-/// linear time; or the times of every call when none does.
+/// linear time; or the times of every call when none does. The time on the
+/// small input is the lower of its two runs.
 fn first_linear<R>(
     mut attempt: impl FnMut() -> (Duration, Duration, R),
 ) -> Result<R, Vec<(Duration, Duration)>> {
@@ -119,7 +124,8 @@ fn failure(what: &str, attempts: &[(Duration, Duration)]) -> String {
     let mut message = format!(
         "{what}: {GROWTH} times the input took {MAX_RATIO} times as long or more in each of \
          {ATTEMPTS} attempts (linear work takes about {GROWTH} times as long, quadratic work \
-         {}; a run under {FLOOR:?} counts for {FLOOR:?})",
+         {}; the small input is run before and after the large one and the lower time \
+         counts; a time under {FLOOR:?} counts for {FLOOR:?})",
         GROWTH.saturating_mul(GROWTH)
     );
     for (number, &(small, large)) in attempts.iter().enumerate() {
