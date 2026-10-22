@@ -1,0 +1,30 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/14-patterns-securite/14-03-telechargement-ecriture-temp.bas
+---
+families/14-patterns-securite/14-03-telechargement-ecriture-temp.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=27 logical_loc=17 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=2
+module 14-03-telechargement-ecriture-temp (standard): loc=27 logical_loc=17 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub TelechargerReferentiel public lines 12-27: loc=16 logical_loc=16 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=13
+    api CreateObject:ADODB.Stream*1
+    api CreateObject:MSXML2.XMLHTTP*1
+    api Environ*1
+    api http.Open*1
+    api http.responseBody*1
+    api http.send*1
+    api http.Status*1
+    api stm.Close*1
+    api stm.Open*1
+    api stm.SaveToFile*1
+    api stm.Type*1
+    api stm.Write*1
+    api Workbooks.OpenText*1
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub TelechargerReferentiel public static=false parameters=0 lines 12-27 recoveries=none unbalanced_blocks=false
+  recoveries: none

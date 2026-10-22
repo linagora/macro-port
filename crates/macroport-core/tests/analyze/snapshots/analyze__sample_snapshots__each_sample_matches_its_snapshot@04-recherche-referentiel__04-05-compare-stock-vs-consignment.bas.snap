@@ -1,0 +1,46 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/04-recherche-referentiel/04-05-compare-stock-vs-consignment.bas
+---
+families/04-recherche-referentiel/04-05-compare-stock-vs-consignment.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=157 logical_loc=92 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=5 forms=0 declare_count=0 external_dependencies=0
+module 04-05-compare-stock-vs-consignment (standard): loc=157 logical_loc=92 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=5 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub ComparingFrozenReportWithConsReport default lines 7-157: loc=151 logical_loc=92 cyclomatic=19 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=30
+    api ActiveSheet.Name*3
+    api allOnHandList.Columns.Count*1
+    api allOnHandListResult.Cells.value*6
+    api allOnHandListResult.Font.FontStyle*1
+    api allOnHandListResult.Row*2
+    api allOnHandListResult.Rows.Count*1
+    api allOnHandListSkuCell.Row*7
+    api allOnHandListSkuCell.value*1
+    api Application.InputBox*3
+    api Application.ScreenUpdating*3
+    api consList.Cells*1
+    api consList.Cells.value*8
+    api consList.Columns.Count*1
+    api consList.End.Offset.value*1
+    api consList.End.value*1
+    api consList.Find*1
+    api consList.FindNext*1
+    api consList.Row*1
+    api Debug.Print*1
+    api Err.Description*2
+    api Err.HelpContext*1
+    api Err.HelpFile*1
+    api Err.Number*3
+    api Err.Source*1
+    api foundMatchingallOnHandListSku.Address*2
+    api foundMatchingallOnHandListSku.End*1
+    api foundMatchingallOnHandListSku.End.Offset.value*1
+    api foundMatchingallOnHandListSku.Row*1
+    api SmartUtilities.ResetFilters*1
+    api Trim*1
+parse:
+  procedure sub ComparingFrozenReportWithConsReport default static=false parameters=0 lines 7-157 recoveries=none unbalanced_blocks=false
+  recoveries: none

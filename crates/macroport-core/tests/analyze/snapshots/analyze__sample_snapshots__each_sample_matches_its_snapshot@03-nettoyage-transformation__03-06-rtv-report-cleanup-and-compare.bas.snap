@@ -1,0 +1,133 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/03-nettoyage-transformation/03-06-rtv-report-cleanup-and-compare.bas
+---
+families/03-nettoyage-transformation/03-06-rtv-report-cleanup-and-compare.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
+module 03-06-rtv-report-cleanup-and-compare (standard): loc=371 logical_loc=260 procedures=4 cyclomatic=22 cyclomatic_total=38 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub EditRTVfile default lines 10-104: loc=95 logical_loc=56 cyclomatic=9 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=20
+    api Application.ScreenUpdating*3
+    api Debug.Print*1
+    api delRange.Delete*1
+    api Err.Description*2
+    api Err.Number*2
+    api Len*1
+    api Trim*1
+    api ws.Cells.Columns.AutoFit*1
+    api ws.Cells.Rows.AutoFit*1
+    api ws.Columns.Delete*1
+    api ws.Columns.Insert*1
+    api ws.Range.ClearContents*1
+    api ws.Range.End.Row*1
+    api ws.Range.Formula*1
+    api ws.Range.HorizontalAlignment*2
+    api ws.Range.value*13
+    api ws.Range.VerticalAlignment*3
+    api ws.Range.WrapText*1
+    api ws.Rows*2
+    api ws.Rows.Count*1
+  sub EditTable private lines 105-205: loc=101 logical_loc=75 cyclomatic=6 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=38
+    api ActiveWindow.FreezePanes*1
+    api allBorders.Borders*1
+    api allBorders.Borders.Color*1
+    api allBorders.Borders.LineStyle*1
+    api allBorders.Borders.Weight*1
+    api Application.Union*1
+    api Cells.End.Row*1
+    api Columns.Insert*1
+    api columnsToDelete.Delete*1
+    api delRange.Delete*1
+    api headerRng.Delete*1
+    api Len*2
+    api Range.CurrentRegion*1
+    api Range.Sort*1
+    api Rows.Count*1
+    api Selection.AutoFilter*1
+    api Trim*2
+    api ws.Cells.EntireColumn.AutoFit*1
+    api ws.Cells.EntireRow.AutoFit*1
+    api ws.Columns*4
+    api ws.Columns.UnMerge*1
+    api ws.Range*3
+    api ws.Range.Activate*1
+    api ws.Range.BorderAround*3
+    api ws.Range.CurrentRegion.Font.Name*1
+    api ws.Range.CurrentRegion.Font.Size*1
+    api ws.Range.CurrentRegion.VerticalAlignment*1
+    api ws.Range.End.Row*2
+    api ws.Range.Font.Color*3
+    api ws.Range.Font.FontStyle*3
+    api ws.Range.Font.Name*3
+    api ws.Range.Formula*2
+    api ws.Range.Interior.Color*1
+    api ws.Range.NumberFormat*1
+    api ws.Range.SpecialCells.FormulaR1C1*1
+    api ws.Range.value*10
+    api ws.Rows*2
+    api ws.Rows.Count*2
+  sub editPrintProperties private lines 207-237: loc=31 logical_loc=26 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=24
+    api ActiveSheet.PageSetup.PrintArea*1
+    api Application.InchesToPoints*6
+    api Range.End.Row*1
+    api Rows.Count*1
+    api ws.PageSetup*1
+    api ws.PageSetup.BottomMargin*1
+    api ws.PageSetup.CenterFooter*1
+    api ws.PageSetup.CenterHeader*1
+    api ws.PageSetup.FitToPagesTall*1
+    api ws.PageSetup.FitToPagesWide*1
+    api ws.PageSetup.FooterMargin*1
+    api ws.PageSetup.HeaderMargin*1
+    api ws.PageSetup.LeftFooter*1
+    api ws.PageSetup.LeftHeader*1
+    api ws.PageSetup.LeftMargin*1
+    api ws.PageSetup.Orientation*1
+    api ws.PageSetup.PrintArea*1
+    api ws.PageSetup.PrintTitleColumns*1
+    api ws.PageSetup.PrintTitleRows*1
+    api ws.PageSetup.RightFooter*1
+    api ws.PageSetup.RightHeader*1
+    api ws.PageSetup.RightMargin*1
+    api ws.PageSetup.TopMargin*1
+    api ws.PageSetup.Zoom*1
+  sub RTV_ComparingTwoLists default lines 238-371: loc=134 logical_loc=102 cyclomatic=22 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=28
+    api ActiveWorkbook.Worksheets*2
+    api Application.InputBox*4
+    api Debug.Print*1
+    api Err.Description*2
+    api Err.HelpContext*1
+    api Err.HelpFile*1
+    api Err.Number*3
+    api Err.Source*1
+    api inventoryList.Cells*2
+    api inventoryList.Cells.value*1
+    api inventoryList.Columns.Count*1
+    api inventoryList.Find*1
+    api inventoryList.Find.Row*1
+    api inventoryListResult.Cells.value*3
+    api inventoryListResult.Rows.Count*1
+    api inventoryListSkuCell.Row*5
+    api inventoryListSkuCell.value*1
+    api scannerList.Cells*2
+    api scannerList.Cells.value*1
+    api scannerList.Columns.Count*1
+    api scannerList.Find*1
+    api scannerList.Find.Row*1
+    api scannerListResult.Cells.value*2
+    api scannerListResult.Rows.Count*1
+    api scannerListSkuCell.Row*3
+    api scannerListSkuCell.value*1
+    api ws.AutoFilterMode*2
+    api ws.Range.AutoFilter*1
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub EditRTVfile default static=false parameters=0 lines 10-104 recoveries=none unbalanced_blocks=false
+  procedure sub EditTable private static=false parameters=0 lines 105-205 recoveries=none unbalanced_blocks=false
+  procedure sub editPrintProperties private static=false parameters=1 lines 207-237 recoveries=none unbalanced_blocks=false
+  procedure sub RTV_ComparingTwoLists default static=false parameters=0 lines 238-371 recoveries=none unbalanced_blocks=false
+  recoveries: none
