@@ -19,7 +19,9 @@ use std::fmt;
 
 use serde::Deserialize;
 
-pub use complexity::{Bound, Complexity, Condition, FileLevels, MetricCondition, Trait, TraitRule};
+pub use complexity::{
+    Bound, Complexity, Condition, FileLevels, Metric, MetricCondition, Trait, TraitRule,
+};
 pub use families::{Families, Family, FamilySignal, Scoring};
 pub use matcher::{Matcher, ModuleType, Scope, StructuralPredicate, TextMode};
 pub use security::{
