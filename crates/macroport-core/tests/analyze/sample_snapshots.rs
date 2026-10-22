@@ -6,7 +6,8 @@
 //! A snapshot has two parts. The first is what `analyze()` reports for the
 //! sample: the status, the error codes and the traits of the file, the metrics
 //! of the file, of its module and of each procedure, the declarations of the
-//! module, and the fields of each procedure that a later stage fills in. The
+//! module, and for each procedure whether the host starts it and whether
+//! nothing calls it, which the call graph and the rule engine decide. The
 //! second, under `parse:`, is what the parser reads in the text: its
 //! declarations, its procedures with whether their blocks match, and the places
 //! where it went on past a statement that it could not read. A procedure gets
@@ -16,11 +17,14 @@
 //! spans of the procedures are in both parts on purpose: they come from two
 //! layers, and a snapshot where they differ shows it.
 //!
-//! In a line, `-` stands for a field that the report leaves out because no stage
-//! fills it in yet, because it passed a bound or because a module was not read,
-//! and `none` for an empty list. A metric that the report leaves out is not
-//! printed. `calls` prints as the comma separated names of the procedures that
-//! a procedure calls. `apis` prints how many names a procedure uses, then a line
+//! In a line, `-` stands for a field that the report leaves out because it
+//! passed a bound, because a module was not read or because nothing can tell:
+//! a procedure of a form (or of a sheet) that may handle the event of a control
+//! has no `entry_point` and no `event_handler`, since no stage reads the
+//! controls, and no `possibly_unused` unless something calls it. `none` stands
+//! for an empty list. A metric that the report leaves out is not printed.
+//! `calls` prints as the comma separated names of the procedures that a
+//! procedure calls. `apis` prints how many names a procedure uses, then a line
 //! `api name*count` for each below the procedure, in the order of the report, so
 //! that a change of one name is a change of one line. The families and the
 //! signals are the rule engine's and not the front end's, so they are not in

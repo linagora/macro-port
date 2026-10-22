@@ -437,9 +437,12 @@ fn a_module_whose_source_was_taken_out_is_suspected_of_having_lost_it() {
         ]);
         assert_eq!(suspected, expected, "{path}");
         assert_eq!(extraction.indicators, ["sec.source-missing"], "{path}");
-        let signal = file_signal("sec.source-missing", Severity::High);
-        assert_eq!(report.signals, Some(vec![signal]), "{path}");
-        assert_eq!(report.max_severity, Some(Severity::High), "{path}");
+        // The security stage makes the signal: extraction does not.
+        assert_eq!(
+            (&report.signals, report.max_severity),
+            (&None, None),
+            "{path}"
+        );
     }
 }
 
@@ -461,7 +464,7 @@ fn a_file_whose_source_was_taken_out_is_ok_after_the_front_end_with_the_same_sig
         let procedures = (project.modules.iter()).map(|module| module.procedures.len());
         assert_eq!(procedures.sum::<usize>(), 0, "{path}");
         assert_eq!(report.status, Status::Ok, "{path}");
-        // The signals are those that extraction made from the indicators.
+        // The rule engine makes the signal of the indicator that extraction raised.
         let signal = file_signal("sec.source-missing", Severity::High);
         assert_eq!(report.signals, Some(vec![signal]), "{path}");
         assert_eq!(report.max_severity, Some(Severity::High), "{path}");

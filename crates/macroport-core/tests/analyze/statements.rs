@@ -7,9 +7,7 @@ use macroport_core::report::{FileReport, Status};
 use macroport_core::rules::ModuleType;
 use macroport_core::vba::MAX_NESTING;
 
-use crate::support::{
-    HELLO, codes, module, procedures, recovery_traits, report_of_modules, source,
-};
+use crate::support::{HELLO, codes, marks_recovery, module, procedures, report_of_modules, source};
 
 /// The report of a text file made of the standard modules `(name, text)`.
 fn report_of(modules: &[(&str, &str)]) -> FileReport {
@@ -156,20 +154,24 @@ fn a_procedure_with_a_statement_nested_too_deep_gets_the_trait_and_marks_the_fil
         ),
     )]);
 
-    let traits: Vec<_> = procedures(&file)
-        .map(|procedure| (procedure.name.as_str(), procedure.traits.clone()))
+    // The rule engine decides the traits, and others than this one may be given.
+    let marked: Vec<_> = procedures(&file)
+        .map(|procedure| {
+            let marked = marks_recovery(procedure.traits.as_deref());
+            (procedure.name.as_str(), marked)
+        })
         .collect();
-    assert_eq!(traits, [("Fine", None), ("Deep", Some(recovery_traits()))]);
-    assert_eq!(file.traits, Some(recovery_traits()));
+    assert_eq!(marked, [("Fine", false), ("Deep", true)]);
+    assert!(marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
 fn a_statement_nested_too_deep_outside_the_procedures_marks_the_file_alone() {
     let file = report_of(&[("Deep", &format!("Sub Fine()\nEnd Sub\n{}\n", too_deep()))]);
 
-    assert!(procedures(&file).all(|procedure| procedure.traits.is_none()));
+    assert!(procedures(&file).all(|procedure| !marks_recovery(procedure.traits.as_deref())));
     assert_eq!(module(&file).procedures.len(), 1);
-    assert_eq!(file.traits, Some(recovery_traits()));
+    assert!(marks_recovery(file.traits.as_deref()));
     assert_eq!(codes(&file), ["vba.statement.too_deep"]);
 }
 
@@ -190,7 +192,7 @@ fn groups_that_nest_less_than_the_limit_are_no_error() {
     let file = report_of(&[("Nested", &format!("Sub A()\n    {statement}\nEnd Sub\n"))]);
 
     assert_eq!(codes(&file), Vec::<&str>::new());
-    assert_eq!(file.traits, None);
+    assert!(!marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
@@ -217,5 +219,5 @@ fn a_module_that_is_not_read_tells_nothing_of_its_statements() {
 
     assert_eq!(file.status, Status::TooLarge);
     assert_eq!(codes(&file), ["vba.too_many_procedures"]);
-    assert_eq!(file.traits, None);
+    assert!(!marks_recovery(file.traits.as_deref()));
 }

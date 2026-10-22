@@ -10,12 +10,12 @@ traits: none
 file: loc=97 logical_loc=51 procedures=6 cyclomatic=5 cyclomatic_total=15 max_nesting=2 forms=1 declare_count=0 external_dependencies=0
 module 05-02-selection-multivaleurs-cellule (form): loc=97 logical_loc=51 procedures=6 cyclomatic=5 cyclomatic_total=15 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub btnAll_Click private lines 22-28: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  sub btnAll_Click private lines 22-28: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api lstVal.ListCount*1
     api lstVal.Selected*1
-  sub btnCancel_Click private lines 30-32: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub btnCancel_Click private lines 30-32: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Me.Hide*1
-  sub btnOK_Click private lines 34-58: loc=25 logical_loc=17 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
+  sub btnOK_Click private lines 34-58: loc=25 logical_loc=17 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
     api Len*2
     api lstVal.List*1
     api lstVal.ListCount*1
@@ -25,16 +25,16 @@ module 05-02-selection-multivaleurs-cellule (form): loc=97 logical_loc=51 proced
     api s.Value*2
     api Selection.cells*1
     api txtSep.text*2
-  sub btnReset_Click private lines 60-67: loc=8 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+  sub btnReset_Click private lines 60-67: loc=8 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api lstVal.ListCount*1
     api lstVal.Selected*1
-  sub btnUpdateFromCells_Click private lines 69-81: loc=13 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  sub btnUpdateFromCells_Click private lines 69-81: loc=13 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
     api cell.Value*1
     api lstVal.AddItem*1
     api lstVal.Clear*1
     api Me.Hide*1
     api Selection.cells*1
-  sub btnUpdateOptions_Click private lines 83-97: loc=15 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  sub btnUpdateOptions_Click private lines 83-97: loc=15 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api lstVal.AddItem*1
     api lstVal.Clear*1
     api Split*1
