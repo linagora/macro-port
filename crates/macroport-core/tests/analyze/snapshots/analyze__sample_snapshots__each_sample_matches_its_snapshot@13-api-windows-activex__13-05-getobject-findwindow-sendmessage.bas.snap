@@ -1,0 +1,20 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/13-api-windows-activex/13-05-getobject-findwindow-sendmessage.bas
+---
+families/13-api-windows-activex/13-05-getobject-findwindow-sendmessage.bas
+status: ok
+container: text_module
+errors: none
+traits: compile_error_suspected
+file: loc=71 logical_loc=29 procedures=2 cyclomatic=4 cyclomatic_total=6 max_nesting=2 forms=0 declare_count=2
+module 13-05-getobject-findwindow-sendmessage (standard): loc=71 logical_loc=29 procedures=2 cyclomatic=4 cyclomatic_total=6 max_nesting=2 declare_count=2
+  declarations: declare_count=2 with_events_count=0 option_explicit=false option_vba_support=false
+  sub GetExcel default lines 17-56: loc=40 logical_loc=17 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub DetectExcel default lines 58-71: loc=14 logical_loc=10 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Declare { name: "FindWindow", is_function: true } line 8
+  declaration Declare { name: "SendMessage", is_function: true } line 12
+  procedure sub GetExcel default static=false parameters=0 lines 17-56 recoveries=Unparseable@43 unbalanced_blocks=true
+  procedure sub DetectExcel default static=false parameters=0 lines 58-71 recoveries=none unbalanced_blocks=false
+  recoveries: none

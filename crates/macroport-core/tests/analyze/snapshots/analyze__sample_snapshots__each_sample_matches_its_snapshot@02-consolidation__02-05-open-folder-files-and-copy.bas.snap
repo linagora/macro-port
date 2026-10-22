@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/02-consolidation/02-05-open-folder-files-and-copy.bas
+---
+families/02-consolidation/02-05-open-folder-files-and-copy.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=39 logical_loc=20 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0
+module 02-05-open-folder-files-and-copy (standard): loc=39 logical_loc=20 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Rand_OpenFilesAndCopy default lines 7-39: loc=33 logical_loc=20 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub Rand_OpenFilesAndCopy default static=false parameters=0 lines 7-39 recoveries=none unbalanced_blocks=false
+  recoveries: none
