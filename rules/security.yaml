@@ -3,7 +3,7 @@
 # Policy: a single capability (Shell, HTTP, Declare...) is at most medium; "high" is reserved for chains
 # of capabilities typical of malicious behaviour and for container anomalies.
 # Categories are inspired by common macro triage practice (auto-execution, suspicious keywords, indicators).
-version: 0.2.0
+version: 0.3.0
 
 signals:
   # Auto-execution

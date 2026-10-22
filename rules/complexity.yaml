@@ -1,7 +1,7 @@
 # Macro-Port complexity levels and traits (Lot 1). Licence: CC BY 4.0.
 # Initial thresholds, to be calibrated on the corpus and on the first real fleets (see ACCEPTANCE.md A4).
 # The metrics of the conditions are those of the report: schema/rules/complexity.schema.json lists them.
-version: 0.2.0
+version: 0.3.0
 
 # A file's level is the highest level reached by any criterion.
 file_levels:
