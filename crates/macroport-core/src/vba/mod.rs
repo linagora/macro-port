@@ -5,6 +5,7 @@
 //! executed or evaluated, constant folding apart.
 
 mod aggregate;
+mod callgraph;
 mod dependencies;
 mod expr;
 mod facts;
@@ -20,6 +21,7 @@ use crate::report::Status;
 use crate::rules::ModuleType;
 
 pub use aggregate::{file_metrics, module_metrics};
+pub use callgraph::{CallGraph, ModuleId, ProcedureLinks};
 pub use expr::MAX_NESTING;
 pub use facts::{CallSite, Facts, MAX_WITH_BLOCKS, MemberUse, StatementReader};
 pub use fold::ConstTable;
