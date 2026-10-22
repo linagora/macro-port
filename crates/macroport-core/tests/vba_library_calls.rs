@@ -8,7 +8,7 @@
 #![allow(clippy::expect_used)]
 
 use macroport_core::vba::{
-    CallSite, ConstTable, Facts, LogicalKind, StatementReader, split_lines, tokenize,
+    CallSite, ConstTable, Facts, LogicalKind, MAX_NESTING, StatementReader, split_lines, tokenize,
 };
 
 /// The names that qualify a function of the library: `VBA` and the modules of
@@ -194,29 +194,38 @@ fn a_with_block_on_the_library_qualifies_its_dots() {
 }
 
 #[test]
-fn a_with_block_keeps_the_library_when_the_reader_copies_none_of_its_object() {
-    // The 200 dots copy the object `VBA` (35 in weight each) out of the
-    // allowance of the statement, and use it up: the last dot gets no object,
-    // so that its chain is `Shell` alone and is not listed. The call is the
-    // library's all the same.
+fn the_flag_of_a_with_block_does_not_depend_on_the_copy_of_its_object() {
+    // The 200 dots copy the object (35 in weight each) out of the allowance of
+    // the statement, and use it up: the last dot gets no object, so that its
+    // chain is `Shell` alone and is not listed. The call is the library's all
+    // the same if the object is, and is not if it is another.
     let dots = [".a"; 200].join(" + ");
-    let read = read_block(&format!("With VBA\nx = {dots} + .Shell(1)\nEnd With\n"));
-    let facts = &read[1].1;
-    assert_eq!(
-        facts.chains.first(),
-        Some(&vec!["VBA".to_owned(), "a".to_owned()])
-    );
+    for (object, expected) in [("VBA", "VBA.Shell"), ("Foo", ".Shell")] {
+        let read = read_block(&format!(
+            "With {object}\nx = {dots} + .Shell(1)\nEnd With\n"
+        ));
+        let facts = &read[1].1;
+        let chain = |name: &str| vec![object.to_owned(), name.to_owned()];
+        assert_eq!(facts.chains.first(), Some(&chain("a")));
+        assert!(!facts.chains.contains(&chain("Shell")));
+        assert_eq!(shells(facts), [expected], "{object}");
+    }
+}
+
+#[test]
+fn the_wide_list_of_the_calls_does_not_widen_those_of_folding_and_of_classes() {
+    // `Math` qualifies a call, yet it holds neither `Chr` nor `CreateObject`.
     assert!(
-        !facts
-            .chains
-            .contains(&vec!["VBA".to_owned(), "Shell".to_owned()])
+        facts(r#"Set o = Math.CreateObject("A.B")"#)
+            .progids
+            .is_empty()
     );
-    assert_eq!(shells(facts), ["VBA.Shell"]);
+    assert!(facts("x = Math.Chr(65)").strings.is_empty());
 }
 
 #[test]
 fn the_part_of_a_statement_read_flat_still_reads_the_qualifiers_of_a_call() {
-    let (open, close) = ("f(".repeat(70), ")".repeat(70));
+    let (open, close) = ("f(".repeat(MAX_NESTING), ")".repeat(MAX_NESTING));
     for (call, expected) in [
         ("Shell(x)", "Shell"),
         ("VBA.Shell(x)", "VBA.Shell"),
@@ -236,7 +245,7 @@ fn the_part_of_a_statement_read_flat_still_reads_the_qualifiers_of_a_call() {
 
 #[test]
 fn the_object_of_a_with_block_is_not_followed_in_the_part_read_flat() {
-    let (open, close) = ("f(".repeat(70), ")".repeat(70));
+    let (open, close) = ("f(".repeat(MAX_NESTING), ")".repeat(MAX_NESTING));
     let read = read_block(&format!("With VBA\n{open}.Shell(x){close}\nEnd With\n"));
     assert!(read[1].1.too_deep);
     assert_eq!(shells(&read[1].1), [".Shell"]);

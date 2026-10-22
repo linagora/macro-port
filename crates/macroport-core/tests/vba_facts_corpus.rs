@@ -224,7 +224,7 @@ fn a_crude_reader_finds_the_calls_of_the_library_where_the_reader_does() {
         assert_eq!(read, crude, "{place}");
         found += read.len();
     }
-    assert!(found > 100, "{found} calls of the library");
+    assert!(found > 400, "{found} calls of the library");
 }
 
 #[test]
