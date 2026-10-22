@@ -5,6 +5,8 @@
 //! rules read. The modules come as text, through `analyze_modules`, or from a
 //! workbook, through `analyze`.
 
+use std::collections::BTreeSet;
+
 use macroport_core::analyze::{analyze, analyze_modules};
 use macroport_core::report::{FileReport, Level, ProcedureReport};
 use macroport_core::rules::{ModuleType, Severity};
@@ -353,23 +355,43 @@ fn a_file_where_no_module_was_read_is_not_judged() {
     assert_eq!(file.max_severity, None);
 }
 
+/// The ids of every signal of a file, wherever the report puts it, once each.
+fn signals_of(file: &FileReport) -> BTreeSet<&str> {
+    let project = file.vba_project.iter().flat_map(|project| &project.modules);
+    let in_modules = project.flat_map(|module| {
+        let procedures = (module.procedures.iter()).flat_map(|procedure| &procedure.signals);
+        module.signals.iter().flatten().chain(procedures)
+    });
+    let found = file.signals.iter().flatten().chain(in_modules);
+    found.map(|signal| signal.signal_id.as_str()).collect()
+}
+
 #[test]
 fn a_workbook_is_judged_like_a_text() {
+    // The module of the workbook is the one that Excel exports as this text.
     let bytes = corpus::read("fixtures/generated/14-01-auto-open-shell.xlsm");
+    let export = corpus::read("fixtures/generated/14-01-auto-open-shell.xlsm.expected.bas");
+    let text = String::from_utf8_lossy(&export);
 
-    let file = checked(analyze(&bytes, "14-01.xlsm", &options()));
+    let workbook = checked(analyze(&bytes, "14-01.xlsm", &options()));
+    let exported = report_of_modules(vec![source("M_14_01", ModuleType::Standard, &text)]);
 
-    let procedures = modules(&file).iter().flat_map(|module| &module.procedures);
+    let procedures = modules(&workbook).iter().flat_map(|m| &m.procedures);
     let auto_exec: Vec<_> = procedures
         .filter(|procedure| signal_ids(procedure).contains(&"sec.auto-exec"))
         .map(|procedure| procedure.name.as_str())
         .collect();
     assert_eq!(auto_exec.len(), 1, "{auto_exec:?}");
-    // The chain with the launch of a program is high once the calls are read.
-    assert!(matches!(
-        file.max_severity,
-        Some(Severity::Medium | Severity::High)
-    ));
-    assert!(file.complexity_level.is_some());
-    assert!(file.primary_family.is_some());
+    // The auto-exec procedure launches a program: the chain makes the file high.
+    let expected: BTreeSet<&str> = ["sec.auto-exec", "sec.shell", "sec.chain.autoexec-execution"]
+        .into_iter()
+        .collect();
+    assert_eq!(signals_of(&workbook), expected);
+    assert_eq!(workbook.max_severity, Some(Severity::High));
+    // The same module as a text gets the same judgment.
+    assert_eq!(signals_of(&exported), signals_of(&workbook));
+    assert_eq!(exported.max_severity, workbook.max_severity);
+    assert_eq!(exported.primary_family, workbook.primary_family);
+    assert_eq!(exported.complexity_level, workbook.complexity_level);
+    assert!(workbook.primary_family.is_some());
 }
