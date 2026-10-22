@@ -104,6 +104,15 @@ pub fn put(dir: &Path, relative: &str, content: &[u8]) -> PathBuf {
 /// A module with one small procedure: the smallest file worth scanning.
 pub const MODULE: &[u8] = b"Sub Hello()\n    Range(\"A1\").Value = 1\nEnd Sub\n";
 
+/// Every file that `scan` writes when it is asked for every format.
+pub const EVERY_REPORT: [&str; 5] = [
+    "files.csv",
+    "procedures.csv",
+    "report.html",
+    "report.json",
+    "signals.csv",
+];
+
 /// `json`, once it has passed the schema: every JSON that the tests read is
 /// validated (ACCEPTANCE A3).
 pub fn validated(json: String) -> String {

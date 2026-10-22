@@ -12,6 +12,7 @@ pub mod analyze;
 pub mod container;
 pub mod engine;
 pub mod ovba;
+pub mod redact;
 pub mod report;
 pub mod rules;
 pub mod vba;

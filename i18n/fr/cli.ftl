@@ -13,6 +13,7 @@ cli-error-threads = impossible de démarrer les threads de l'analyse : { $reason
 cli-error-create = impossible de créer le répertoire { $path } : { $reason }
 cli-error-write = impossible d'écrire le fichier { $path } : { $reason }
 cli-error-print = impossible d'écrire sur la sortie standard : { $reason }
+cli-error-key = impossible d'obtenir la clé du caviardage : { $reason }
 cli-panic = erreur interne à
 
 ## Rules

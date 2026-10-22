@@ -18,6 +18,7 @@ base64.workspace = true
 clap.workspace = true
 csv.workspace = true
 fluent-bundle.workspace = true
+getrandom.workspace = true
 humantime.workspace = true
 jsonschema.workspace = true
 macroport-core.workspace = true

@@ -52,7 +52,8 @@ impl Report {
     /// the report does not depend on the order in which they were analysed.
     /// Two files of the same path, which a name that is not UTF-8 can give,
     /// come out in the order of their hashes. A caller that rewrites the paths
-    /// afterwards sorts the files again.
+    /// afterwards sorts the files again; [`crate::redact::Redaction::apply`]
+    /// does.
     ///
     /// The counts of the scan and the summary follow from the files.
     /// `generated_at` is an RFC 3339 date-time that the caller reads from its
@@ -64,7 +65,7 @@ impl Report {
         lang: Lang,
         mut files: Vec<FileReport>,
     ) -> Self {
-        files.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.sha256.cmp(&b.sha256)));
+        Self::sort_files(&mut files);
         Self {
             schema_version: SCHEMA_VERSION.to_owned(),
             tool: Tool {
@@ -80,6 +81,12 @@ impl Report {
             summary: Summary::of(&files),
             files,
         }
+    }
+
+    /// Puts `files` in the order of a report: by path, byte by byte, then by
+    /// hash.
+    pub(crate) fn sort_files(files: &mut [FileReport]) {
+        files.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.sha256.cmp(&b.sha256)));
     }
 
     /// The report as the text of a JSON file: indented by two spaces like the
