@@ -14,8 +14,8 @@ use crate::rules::{Families, Matcher, TextMode};
 /// A module-scope or project-scope signal is evaluated once, not once per
 /// procedure: callers keep the result and give it to each procedure.
 ///
-/// Every matcher is implemented but the `structural` one, which gives no hit
-/// yet.
+/// Every matcher is implemented, but for now `structural` gives hits for
+/// `auto_exec` and `event_handler` only.
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'p> {
     project: &'p ProjectInput,
@@ -99,8 +99,9 @@ impl<'p> Evaluator<'p> {
             Matcher::Regex(patterns) => matchers::regex(&units, patterns, text, &mut hits),
             Matcher::String(patterns) => matchers::string(&units, patterns, &mut hits),
             Matcher::Comment(patterns) => matchers::comment(&units, patterns, &mut hits),
-            // The structural predicates arrive with the next change.
-            Matcher::Structural(_) => {}
+            Matcher::Structural(predicates) => {
+                matchers::structural(&units, predicates, &mut hits);
+            }
         }
         // Declarations and procedures interleave in the source.
         hits.sort_by_key(|hit| hit.place);
