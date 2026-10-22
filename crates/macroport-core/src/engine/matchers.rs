@@ -15,7 +15,7 @@ use super::hit::{Hit, Place};
 use super::input::{CallSite, CodeLine, MemberUse, ProcedureInput};
 use super::names::{same_name, without_type_char};
 use super::unit::Unit;
-use crate::rules::ModuleType;
+use crate::rules::{ModuleType, TextMode};
 
 /// The `progid` pattern that stands for any ProgID.
 pub(super) const ANY_PROGID: &str = "*";
@@ -195,7 +195,43 @@ pub(super) fn reference<'p>(references: &'p [String], patterns: &[Regex], hits: 
     }
 }
 
+/// `regex`: a regex on a logical line, on its code (string literals and the
+/// comment blanked) or on its raw text. One hit per line, however many
+/// regexes or times it matches.
+pub(super) fn regex<'p>(
+    units: &[Unit<'p>],
+    patterns: &[Regex],
+    text: TextMode,
+    hits: &mut Vec<Hit<'p>>,
+) {
+    for (module, line) in lines(units) {
+        let subject = match text {
+            TextMode::Code => &line.code,
+            TextMode::Raw => &line.raw,
+        };
+        if any_match(patterns, subject) {
+            hits.push(statement_hit(module, line));
+        }
+    }
+}
+
+/// `string`: a regex on the contents of a string literal, as folded by the
+/// parser. One hit per literal.
+pub(super) fn string<'p>(units: &[Unit<'p>], patterns: &[Regex], hits: &mut Vec<Hit<'p>>) {
+    let fits = |literal: &String| any_match(patterns, literal);
+    per_item(units, |line| line.strings.as_slice(), fits, hits);
+}
+
+/// `comment`: a regex on the text of the comment that ends a line. One hit per
+/// comment.
+pub(super) fn comment<'p>(units: &[Unit<'p>], patterns: &[Regex], hits: &mut Vec<Hit<'p>>) {
+    let fits = |text: &String| any_match(patterns, text);
+    per_item(units, |line| line.comment.as_slice(), fits, hits);
+}
+
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod text_tests;

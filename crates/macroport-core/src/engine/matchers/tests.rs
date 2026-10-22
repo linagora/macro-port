@@ -2,23 +2,11 @@
 //! Tests of the `member`, `chain`, `call` and `progid` matchers, through the
 //! evaluator. The other matchers have a test module of their own.
 
-use crate::engine::testing::{calls, chains, line, members, progids, project_of};
-use crate::engine::{CodeLine, Evaluator, Hit, Place};
-use crate::rules::{Families, Family, FamilySignal, Label, Matcher, Scope, Scoring, TextMode};
-
-fn lines_of(hits: &[Hit<'_>]) -> Vec<u32> {
-    hits.iter()
-        .filter_map(|hit| hit.place)
-        .map(|place| place.line)
-        .collect()
-}
-
-/// The lines of the hits of `matcher` in a procedure whose body is `body`.
-fn lines_hit(body: &[CodeLine], matcher: &Matcher) -> Vec<u32> {
-    let project = project_of(body);
-    let hits = Evaluator::new(&project).procedure_hits(0, 0, matcher, TextMode::Code);
-    lines_of(&hits)
-}
+use crate::engine::testing::{
+    calls, chains, line, lines_hit, lines_of, members, progids, project_of,
+};
+use crate::engine::{Evaluator, Place};
+use crate::rules::{Families, Family, FamilySignal, Label, Scope, Scoring, TextMode};
 
 #[test]
 fn member_hits_each_use_of_a_name() {
