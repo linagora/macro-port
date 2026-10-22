@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install
       - run: cargo fmt --all --check
+      # The fuzz crate is outside the workspace.
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml --check
 
   clippy:
     runs-on: ubuntu-24.04
@@ -52,6 +54,9 @@ jobs:
         with:
           tool: cargo-deny@0.19.6
       - run: cargo deny --locked check
+      # The fuzz workspace has its own Cargo.lock, which fails here when it is
+      # stale (fuzz/Cargo.toml says how to catch up), and the same deny.toml.
+      - run: cargo deny --locked --manifest-path fuzz/Cargo.toml check --config deny.toml
 
   spdx:
     runs-on: ubuntu-24.04

@@ -1,0 +1,49 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/04-recherche-referentiel/04-02-compare-lists-return-column.bas
+---
+families/04-recherche-referentiel/04-02-compare-lists-return-column.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=148 logical_loc=99 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
+module 04-02-compare-lists-return-column (standard): loc=148 logical_loc=99 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub ComparingTwoLists default lines 12-148: loc=137 logical_loc=98 cyclomatic=19 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=32
+    api ActiveSheet.Name*4
+    api Application.InputBox*4
+    api Application.ScreenUpdating*3
+    api compareAgainstList.Cells*1
+    api compareAgainstList.Cells.value*1
+    api compareAgainstList.Column*1
+    api compareAgainstList.Columns.Count*2
+    api compareAgainstList.Find*1
+    api compareAgainstList.Rows.Count*1
+    api Debug.Print*1
+    api desiredResultColumn.Column*1
+    api desiredResultColumn.Row*1
+    api Err.Description*2
+    api Err.HelpContext*1
+    api Err.HelpFile*1
+    api Err.Number*3
+    api Err.Source*1
+    api foundMatch.Address*2
+    api foundMatch.Row*1
+    api SmartUtilities.ResetFilters*1
+    api sourceList.Columns.Count*1
+    api sourceListCell.Row*6
+    api sourceListCell.value*1
+    api sourceListResult.Cells.value*4
+    api sourceListResult.ColumnWidth*1
+    api sourceListResult.EntireColumn.AutoFit*1
+    api sourceListResult.EntireColumn.WrapText*1
+    api sourceListResult.EntireRow.AutoFit*1
+    api sourceListResult.Font.FontStyle*1
+    api sourceListResult.Row*2
+    api sourceListResult.Rows.Count*1
+    api Trim*1
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub ComparingTwoLists default static=false parameters=0 lines 12-148 recoveries=none unbalanced_blocks=false
+  recoveries: none

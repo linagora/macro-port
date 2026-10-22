@@ -3,19 +3,71 @@
 
 use std::sync::LazyLock;
 
-use macroport_core::analyze::{Extraction, Options, extract};
-use macroport_core::report::{FileReport, Lang, Report};
-use macroport_core::rules::{RuleSet, RulesSources};
-use macroport_testkit::report_problems;
+use macroport_core::analyze::{Extraction, Options, analyze, analyze_modules, extract};
+use macroport_core::report::{FileReport, Lang, ModuleReport, ProcedureReport, Report, Signal};
+use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity};
+use macroport_core::vba::ModuleSource;
+use macroport_testkit::{corpus, report_problems};
+use sha2::{Digest, Sha256};
 
 /// The rules that ship with the tool, loaded once.
 pub static RULES: LazyLock<RuleSet> = LazyLock::new(|| {
     RuleSet::load(&RulesSources::EMBEDDED).expect("the rules that ship with the tool load")
 });
 
+/// A module of one procedure.
+pub const HELLO: &str = "Option Explicit\n\nSub Hello()\n    MsgBox \"hi\"\nEnd Sub\n";
+
+/// The default options, with the rules that ship with the tool.
+pub fn options() -> Options<'static> {
+    Options::new(&RULES)
+}
+
+/// The SHA-256 of `bytes` as lowercase hexadecimal digits.
+pub fn sha256(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 /// The extraction of `bytes`, a file named `path`, with the default options.
 pub fn extraction(bytes: &[u8], path: &str) -> Extraction {
     extraction_with(bytes, path, &Options::new(&RULES))
+}
+
+/// The extraction of the file `file` of `corpus/fixtures/`.
+pub fn fixture(file: &str) -> Extraction {
+    extraction(&corpus::read(&format!("fixtures/{file}")), file)
+}
+
+/// The codes of the errors of `report`, in order.
+pub fn codes(report: &FileReport) -> Vec<&str> {
+    let errors = report.errors.iter().flatten();
+    errors.map(|error| error.code.as_str()).collect()
+}
+
+/// The traits that the shipped rules give to what did not parse cleanly: the
+/// ones tied to the predicate `parse_recovered`.
+pub fn recovery_traits() -> Vec<String> {
+    vec!["compile_error_suspected".to_owned()]
+}
+
+/// Whether `traits` include the ones that a parse that recovered gives. A
+/// report may carry other traits, from the rules that look at the metrics.
+pub fn marks_recovery(traits: Option<&[String]>) -> bool {
+    let marked = recovery_traits();
+    traits.is_some_and(|traits| marked.iter().all(|name| traits.contains(name)))
+}
+
+/// The signal `id` of `severity` that a container indicator makes: it is the
+/// file's, with no module and no evidence.
+pub fn file_signal(id: &str, severity: Severity) -> Signal {
+    Signal {
+        signal_id: id.to_owned(),
+        severity,
+        module: None,
+        procedure: None,
+        evidence: None,
+    }
 }
 
 /// The extraction of `bytes`, a file named `path`, with these options.
@@ -40,4 +92,59 @@ pub fn report_problems_of(file: &FileReport) -> Vec<String> {
     let mut report = Report::empty(&RULES, "1970-01-01T00:00:00Z".to_owned(), Lang::En);
     report.files = vec![file.clone()];
     report_problems(&report.to_json().expect("the report serialises"))
+}
+
+/// `file`, once checked against the report schema.
+pub fn checked(file: FileReport) -> FileReport {
+    assert_eq!(report_problems_of(&file), Vec::<String>::new());
+    file
+}
+
+/// The report of the file `path` of `corpus/`, relative to it, from `analyze()`
+/// with the default options and checked against the report schema.
+pub fn corpus_report(path: &str) -> FileReport {
+    checked(analyze(&corpus::read(path), path, &options()))
+}
+
+/// The text samples of the families, by their paths relative to `corpus/`.
+pub fn samples() -> Vec<String> {
+    let samples = corpus::files("families", &["bas", "cls", "frm"]);
+    assert!(samples.len() >= 80, "{} samples", samples.len());
+    samples
+}
+
+/// The text of the sample `path` of `corpus/`, relative to it.
+pub fn sample_text(path: &str) -> String {
+    String::from_utf8(corpus::read(path)).expect("a sample is UTF-8")
+}
+
+/// The module `name` of `module_type`, whose source is `text`.
+pub fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
+    ModuleSource {
+        name: name.to_owned(),
+        module_type,
+        text: text.to_owned(),
+    }
+}
+
+/// The report of `modules` as a text file, checked against the report schema.
+pub fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
+    checked(analyze_modules(modules, "Book.bas", &options()))
+}
+
+/// The modules of the VBA project of `file`.
+pub fn modules(file: &FileReport) -> &[ModuleReport] {
+    &file.vba_project.as_ref().expect("a VBA project").modules
+}
+
+/// The procedures of every module of `file`.
+pub fn procedures(file: &FileReport) -> impl Iterator<Item = &ProcedureReport> {
+    modules(file).iter().flat_map(|module| &module.procedures)
+}
+
+/// The only module of `file`.
+pub fn module(file: &FileReport) -> &ModuleReport {
+    let modules = modules(file);
+    assert_eq!(modules.len(), 1);
+    modules.first().expect("one module")
 }
