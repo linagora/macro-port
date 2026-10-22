@@ -575,7 +575,7 @@
           "items": {
             "$ref": "#/$defs/family_score"
           },
-          "description": "Aggregated over procedures (sum of scores)."
+          "description": "Aggregated over procedures (sum of scores), and over the code of modules that have no procedure."
         },
         "max_severity": {
           "oneOf": [
