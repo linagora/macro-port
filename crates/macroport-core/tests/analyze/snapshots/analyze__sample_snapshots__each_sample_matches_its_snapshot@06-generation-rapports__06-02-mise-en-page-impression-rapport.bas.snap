@@ -10,7 +10,7 @@ traits: compile_error_suspected
 file: loc=117 logical_loc=82 procedures=2 cyclomatic=7 cyclomatic_total=8 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 06-02-mise-en-page-impression-rapport (standard): loc=117 logical_loc=82 procedures=2 cyclomatic=7 cyclomatic_total=8 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub editReportNew public lines 9-75: loc=67 logical_loc=45 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 external_dependencies=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=editingProperties apis=15
+  sub editReportNew public lines 9-75: loc=67 logical_loc=45 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 external_dependencies=0 traits=compile_error_suspected entry_point=true event_handler=false possibly_unused=false calls=editingProperties apis=15
     api ActiveWorkbook.Worksheets.Count*1
     api Application.Match*1
     api Application.ScreenUpdating*4
@@ -26,7 +26,7 @@ module 06-02-mise-en-page-impression-rapport (standard): loc=117 logical_loc=82 
     api Worksheets.Name*2
     api WS.Name*3
     api WS.PrintOut*1
-  sub editingProperties private lines 77-117: loc=41 logical_loc=36 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=31
+  sub editingProperties private lines 77-117: loc=41 logical_loc=36 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=31
     api ActiveWindow.Split*1
     api Application.ActiveSheet*1
     api Application.InchesToPoints*6

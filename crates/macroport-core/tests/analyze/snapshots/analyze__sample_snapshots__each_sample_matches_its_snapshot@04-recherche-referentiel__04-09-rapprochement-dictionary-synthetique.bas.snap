@@ -10,7 +10,7 @@ traits: none
 file: loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 04-09-rapprochement-dictionary-synthetique (standard): loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub RapprocherPaieEtRH public lines 12-60: loc=49 logical_loc=43 cyclomatic=7 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=23
+  sub RapprocherPaieEtRH public lines 12-60: loc=49 logical_loc=43 cyclomatic=7 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=23
     api Application.DisplayAlerts*2
     api CreateObject:Scripting.Dictionary*1
     api CStr*2

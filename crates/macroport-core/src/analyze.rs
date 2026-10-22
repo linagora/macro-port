@@ -59,7 +59,7 @@
 //! | `vba.too_much_code` | `too_large` | a module would take the statements of the file past what the rule engine may read |
 //! | `vba.statement.too_deep` | `unchanged` | a module has statements nested too deep to be read in full; the rest of each is read flat |
 //! | `vba.apis.left_out` | `unchanged` | procedures of a module use more APIs than a list holds, or than the lists of the file may take together; their `apis` are left out |
-//! | `vba.calls.left_out` | `unchanged` | procedures of the file have no list of calls, since the call graph passed a bound or a procedure calls more procedures than a list holds; their `calls` are left out |
+//! | `vba.calls.left_out` | `unchanged` | procedures of the file have no list of calls, since the call graph passed a bound or a procedure calls more procedures than a list holds; their `calls` are left out, and their `possibly_unused` too when the graph passed a bound |
 //!
 //! The message of an error about a module starts with `module <name>:`. That of
 //! `vba.calls.left_out` is about the file, and names the module of the first

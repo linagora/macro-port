@@ -6,12 +6,12 @@ families/05-formulaires-saisie/05-01-formulaire-pressing-employes.frm
 status: ok
 container: text_module
 errors: none
-traits: none
+traits: possibly_unused
 file: loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 forms=1 declare_count=0 external_dependencies=0
 module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 procedures=79 cyclomatic=31 cyclomatic_total=294 max_nesting=8 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  property_let FormDataEnabled public lines 45-53: loc=9 logical_loc=6 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  property_let FormDataMode public lines 54-103: loc=50 logical_loc=36 cyclomatic=7 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  property_let FormDataEnabled public lines 45-53: loc=9 logical_loc=6 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=possibly_unused entry_point=false event_handler=false possibly_unused=true calls=none apis=0
+  property_let FormDataMode public lines 54-103: loc=50 logical_loc=36 cyclomatic=7 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=5
     api Me.AddNewEmployeeBtnPressed.Enabled*5
     api Me.AddNewItemBtnPressed.Enabled*5
     api Me.AdminModeBtnPressed.Enabled*5
@@ -30,14 +30,14 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.ReturnDate1.Enabled*1
     api Me.SubTotal1.Enabled*1
     api Me.UnitPrice1.Enabled*1
-  function CollectionDate public lines 124-143: loc=20 logical_loc=14 cyclomatic=5 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function CollectionDate public lines 124-143: loc=20 logical_loc=14 cyclomatic=5 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=1
     api CDate*5
-  sub GenerateOrderNo private lines 144-159: loc=16 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub GenerateOrderNo private lines 144-159: loc=16 logical_loc=13 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=4
     api CDate*1
     api Format*1
     api Me.OrderNo.Value*2
     api wsSettings.Range.Value*4
-  sub UserForm_Initialize private lines 213-235: loc=23 logical_loc=15 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CollectionDate apis=14
+  sub UserForm_Initialize private lines 213-235: loc=23 logical_loc=15 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=true possibly_unused=false calls=CollectionDate apis=14
     api Application.Visible*1
     api EmployeeDropDownList.List*1
     api Format*3
@@ -52,7 +52,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsAdmin.Visible*1
     api wsSettings.Range.End*2
     api wsSettings.Range.Value*3
-  sub FillInItemsToClean private lines 236-268: loc=33 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  sub FillInItemsToClean private lines 236-268: loc=33 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=5
     api cmb.List*1
     api Me.Controls*1
     api PositionTitle.Value*2
@@ -68,7 +68,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsSettings.Range.Cells.Find*1
     api wsSettings.Range.End*1
     api wsSettings.Range.Value*1
-  sub UpdateEmployeeItemsToClean private lines 285-410: loc=126 logical_loc=109 cyclomatic=31 max_nesting=8 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  sub UpdateEmployeeItemsToClean private lines 285-410: loc=126 logical_loc=109 cyclomatic=31 max_nesting=8 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=6
     api Controls.Enabled*20
     api Controls.Value*25
     api ctl.Tag*5
@@ -105,14 +105,14 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api NewEmployeeLastNameLbl.ForeColor*1
     api NewEmployeePosition.BackColor*1
     api NewEmployeePositionLbl.ForeColor*1
-  function UniqueEmployeeNames private lines 468-482: loc=15 logical_loc=11 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  function UniqueEmployeeNames private lines 468-482: loc=15 logical_loc=11 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=6
     api Application.WorksheetFunction.Proper*1
     api NewEmployeeFirstName.Value*1
     api NewEmployeeLastName.Value*1
     api wsSettings.Range.End.Row*1
     api wsSettings.Range.Value*1
     api wsSettings.Rows.Count*1
-  function EverythingFilledIn private lines 483-523: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  function EverythingFilledIn private lines 483-523: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=12
     api cmb.BackColor*1
     api cmb.Value*1
     api Controls.ForeColor*2
@@ -125,7 +125,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api NewEmployeeMessageErrorLbl.Caption*2
     api txt.BackColor*1
     api txt.Value*1
-  sub AddEmployeeToList private lines 524-541: loc=18 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CreateNewEmployeeSheet,sheetExists apis=9
+  sub AddEmployeeToList private lines 524-541: loc=18 logical_loc=12 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=CreateNewEmployeeSheet,sheetExists apis=9
     api Application.WorksheetFunction.Proper*2
     api Me.NewEmployeeFirstName.Value*1
     api Me.NewEmployeeLastName.Value*1
@@ -135,7 +135,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsSettings.Range.End.Row*1
     api wsSettings.Range.Value*2
     api wsSettings.Rows.Count*1
-  sub CreateNewEmployeeSheet private lines 542-554: loc=13 logical_loc=10 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
+  sub CreateNewEmployeeSheet private lines 542-554: loc=13 logical_loc=10 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=7
     api Me.CurrentDate.Value*1
     api Me.NewEmployeeFirstName.Value*2
     api Me.NewEmployeeLastName.Value*2
@@ -143,9 +143,9 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api WS.Name*1
     api WS.Range.Value*4
     api wsTemplate.Copy*1
-  function sheetExists private lines 555-565: loc=11 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function sheetExists private lines 555-565: loc=11 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=1
     api Sheet.Name*1
-  sub ActivateSheet default lines 566-569: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=recorded_macro,trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub ActivateSheet default lines 566-569: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=recorded_macro,trivial entry_point=false event_handler=false possibly_unused=false calls=none apis=1
     api Worksheets.Activate*1
   sub NewEmployeeCancelBtn_Click private lines 571-587: loc=17 logical_loc=14 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FormDataMode apis=12
     api Me.ForeColor*3
@@ -186,7 +186,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.RemoveEmployeeDropDownList.Value*2
     api Me.RemoveEmployeeFrame.Visible*1
     api Me.RemoveEmployeePosition.Value*1
-  function EverythingFilledInRemoveEmployee private lines 633-673: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  function EverythingFilledInRemoveEmployee private lines 633-673: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=12
     api cmb.BackColor*1
     api cmb.Value*1
     api Controls.ForeColor*2
@@ -199,7 +199,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api RemoveEmployeeFrame.Controls*1
     api txt.BackColor*1
     api txt.Value*1
-  sub RemoveEmployeeFromList private lines 674-692: loc=19 logical_loc=13 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+  sub RemoveEmployeeFromList private lines 674-692: loc=19 logical_loc=13 cyclomatic=3 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=8
     api CStr*2
     api Len*2
     api RemoveEmployeeDropDownList.Text*1
@@ -222,7 +222,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.AddNewItemPosition.SetFocus*1
     api Me.NewItemFrame.Visible*1
   sub AddNewItemPosition_DropButtonClick private lines 714-717: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
-  sub UniquePositionTitle private lines 718-748: loc=31 logical_loc=23 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
+  sub UniquePositionTitle private lines 718-748: loc=31 logical_loc=23 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=13
     api AddNewItemPosition.List*1
     api Application.Match*1
     api CreateObject:scripting.dictionary*1
@@ -246,7 +246,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.AddNewItemMsgLbl.Caption*2
     api Me.ForeColor*1
     api Me.NewItemFrame.Visible*1
-  function EverythingFilledInItem private lines 773-813: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=12
+  function EverythingFilledInItem private lines 773-813: loc=41 logical_loc=35 cyclomatic=10 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=12
     api AddNewItemMsgLbl.Caption*2
     api cmb.BackColor*1
     api cmb.Value*1
@@ -272,14 +272,14 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api AddNewItemLbl.ForeColor*1
     api AddNewItemMsgLbl.Caption*1
     api Me.ForeColor*1
-  sub AddNewItemsToList private lines 834-856: loc=23 logical_loc=21 cyclomatic=10 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  sub AddNewItemsToList private lines 834-856: loc=23 logical_loc=21 cyclomatic=10 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=6
     api AddNewItem.Value*5
     api AddNewItemPosition.Value*8
     api Application.WorksheetFunction.Proper*5
     api Range.Value*5
     api wsSettings.Range.End.Row*5
     api wsSettings.Rows.Count*5
-  function UniqueItemNames private lines 857-888: loc=32 logical_loc=27 cyclomatic=11 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  function UniqueItemNames private lines 857-888: loc=32 logical_loc=27 cyclomatic=11 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=6
     api AddNewItem.Value*1
     api AddNewItemPosition.Value*8
     api Application.WorksheetFunction.Proper*1
@@ -301,7 +301,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.RemoveItemPosition.SetFocus*1
   sub RemoveItemPosition_DropButtonClick private lines 910-913: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
   sub RemoveItem_DropButtonClick private lines 914-917: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=SelectItemFromDropDownList apis=0
-  sub SelectItemFromDropDownList private lines 918-947: loc=30 logical_loc=25 cyclomatic=9 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
+  sub SelectItemFromDropDownList private lines 918-947: loc=30 logical_loc=25 cyclomatic=9 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=7
     api RemoveItem.List*1
     api RemoveItemPosition.Value*8
     api Rows.Count*1
@@ -309,7 +309,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsSettings.Range.End.Row*5
     api wsSettings.Range.Value*1
     api wsSettings.Rows.Count*5
-  sub RemoveItemFromList private lines 948-986: loc=39 logical_loc=30 cyclomatic=11 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
+  sub RemoveItemFromList private lines 948-986: loc=39 logical_loc=30 cyclomatic=11 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=13
     api CStr*2
     api RemoveItem.List*1
     api RemoveItem.Text*1
@@ -333,7 +333,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api RemoveItemPosition.BackColor*1
     api RemoveItemPosition.Value*1
     api RemoveItemPositionLbl.ForeColor*1
-  function EverythingFilledInRemoveItem private lines 1011-1038: loc=28 logical_loc=23 cyclomatic=6 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
+  function EverythingFilledInRemoveItem private lines 1011-1038: loc=28 logical_loc=23 cyclomatic=6 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=9
     api cmb.BackColor*1
     api cmb.SetFocus*1
     api cmb.Value*1
@@ -410,7 +410,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api AdminModeNewUserProfileLbl.ForeColor*1
     api Me.AdminModeNewUserProfile*1
     api Me.ForeColor*1
-  sub LoginUser private lines 1161-1227: loc=67 logical_loc=51 cyclomatic=9 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=20
+  sub LoginUser private lines 1161-1227: loc=67 logical_loc=51 cyclomatic=9 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=20
     api AdminModeAdminName.SetFocus*1
     api AdminModeAdminName.Text*1
     api AdminModePassword.SetFocus*1
@@ -431,7 +431,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api UCase*3
     api wsAdmin.Activate*1
     api wsAdmin.Visible*4
-  sub AddUserProfile private lines 1228-1241: loc=14 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=isUniqueUser apis=9
+  sub AddUserProfile private lines 1228-1241: loc=14 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=isUniqueUser apis=9
     api AdminModeNewUserProfile.Value*1
     api Me.AdminModeNewUserProfile.Value*1
     api Rows.Count*1
@@ -441,9 +441,9 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsAdmin.Range.End.Row*1
     api wsAdmin.Range.Offset.Value*2
     api wsAdmin.Rows.Count*1
-  function isUniqueUser default lines 1242-1245: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function isUniqueUser default lines 1242-1245: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=false event_handler=false possibly_unused=false calls=none apis=1
     api Application.Match*1
-  function EverythingFilledInAdminMode private lines 1246-1280: loc=35 logical_loc=28 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
+  function EverythingFilledInAdminMode private lines 1246-1280: loc=35 logical_loc=28 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=10
     api AdminModeFrame.Controls*1
     api AdminModeMessageLbl.Caption*1
     api Controls.ForeColor*1
@@ -467,7 +467,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.AdminModePassword.Value*1
     api Me.AdminModePasswordLbl.ForeColor*1
     api Me.ForeColor*3
-  sub FillingInForm private lines 1299-1379: loc=81 logical_loc=73 cyclomatic=18 max_nesting=7 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=11
+  sub FillingInForm private lines 1299-1379: loc=81 logical_loc=73 cyclomatic=18 max_nesting=7 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=11
     api Controls.Enabled*9
     api Controls.Text*1
     api Controls.Value*13
@@ -492,13 +492,13 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
   sub Item11_AfterUpdate private lines 1410-1412: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
   sub Item12_AfterUpdate private lines 1413-1415: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
   sub Item13_AfterUpdate private lines 1416-1418: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub EnabledItemsToClean private lines 1419-1468: loc=50 logical_loc=46 cyclomatic=16 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub EnabledItemsToClean private lines 1419-1468: loc=50 logical_loc=46 cyclomatic=16 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=false event_handler=false possibly_unused=false calls=none apis=4
     api Controls.Enabled*9
     api Controls.Value*4
     api ctl.Tag*5
     api ItemsListFrame.Controls*1
   sub UnitPrice1_AfterUpdate private lines 1469-1472: loc=4 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub UpdateSubTotal private lines 1473-1495: loc=23 logical_loc=19 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub UpdateSubTotal private lines 1473-1495: loc=23 logical_loc=19 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=possibly_unused entry_point=false event_handler=false possibly_unused=true calls=none apis=4
     api Controls.Enabled*5
     api Controls.Value*1
     api ctl.Tag*1
@@ -506,7 +506,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
   sub SaveBtnPressed_Click private lines 1497-1502: loc=6 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FillingInForm apis=1
     api ThisWorkbook.Save*1
   sub CloseEntireFormBtnPressed_Click private lines 1503-1507: loc=5 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub UserForm_Terminate private lines 1508-1522: loc=15 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  sub UserForm_Terminate private lines 1508-1522: loc=15 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=true possibly_unused=false calls=none apis=3
     api ThisWorkbook.Save*2
     api Windows.Close*2
     api Workbooks.Count*1

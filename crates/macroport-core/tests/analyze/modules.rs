@@ -515,13 +515,15 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
 }
 
 #[test]
-fn the_fields_that_no_stage_fills_yet_are_left_out_not_made_up() {
+fn a_procedure_that_a_button_can_run_is_an_entry_point_and_is_not_possibly_unused() {
     let file = report_of(HELLO);
 
+    // The graph judges the project once it is read, and the rule engine tells
+    // which procedures the host starts (see `entry_points`).
     let hello = &module(&file).procedures[0];
-    assert_eq!(hello.is_entry_point, None);
-    assert_eq!(hello.is_event_handler, None);
-    assert_eq!(hello.possibly_unused, None);
+    assert_eq!(hello.is_entry_point, Some(true));
+    assert_eq!(hello.is_event_handler, Some(false));
+    assert_eq!(hello.possibly_unused, Some(false));
 }
 
 /// A module that declares, outside any procedure, three `Declare` statements

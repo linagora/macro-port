@@ -6,11 +6,11 @@ families/08-fonctions-personnalisees/08-04-udf-somme-cellules-visibles.bas
 status: ok
 container: text_module
 errors: none
-traits: none
+traits: possibly_unused
 file: loc=19 logical_loc=10 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 08-04-udf-somme-cellules-visibles (standard): loc=19 logical_loc=10 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  function SumOnlyVisible private lines 7-19: loc=13 logical_loc=10 cyclomatic=4 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  function SumOnlyVisible private lines 7-19: loc=13 logical_loc=10 cyclomatic=4 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=possibly_unused entry_point=false event_handler=false possibly_unused=true calls=none apis=5
     api Application.Volatile*1
     api r.Cells*1
     api rCell.Columns.Hidden*1

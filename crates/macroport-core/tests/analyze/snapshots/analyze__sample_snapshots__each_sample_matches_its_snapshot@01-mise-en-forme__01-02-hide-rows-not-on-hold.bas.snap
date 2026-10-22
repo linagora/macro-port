@@ -10,7 +10,7 @@ traits: none
 file: loc=42 logical_loc=21 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 01-02-hide-rows-not-on-hold (standard): loc=42 logical_loc=21 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub TN_GL_hold default lines 7-42: loc=36 logical_loc=21 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  sub TN_GL_hold default lines 7-42: loc=36 logical_loc=21 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=5
     api hideRng.EntireRow.Hidden*1
     api Sheet2.Cells.End.Row*1
     api Sheet2.Cells.EntireRow.Hidden*1

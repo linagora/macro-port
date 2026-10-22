@@ -10,11 +10,11 @@ traits: none
 file: loc=34 logical_loc=24 procedures=2 cyclomatic=3 cyclomatic_total=5 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 08-03-udf-cle-controle-upc (standard): loc=34 logical_loc=24 procedures=2 cyclomatic=3 cyclomatic_total=5 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  function CalculateCheckDigitUPC default lines 9-23: loc=15 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+  function CalculateCheckDigitUPC default lines 9-23: loc=15 logical_loc=14 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=3
     api CInt*1
     api Len*1
     api Mid*1
-  sub GenerateCheckDigit default lines 24-34: loc=11 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CalculateCheckDigitUPC apis=2
+  sub GenerateCheckDigit default lines 24-34: loc=11 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=CalculateCheckDigitUPC apis=2
     api cell.Offset.value*1
     api cell.value*1
 parse:

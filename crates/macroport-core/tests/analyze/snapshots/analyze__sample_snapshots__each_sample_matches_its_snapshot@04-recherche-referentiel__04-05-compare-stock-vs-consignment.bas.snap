@@ -10,7 +10,7 @@ traits: none
 file: loc=157 logical_loc=92 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=5 forms=0 declare_count=0 external_dependencies=0
 module 04-05-compare-stock-vs-consignment (standard): loc=157 logical_loc=92 procedures=1 cyclomatic=19 cyclomatic_total=19 max_nesting=5 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub ComparingFrozenReportWithConsReport default lines 7-157: loc=151 logical_loc=92 cyclomatic=19 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=30
+  sub ComparingFrozenReportWithConsReport default lines 7-157: loc=151 logical_loc=92 cyclomatic=19 max_nesting=5 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=30
     api ActiveSheet.Name*3
     api allOnHandList.Columns.Count*1
     api allOnHandListResult.Cells.value*6

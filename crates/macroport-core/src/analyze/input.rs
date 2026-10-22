@@ -36,8 +36,13 @@
 //!   reader reads the rest of such a statement flat, so the statement has no
 //!   ProgID and no mark of obfuscation past that point.
 //!
-//! What the front end does not read yet is left empty, not guessed: the
-//! predicate `possibly_unused`.
+//! Two things are left empty, not guessed. The predicate `possibly_unused` is
+//! the call graph's, which answers once every module of the file is read, so the
+//! caller sets it before the engine runs. The controls of a form are those of its
+//! designer, which M1 does not read ([`ModuleInput::controls`]): the engine takes
+//! a procedure named after a control for no event handler, and the caller does
+//! not take its word for it (`Start::Unknown` in the `starts` submodule of
+//! `modules`).
 //!
 //! The facts of a statement weigh a few dozen times its text, and only the text
 //! of the file bounds how many statements it holds. The engine keeps what it

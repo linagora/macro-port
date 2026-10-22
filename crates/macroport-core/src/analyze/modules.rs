@@ -21,14 +21,24 @@
 //! be read of a file is judged whatever else went wrong with it, and when the
 //! extraction raised a container indicator, so that its signal is made.
 //!
-//! The entry points are not read yet: what depends on them is left out, since a
-//! missing value is not a zero (see [`input`](super::input)). The calls do not
-//! depend on them: the call graph is fed, and the `calls` of the procedures
-//! follow from it (ADR-0012), as their `apis` do from the statements
-//! (ADR-0011). The external dependencies are not such a field either: the
-//! ProgIDs of the statements and the calls to the routines that a module
-//! declares are read, so the report counts them for the procedures and, when the
-//! file has a project, for the file.
+//! The call graph is fed as the modules are read, and answers once the last one
+//! is: the `calls` of the procedures follow from it (ADR-0012), as their `apis`
+//! do from the statements (ADR-0011), and so do their entry points and
+//! `possibly_unused`. The graph is told which procedures the host starts by
+//! itself, the event handlers and the auto-exec procedures, as the rule engine
+//! decides them from the names (the `starts` submodule); `is_event_handler` is
+//! the engine's answer too. The engine reads `possibly_unused` back from the
+//! graph, as the structural predicate of that name, once every module is read
+//! and before it runs. A value that the graph cannot give is left out of the
+//! report, since a missing value is not a zero, and is false for the engine. So
+//! is a value that the engine cannot give: the controls of a form or a sheet are
+//! those of the designer, which nothing reads, so for a procedure that may
+//! handle the event of a control the engine says that it is no handler, and the
+//! graph that nothing calls it, whereas a button may (`Start::Unknown`). The
+//! external dependencies are not such a field: the ProgIDs of the statements and
+//! the calls to the routines that a module declares are read, so the report
+//! counts them for the procedures and, when the file has a project, for the
+//! file.
 //!
 //! The statements of a module are read twice for now: by the adapter, which keeps
 //! what the rule engine reads of them, the ProgIDs of the procedures among it,
@@ -49,20 +59,24 @@
 //! answers only once every module is read, and only if every module was. One
 //! that has no source, that a budget or the room of the rule engine refuses or
 //! whose source is suspected to be lost leaves it unable to say what any
-//! procedure calls, and then the `calls` of all the procedures of the file are
-//! left out (ADR-0012); the module has its own error or signal, and the file says
-//! nothing more. A bound of the graph leaves lists out too, one that is too long
-//! to keep among them, and then the file lists one error for the procedures that
-//! have none (`vba.calls.left_out`).
+//! procedure calls or whether one is used, and then the `calls` and the
+//! `possibly_unused` of all the procedures of the file are left out (ADR-0012),
+//! whereas the entry points, which do not depend on what was read, stay; the
+//! module has its own error or signal, and the file says nothing more. A bound
+//! of the graph leaves lists out too, one that is too long to keep among them,
+//! or everything when it is the graph's own, and then the file lists one error
+//! for the procedures that have no list (`vba.calls.left_out`).
 //!
 //! Nothing here executes or evaluates anything from the file.
 
 mod apis;
+mod starts;
 mod statements;
 mod text;
 mod text_file;
 
 use self::apis::{FileApis, MAX_API_MIB, MAX_APIS};
+use self::starts::{Starts, mark_possibly_unused, put_links};
 use self::statements::{ExternalProgids, Statements, TooDeep};
 use super::apply::apply;
 use super::input::{Adapted, Measured, Room, adapt};
@@ -76,8 +90,8 @@ use crate::report::{
 use crate::rules::RuleSet;
 use crate::vba::{
     CallGraph, Declaration, DeclarationKind, MAX_NESTING, ModuleId, OptionKind, ParsedModule,
-    Procedure, ProcedureLinks, ProcedureMeasure, SourceLines, VbaError, file_metrics,
-    measure_procedure, module_metrics, parse, split_lines,
+    Procedure, ProcedureMeasure, SourceLines, VbaError, file_metrics, measure_procedure,
+    module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -192,6 +206,9 @@ struct Front<'r> {
     inputs: Vec<ModuleInput>,
     /// What was measured of each of them, in the same order.
     measured: Vec<Measured>,
+    /// What the host starts among the procedures of each of them, in the same
+    /// order: none for a module that was not read.
+    starts: Vec<Starts>,
     /// The ProgIDs that the statements of the modules read so far pass to
     /// `CreateObject` and `GetObject`, those that count as external
     /// dependencies.
@@ -221,6 +238,7 @@ impl<'r> Front<'r> {
             room: Room::of_a_file(),
             inputs: Vec::new(),
             measured: Vec::new(),
+            starts: Vec::new(),
             external_progids: ExternalProgids::default(),
             file_apis: FileApis::new(rules),
             graph: CallGraph::new(),
@@ -250,19 +268,20 @@ impl<'r> Front<'r> {
     fn keep(&mut self, module: &mut ModuleReport, analysed: Option<Result<Analysis, VbaError>>) {
         let filled =
             analysed.map(|result| result.and_then(|analysis| self.fill(module, &analysis)));
-        let adapted = match filled {
-            Some(Ok(adapted)) => adapted,
+        let (adapted, starts) = match filled {
+            Some(Ok(kept)) => kept,
             Some(Err(error)) => {
                 self.fail(&module.name, error);
-                Adapted::unread(&module.name, module.module_type)
+                not_read(module)
             }
             None => {
                 self.skip();
-                Adapted::unread(&module.name, module.module_type)
+                not_read(module)
             }
         };
         self.inputs.push(adapted.input);
         self.measured.push(adapted.measured);
+        self.starts.push(starts);
     }
 
     /// Keeps, for the file, why the module called `name` was not read, and
@@ -308,18 +327,22 @@ impl<'r> Front<'r> {
     }
 
     /// Puts what `analysis` shows of a module into its report: its procedures
-    /// with their spans, metrics and APIs, the metrics of the module, and its
-    /// declarations. What the rule engine decides is left for
-    /// [`seal`](Self::seal), and so are the dependencies of the procedures,
-    /// which need the routines that the other modules declare. What its
-    /// statements show goes to the file: the ProgIDs, the calls (the graph tells
-    /// them in [`Front::seal`], once every module is read), a warning for the
-    /// statements that nest too deep to be read, and one for the procedures whose
-    /// list of APIs passed a bound. Fails, and leaves the report, the graph and
-    /// the file alone, when what the engine reads of the module does not fit in
-    /// the room that is left: the module is not read, and its statements tell the
-    /// file nothing. The caller then gives the module its place in the call graph
-    /// as one that was not read ([`Front::fail`]).
+    /// with their spans, metrics and APIs, whether the engine takes each for an
+    /// event handler (none for one that may handle the event of a control that
+    /// was not read), the metrics of the module, and its declarations. Gives
+    /// back what the engine reads of the module, and what the host starts among
+    /// its procedures, which [`Front::seal`] needs. What the rule engine decides
+    /// is left for [`seal`](Self::seal), and so are the dependencies of the
+    /// procedures, which need the routines that the other modules declare. What
+    /// its statements show goes to the file: the ProgIDs, the calls, the entry
+    /// points and the procedures that nothing uses (the graph tells them in
+    /// [`Front::seal`], once every module is read), a warning for the statements
+    /// that nest too deep to be read, and one for the procedures whose list of
+    /// APIs passed a bound. Fails, and leaves the report, the graph and the file
+    /// alone, when what the engine reads of the module does not fit in the room
+    /// that is left: the module is not read, and its statements tell the file
+    /// nothing. The caller then gives the module its place in the call graph as
+    /// one that was not read ([`Front::fail`]).
     ///
     /// Three things show that code did not parse cleanly (the predicate
     /// `parse_recovered`, SPEC M2 item 6): the parser stepped over something,
@@ -332,9 +355,10 @@ impl<'r> Front<'r> {
         &mut self,
         module: &mut ModuleReport,
         analysis: &Analysis,
-    ) -> Result<Adapted, VbaError> {
+    ) -> Result<(Adapted, Starts), VbaError> {
         let mut adapted = adapt(&module.name, module.module_type, analysis, &mut self.room)?;
-        let id = self.place_in_graph(module, analysis);
+        let starts = Starts::of(&adapted.input);
+        let id = self.place_in_graph(module, analysis, &starts);
         let mut statements = Statements::read(
             analysis,
             &mut self.external_progids,
@@ -346,7 +370,11 @@ impl<'r> Front<'r> {
         let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
         module.procedures = (found.enumerate())
             .map(|(index, (procedure, measure))| {
-                procedure_report(procedure, measure, statements.take_apis(index))
+                let apis = statements.take_apis(index);
+                ProcedureReport {
+                    is_event_handler: starts.at(index).is_event_handler(),
+                    ..procedure_report(procedure, measure, apis)
+                }
             })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
@@ -363,31 +391,38 @@ impl<'r> Front<'r> {
             self.warnings
                 .push(apis_left_out_error(&module.name, left_out));
         }
-        Ok(adapted)
+        Ok((adapted, starts))
     }
 
-    /// Gives `module` its place in the call graph. One whose source is
-    /// suspected to be lost has procedures that are compiled, out of sight, and
-    /// the graph cannot tell what they call: it takes the module for one that
-    /// was not read. No procedure is given as started by the host: the rule
-    /// engine decides that, and the calls do not depend on it.
-    fn place_in_graph(&mut self, module: &ModuleReport, analysis: &Analysis) -> ModuleId {
+    /// Gives `module` its place in the call graph, told which of its procedures
+    /// the host starts by itself. One whose source is suspected to be lost has
+    /// procedures that are compiled, out of sight, and the graph cannot tell
+    /// what they call: it takes the module for one that was not read.
+    fn place_in_graph(
+        &mut self,
+        module: &ModuleReport,
+        analysis: &Analysis,
+        starts: &Starts,
+    ) -> ModuleId {
         if module.source_missing_suspected == Some(true) {
             return self.skip();
         }
-        (self.graph).add_module(module.module_type, &analysis.module.procedures, &[])
+        let started = starts.started();
+        (self.graph).add_module(module.module_type, &analysis.module.procedures, &started)
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
     /// the file follow from those of its modules and of their procedures and
     /// from the ProgIDs of their statements, the procedures get their external
-    /// dependencies ([`report_dependencies`]), the calls of the procedures follow
-    /// from the call graph (with an error for the lists that a bound of the graph
-    /// leaves out), the rule engine decides the families, the signals, the
-    /// traits and the level, the errors of the front end join those of the
-    /// extraction, and the status follows from the procedures. `indicators` are
-    /// the ids of the container indicators that extraction raised: the engine
-    /// makes their signals.
+    /// dependencies ([`report_dependencies`]), the call graph answers (with an
+    /// error for the lists that a bound of the graph leaves out) and gives the
+    /// procedures their calls, their entry points and whether they are possibly
+    /// unused, the last of which the engine reads too ([`mark_possibly_unused`]),
+    /// the rule engine decides the families, the signals, the traits and the
+    /// level, the errors of the front end join those of the extraction, and the
+    /// status follows from the procedures. `indicators` are the ids of the
+    /// container indicators that extraction raised: the engine makes their
+    /// signals.
     ///
     /// The engine runs when a module was read, whatever the status of the file:
     /// a file of which some modules could not be read is judged on the others.
@@ -404,8 +439,9 @@ impl<'r> Front<'r> {
     fn seal(self, file: &mut FileReport, indicators: &[&str]) {
         let Self {
             rules,
-            inputs,
+            mut inputs,
             measured,
+            starts,
             external_progids,
             graph,
             unread,
@@ -414,6 +450,9 @@ impl<'r> Front<'r> {
             ..
         } = self;
         let links = graph.resolve();
+        // The graph judges every procedure or none (ADR-0012).
+        let unused_judged = (links.iter().flatten()).any(|links| links.possibly_unused.is_some());
+        mark_possibly_unused(&mut inputs, &links, &starts);
         let project = ProjectInput {
             references: (file.vba_project.as_ref())
                 .and_then(|project| project.references.clone())
@@ -445,10 +484,10 @@ impl<'r> Front<'r> {
         }
         let mut calls_left_out = None;
         if let Some(project) = file.vba_project.as_mut() {
-            put_calls(&mut project.modules, links);
+            put_links(&mut project.modules, links, &starts);
             // A module that was not read is why the lists are left out, and it has
             // its own error or signal: the file says nothing more of them.
-            calls_left_out = CallsLeftOut::of(&project.modules).filter(|_| !unread);
+            calls_left_out = CallsLeftOut::of(&project.modules, unused_judged).filter(|_| !unread);
         }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(failures.into_iter().map(|failure| failure.error));
@@ -457,16 +496,11 @@ impl<'r> Front<'r> {
     }
 }
 
-/// Puts the calls that the call graph found into the procedures of `modules`.
-/// `links` has the modules of the file in their order, and for each of them its
-/// procedures in theirs. A procedure that the graph has no answer for keeps its
-/// `calls` as `None`.
-fn put_calls(modules: &mut [ModuleReport], links: Vec<Vec<ProcedureLinks>>) {
-    for (module, links) in modules.iter_mut().zip(links) {
-        for (procedure, links) in module.procedures.iter_mut().zip(links) {
-            procedure.calls = links.calls;
-        }
-    }
+/// What the engine reads of a module that was not read, and what the host starts
+/// among its procedures: nothing.
+fn not_read(module: &ModuleReport) -> (Adapted, Starts) {
+    let adapted = Adapted::unread(&module.name, module.module_type);
+    (adapted, Starts::default())
 }
 
 /// Adds to the input of the rule engine the cause of the predicate
@@ -553,12 +587,19 @@ struct CallsLeftOut {
     module: String,
     /// The line where the first starts.
     first_line: u32,
+    /// Whether `possibly_unused` is left out of them too: the graph passed a
+    /// bound of its own and judged no procedure, whereas a list that is too long
+    /// to keep leaves out that list alone.
+    possibly_unused_too: bool,
 }
 
 impl CallsLeftOut {
     /// The procedures among those of `modules` that have no `calls`, if there are
-    /// any.
-    fn of(modules: &[ModuleReport]) -> Option<Self> {
+    /// any. `unused_judged` is whether the graph judged whether the procedures
+    /// are possibly unused, which it does for all or for none (a procedure that
+    /// may handle the event of a control has no `possibly_unused` for another
+    /// reason, and the error says nothing of it).
+    fn of(modules: &[ModuleReport], unused_judged: bool) -> Option<Self> {
         let procedures = modules.iter().flat_map(|module| {
             (module.procedures.iter()).map(move |procedure| (&module.name, procedure))
         });
@@ -568,28 +609,38 @@ impl CallsLeftOut {
             count: count(left_out.count()).saturating_add(1),
             module: module.clone(),
             first_line: first.start_line,
+            possibly_unused_too: !unused_judged,
         })
     }
 }
 
 /// The error of the file that tells of the procedures whose list of calls is left
-/// out, and why.
+/// out, and why. It tells of their `possibly_unused` too, when that is left out.
 fn calls_left_out_error(left_out: &CallsLeftOut) -> FileError {
     let CallsLeftOut {
         count,
         module,
         first_line,
+        possibly_unused_too,
     } = left_out;
-    let (procedures, start) = if *count == 1 {
-        ("procedure has", "it starts")
+    let (procedures, start, them) = if *count == 1 {
+        ("procedure has", "it starts", "it")
     } else {
-        ("procedures have", "the first starts")
+        ("procedures have", "the first starts", "them")
+    };
+    let unused = if *possibly_unused_too {
+        format!(
+            "; `possibly_unused` is left out of {them} too, since a procedure that nothing \
+             seems to call may be called from what the graph did not keep"
+        )
+    } else {
+        String::new()
     };
     let message = format!(
         "{count} {procedures} no list of calls ({start} at line {first_line} of module \
          {module}): the project has more names, references or calls than the call graph keeps, \
          or a procedure calls more procedures than a list holds, and a short list would read as \
-         a whole one"
+         a whole one{unused}"
     );
     FileError {
         code: CALLS_LEFT_OUT.to_owned(),
@@ -637,7 +688,10 @@ fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasur
 /// The report of a procedure, as far as its structure, its measure and its
 /// statements show it, with the `apis` that it uses, unless its list passed a
 /// bound. The fields that the rule engine decides hold what a procedure that no
-/// rule has scored has, until [`apply`] writes the findings.
+/// rule has scored has, until [`apply`] writes the findings. The fields that the
+/// call graph decides (`is_entry_point`, `possibly_unused`, `calls`) are left out
+/// until [`put_links`] writes them, and `is_event_handler` until [`Front::fill`]
+/// does, from what the engine takes for an event handler.
 fn procedure_report(
     procedure: &Procedure,
     measure: &ProcedureMeasure,
@@ -694,6 +748,7 @@ mod tests {
     use super::text::{text_extraction, text_module};
     use super::*;
     use crate::rules::{ModuleType, RulesSources};
+    use crate::vba::ProcedureLinks;
 
     fn rules() -> RuleSet {
         RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
@@ -731,6 +786,27 @@ mod tests {
     /// Whether `file` tells of procedures whose list of calls is left out.
     fn tells_of_calls_left_out(file: &FileReport) -> bool {
         (file.errors.iter().flatten()).any(|error| error.code == CALLS_LEFT_OUT)
+    }
+
+    /// The `is_entry_point` and the `possibly_unused` of the procedures of each
+    /// module of `file`.
+    fn judged_of(file: &FileReport) -> Vec<Vec<(Option<bool>, Option<bool>)>> {
+        let project = file.vba_project.as_ref().expect("a VBA project");
+        (project.modules.iter())
+            .map(|module| {
+                (module.procedures.iter())
+                    .map(|procedure| (procedure.is_entry_point, procedure.possibly_unused))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// What `judged_of` gives for `CALLER`, an empty module and `CALLED`: `A` and
+    /// `B` are public procedures with no parameter, which a button can run, so
+    /// they are entry points, and `unused` is the verdict of the graph on them.
+    fn judged_in_full(unused: Option<bool>) -> Vec<Vec<(Option<bool>, Option<bool>)>> {
+        let judged = vec![(Some(true), unused)];
+        vec![judged.clone(), Vec::new(), judged]
     }
 
     /// The calls of the procedure `A` of `CALLER`, and of `B` of `CALLED`, when
@@ -994,6 +1070,10 @@ mod tests {
         let unread = finished(reports(), sources(None));
         assert_eq!(calls_of(&unread), [vec![None], Vec::new(), vec![None]]);
         assert!(!tells_of_calls_left_out(&unread));
+        // The entry points do not depend on what was read, and whether a
+        // procedure is unused does.
+        assert_eq!(judged_of(&read), judged_in_full(Some(false)));
+        assert_eq!(judged_of(&unread), judged_in_full(None));
     }
 
     #[test]
@@ -1020,6 +1100,8 @@ mod tests {
         assert_eq!(calls_of(&seen), read_in_full());
         assert_eq!(calls_of(&lost), [vec![None], Vec::new(), vec![None]]);
         assert!(!tells_of_calls_left_out(&seen) && !tells_of_calls_left_out(&lost));
+        assert_eq!(judged_of(&seen), judged_in_full(Some(false)));
+        assert_eq!(judged_of(&lost), judged_in_full(None));
     }
 
     #[test]
@@ -1038,22 +1120,28 @@ mod tests {
         first.procedures = vec![report(0, Some(Vec::new())), report(1, None)];
         last.procedures = vec![report(2, None)];
 
+        // A list that is too long to keep leaves that list out, and the graph
+        // judged every procedure all the same.
         let expected = CallsLeftOut {
             count: 2,
             module: "First".to_owned(),
             first_line: 3,
+            possibly_unused_too: false,
         };
         assert_eq!(
-            CallsLeftOut::of(&[first.clone(), last.clone()]),
+            CallsLeftOut::of(&[first.clone(), last.clone()], true),
             Some(expected)
         );
         assert_eq!(
-            CallsLeftOut::of(&[first.clone()]).map(|left| left.count),
+            CallsLeftOut::of(&[first.clone()], true).map(|left| left.count),
             Some(1)
         );
+        // A graph that passed a bound of its own judged none.
+        let unjudged = CallsLeftOut::of(&[first.clone(), last], false);
+        assert_eq!(unjudged.map(|left| left.possibly_unused_too), Some(true));
         first.procedures.truncate(1);
-        assert_eq!(CallsLeftOut::of(&[first]), None);
-        assert_eq!(CallsLeftOut::of(&[]), None);
+        assert_eq!(CallsLeftOut::of(&[first], true), None);
+        assert_eq!(CallsLeftOut::of(&[], true), None);
     }
 
     #[test]
@@ -1064,6 +1152,7 @@ mod tests {
                 count,
                 module,
                 first_line,
+                possibly_unused_too: false,
             })
         };
 
@@ -1080,5 +1169,91 @@ mod tests {
             one.message
                 .ends_with("and a short list would read as a whole one")
         );
+    }
+
+    #[test]
+    fn the_error_for_lists_of_calls_left_out_tells_of_possibly_unused_when_that_is_left_out() {
+        let error = |count| {
+            calls_left_out_error(&CallsLeftOut {
+                count,
+                module: "Module1".to_owned(),
+                first_line: 7,
+                possibly_unused_too: true,
+            })
+        };
+
+        let one = error(1);
+        let two = error(2);
+
+        let reason = "since a procedure that nothing seems to call may be called from what the \
+                      graph did not keep";
+        let first = format!("; `possibly_unused` is left out of it too, {reason}");
+        assert!(one.message.ends_with(&first), "{}", one.message);
+        let second = format!("; `possibly_unused` is left out of them too, {reason}");
+        assert!(two.message.ends_with(&second), "{}", two.message);
+    }
+
+    #[test]
+    fn the_predicate_possibly_unused_is_the_graphs_and_false_when_nothing_judges() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        let text = "Private Sub A()\nEnd Sub\n\
+                    Private Sub B()\nEnd Sub\n\
+                    Private Sub Button1_Click()\nEnd Sub\n";
+        let mut report = text_module("Form1", ModuleType::Form, text);
+        front.read(&mut report, Some(text));
+        let judged = |possibly_unused| ProcedureLinks {
+            is_entry_point: false,
+            possibly_unused,
+            calls: None,
+        };
+        let links = [vec![judged(Some(true)), judged(None), judged(Some(true))]];
+
+        let mut inputs = front.inputs;
+        mark_possibly_unused(&mut inputs, &links, &front.starts);
+
+        // `B` was not judged. `Button1_Click` was, and it may be a handler.
+        let marks: Vec<_> = (inputs.iter().flat_map(|module| &module.procedures))
+            .map(|procedure| procedure.predicates.possibly_unused)
+            .collect();
+        assert_eq!(marks, [true, false, false]);
+    }
+
+    #[test]
+    fn the_links_of_the_graph_are_put_in_the_reports_but_for_what_is_unknown() {
+        let rules = rules();
+        let mut front = Front::new(&rules);
+        let text = "Private Sub A()\nEnd Sub\n\
+                    Private Sub Button1_Click()\nEnd Sub\n\
+                    Private Sub Button2_Click()\nEnd Sub\n";
+        let mut report = text_module("Form1", ModuleType::Form, text);
+        front.read(&mut report, Some(text));
+        let links = |is_entry_point, possibly_unused, calls: &[&str]| ProcedureLinks {
+            is_entry_point,
+            possibly_unused,
+            calls: Some(calls.iter().map(|name| (*name).to_owned()).collect()),
+        };
+        let all = vec![vec![
+            links(false, Some(true), &["B"]),
+            links(false, Some(true), &["A"]),
+            links(false, Some(false), &[]),
+        ]];
+
+        put_links(std::slice::from_mut(&mut report), all, &front.starts);
+
+        let flags = |procedure: &ProcedureReport| {
+            (
+                procedure.is_entry_point,
+                procedure.possibly_unused,
+                procedure.calls.clone(),
+            )
+        };
+        let found: Vec<_> = report.procedures.iter().map(flags).collect();
+        let a = (Some(false), Some(true), Some(vec!["B".to_owned()]));
+        // Nothing can tell whether the host starts the others, but their calls
+        // are known all the same, and so is that something calls the last.
+        let handler = (None, None, Some(vec!["A".to_owned()]));
+        let called = (None, Some(false), Some(Vec::new()));
+        assert_eq!(found, [a, handler, called]);
     }
 }
