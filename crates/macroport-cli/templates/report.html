@@ -1,0 +1,33 @@
+{#- SPDX-License-Identifier: Apache-2.0 -#}
+{#- The HTML report (see src/render/html.rs). The template applies no filter. Every expression is escaped except `style` and `data`, which the renderer marks as safe in Rust: the page's own style, and the report as JSON. A block tag that ends in `-%}` swallows its line break. -#}
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="{{ policy }}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ messages.text("html-title") }}</title>
+<link rel="icon" href="data:,">
+<style>{{ style }}</style>
+</head>
+<body>
+<header>
+<h1>{{ messages.text("html-title") }}</h1>
+<dl class="facts">
+<div><dt>{{ messages.text("html-generated") }}</dt><dd>{{ report.generated_at }}</dd></div>
+<div><dt>{{ messages.text("html-tool") }}</dt><dd>{{ report.tool.name }} {{ report.tool.version }}</dd></div>
+<div><dt>{{ messages.text("html-rules") }}</dt><dd>{{ report.tool.rules_version }}</dd></div>
+{% if !roots.is_empty() -%}
+<div><dt>{{ messages.text("html-scanned") }}</dt><dd><ul>{% for root in roots %}<li><code>{{ root }}</code></li>{% endfor %}</ul></dd></div>
+{% endif -%}
+{% if let Some(duration) = report.scan.duration_ms -%}
+<div><dt>{{ messages.text("html-duration") }}</dt><dd>{{ duration }} {{ messages.text("html-ms") }}</dd></div>
+{% endif -%}
+</dl>
+{% if report.redacted -%}
+<p class="notice">{{ messages.text("html-redacted") }}</p>
+{% endif -%}
+</header>
+<script type="application/json" id="report-data">{{ data }}</script>
+</body>
+</html>

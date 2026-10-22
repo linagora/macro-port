@@ -1,0 +1,18 @@
+---
+source: crates/macroport-cli/tests/render_html.rs
+expression: body
+---
+
+<header>
+<h1>Macro-Port report</h1>
+<dl class="facts">
+<div><dt>Generated</dt><dd>2026-10-20T08:00:00Z</dd></div>
+<div><dt>Tool</dt><dd>macro-port 0.1.0</dd></div>
+<div><dt>Rules version</dt><dd>0.1.0</dd></div>
+<div><dt>Scanned paths</dt><dd><ul><li><code>fleet</code></li></ul></dd></div>
+<div><dt>Scan duration</dt><dd>842 ms</dd></div>
+</dl>
+</header>
+<script type="application/json" id="report-data"></script>
+</body>
+</html>

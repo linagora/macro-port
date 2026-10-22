@@ -6,3 +6,4 @@
 //! Each renderer protects it for its own format (SPEC section 8).
 
 pub mod csv;
+pub mod html;

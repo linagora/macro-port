@@ -90,7 +90,7 @@ Versions, licences and release dates come from crates.io on 2026-10-18, and from
 | `getrandom` 0.4.3 | draws the redaction key | default | MIT OR Apache-2.0 | 2026-06-17, 5 in 12 m | `rand`: a generator framework for 32 bytes |
 | `fluent-bundle` 0.16.0 (M4) | renders the user-facing strings in English and French | default | Apache-2.0 OR MIT | 2025-05-22, none in 12 m | `fluent-templates`, `i18n-embed`: loaders and macros on top of fluent-bundle that we do not need. `rust-i18n`: not Fluent. |
 | `unic-langid` 0.9.6 (M4) | language identifiers for fluent-bundle | default | MIT OR Apache-2.0 | 2025-05-09, none in 12 m | none: fluent-bundle's language identifiers |
-| `askama` 0.16.1 (M4) | renders the HTML report | default | MIT OR Apache-2.0 | 2026-09-04, 9 in 12 m | see below |
+| `askama` 0.16.1 (M4) | renders the HTML report | `default-features = false` + `derive`, `std` | MIT OR Apache-2.0 | 2026-09-04, 9 in 12 m | see below |
 | `csv` 1.4.0 (M4) | writes the CSV reports | none | Unlicense OR MIT | 2025-10-17, none in 12 m | a hand-written writer |
 | `base64` 0.23.1 (M4) | encodes the CSP hashes of the HTML report | default | MIT OR Apache-2.0 | 2026-08-04, 2 in 12 m | `'unsafe-inline'` in the report's CSP: an injected script would run |
 | `jsonschema` 0.59.0 | validates the rules files and, in tests, the reports | `default-features = false` | MIT | 2026-10-16, 68 in 12 m | see below |
@@ -101,16 +101,19 @@ Versions, licences and release dates come from crates.io on 2026-10-18, and from
 - **humantime** formats `generated_at` with `format_rfc3339_seconds(SystemTime::now())`. Probe output: `2026-10-18T07:47:28Z`; the epoch gives `1970-01-01T00:00:00Z`, the `--deterministic` value.
 - **getrandom** draws the redaction key when `--redact-key` is absent (SPEC section 8), never in the core. In M5, `macroport-wasm` enables its `wasm_js` feature (`Crypto.getRandomValues`) for the same case.
 - **fluent-bundle** is Project Fluent's reference implementation. SPEC section 4 names it, and ADR-0001 requires Fluent files. Its slow release cadence is accepted. Terminal and CSV output call `set_use_isolating(false)`; otherwise placeables come wrapped in U+2068 and U+2069.
-- **askama** renders the HTML report from compile-time templates. Every expression in an `.html` template is HTML-escaped unless it is marked with the `safe` filter.
-  - `safe` is used once, for the report data that SPEC section 8 embeds as JSON in a `<script type="application/json">` block. Our code serializes that data with serde_json, then escapes `<`, `>`, `&`, U+2028 and U+2029 as `\u` sequences. HTML escaping would be wrong there: it would leave entities that the HTML parser does not decode inside a script element.
-  - `safe` is never applied to any other string from an analysed file.
+- **askama** renders the HTML report from compile-time templates. Every expression in an `.html` template is HTML-escaped unless its value is marked as safe.
+  - The template applies no filter, `safe` included. The renderer marks two values as safe, with askama's `Safe` wrapper in a field of the template's struct, so that the trust is in the type and not in a template that a later edit could change.
+  - One is the report data that SPEC section 8 embeds as JSON in a `<script type="application/json">` block. Our code serializes that data with serde_json, then escapes `<`, `>`, `&`, U+2028 and U+2029 as `\u` sequences. HTML escaping would be wrong there: it would leave entities that the HTML parser does not decode inside a script element.
+  - The other is the page's own stylesheet, a file of this crate that `include_str!` reads at build time. It is not a template: `{% include %}` would parse it as askama syntax.
+  - Nothing else is marked as safe, so no string from an analysed file is written unescaped outside that JSON block. Tests count the uses of `Safe`, and reject any filter and any `filter` block in the template.
+  - askama's default features are `config`, `derive`, `std` and `urlencode`; the report uses `derive` and `std`. `config` reads `askama.toml` and pulls `basic-toml`, which RUSTSEC-2026-0374 reports as unmaintained, so `cargo deny` fails on it (`unmaintained = "all"`). The report needs neither a configuration file nor the `urlencode` filter.
   - askama's own `json` filter is not used. It needs the non-default `serde_json` feature, and it escapes only `&`, `'`, `<` and `>`, not U+2028 and U+2029.
 
   Probe: a path `"><script>alert(1)</script>` in an attribute and a snippet `<img src=x onerror=alert(1)> & 'q'` in text both came out as entities (`&#34;&#62;&#60;script&#62;…`).
 
   Rejected: `maud` 0.27.0 (no release since 2025-02-02); `minijinja` 3.0.1 (runtime templates, whose errors appear at run time instead of at build); hand-written HTML (one missed escape is an injection).
 - **csv** does the RFC 4180 quoting. The UTF-8 BOM, and the `'` prefix of cells starting with `=`, `+`, `-`, `@`, tab or carriage return (SPEC section 8), are ours. A7 tests only the first four; prefixing all six also passes A7.
-- **base64** encodes the SHA-256 hashes of the HTML report's inline style and script for its `Content-Security-Policy` (`'sha256-…'` sources), so that no other inline script can run.
+- **base64** encodes the SHA-256 hashes of the HTML report's inline style for its `Content-Security-Policy` (`'sha256-…'` sources), so that no other inline code can run. The CLI computes the hashes with sha2, at render time, over the text that the page carries.
 - **jsonschema** serves `rules check` in the CLI, since SPEC section 7 validates rules against `schema/rules/*.schema.json`. As a dev-dependency, it also serves the report validation helper.
   - Features off: `resolve-http` (reqwest and rustls), `resolve-file`, `tls-aws-lc-rs` and `idna`. Format assertion still works (probe).
   - It is heavy: it brings 45 crates that the core does not already pull, among them `fancy-regex`, the `num` family and `parking_lot`.
@@ -143,7 +146,7 @@ Only `macroport-wasm` depends on it directly, and wasm-pack builds it.
 - Shared versions live in `[workspace.dependencies]`, and crates opt in with `workspace = true`.
 - `Cargo.lock` is committed.
 - One upgrade per commit. serde-saphyr and jsonschema, which release often, also get a read of their changelog with each upgrade.
-- `default-features = false` wherever the defaults bring code we do not run: zip, serde-saphyr, jsonschema.
+- `default-features = false` wherever the defaults bring code we do not run: zip, serde-saphyr, jsonschema, askama.
 - The highest MSRV among the retained crates is 1.89 (serde-saphyr): the toolchain the workspace pins (issue #2) must be at least that.
 - Beyond `#![forbid(unsafe_code)]`, the workspace bans file system, network, environment, clock, randomness and thread APIs in the core, with clippy's `disallowed-methods` and `disallowed-types` (issue #2).
 - A crate that this ADR does not list needs an amendment, or a new ADR, in the PR that adds it.
