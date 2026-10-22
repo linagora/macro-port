@@ -10,7 +10,7 @@ traits: none
 file: loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=1
 module 12-07-export-powerpoint-synthetique (standard): loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ExporterVersPowerPoint public lines 11-38: loc=28 logical_loc=22 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=18
+  sub ExporterVersPowerPoint public lines 11-38: loc=28 logical_loc=22 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=18
     api Application.PathSeparator*1
     api co.Chart.ChartArea.Copy*1
     api co.Chart.ChartTitle.Text*1
