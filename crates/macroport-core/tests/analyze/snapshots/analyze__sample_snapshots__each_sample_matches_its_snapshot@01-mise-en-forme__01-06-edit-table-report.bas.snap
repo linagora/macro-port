@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: compile_error_suspected
-file: loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 forms=0 declare_count=0
+file: loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 01-06-edit-table-report (standard): loc=230 logical_loc=146 procedures=7 cyclomatic=4 cyclomatic_total=13 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub editTable default lines 11-86: loc=76 logical_loc=50 cyclomatic=4 max_nesting=0 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-

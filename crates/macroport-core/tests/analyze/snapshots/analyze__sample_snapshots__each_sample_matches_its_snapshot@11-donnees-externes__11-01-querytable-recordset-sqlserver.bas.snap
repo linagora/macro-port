@@ -7,7 +7,7 @@ status: no_macros
 container: text_module
 errors: none
 traits: none
-file: loc=40 logical_loc=22 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 forms=0 declare_count=0
+file: loc=40 logical_loc=22 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 forms=0 declare_count=0 external_dependencies=0
 module 11-01-querytable-recordset-sqlserver (standard): loc=40 logical_loc=22 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
 parse:
