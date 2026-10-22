@@ -10,30 +10,166 @@ traits: none
 file: loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 forms=0 declare_count=14 external_dependencies=1
 module 11-05-vba-json-jsonconverter (standard): loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 declare_count=14
   declarations: declare_count=14 with_events_count=0 option_explicit=true option_vba_support=false
-  function ParseJson public lines 178-195: loc=18 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ConvertToJson public lines 205-461: loc=257 logical_loc=198 cyclomatic=49 max_nesting=7 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseObject private lines 467-497: loc=31 logical_loc=28 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseArray private lines 499-521: loc=23 logical_loc=20 cyclomatic=5 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseValue private lines 523-548: loc=26 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseString private lines 550-608: loc=59 logical_loc=51 cyclomatic=12 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseNumber private lines 610-641: loc=32 logical_loc=21 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseKey private lines 643-669: loc=27 logical_loc=24 cyclomatic=9 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_IsUndefined private lines 671-682: loc=12 logical_loc=11 cyclomatic=4 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_Encode private lines 684-743: loc=60 logical_loc=39 cyclomatic=13 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_Peek private lines 745-749: loc=5 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub json_SkipSpaces private lines 751-756: loc=6 logical_loc=5 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_StringIsLargeNumber private lines 758-784: loc=27 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_ParseErrorMessage private lines 786-812: loc=27 logical_loc=13 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub json_BufferAppend private lines 814-860: loc=47 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function json_BufferToString private lines 862-866: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ParseUtc public lines 899-918: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ConvertToUtc public lines 928-947: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ParseIso public lines 957-1025: loc=69 logical_loc=57 cyclomatic=14 max_nesting=4 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function ConvertToIso public lines 1035-1044: loc=10 logical_loc=7 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function utc_ConvertDate private lines 1052-1081: loc=30 logical_loc=21 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function utc_ExecuteInShell private lines 1083-1110: loc=28 logical_loc=24 cyclomatic=5 max_nesting=2 parameters=1 goto_count=0 external_dependencies=4 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function utc_DateToSystemTime private lines 1114-1122: loc=9 logical_loc=9 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function utc_SystemTimeToDate private lines 1124-1127: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ParseJson public lines 178-195: loc=18 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_ParseArray,json_ParseErrorMessage,json_ParseObject,json_SkipSpaces apis=6
+    api Err.Raise*1
+    api VBA.Mid*1
+    api VBA.Replace*3
+    api VBA.vbCr*1
+    api VBA.vbLf*1
+    api VBA.vbTab*1
+  function ConvertToJson public lines 205-461: loc=257 logical_loc=198 cyclomatic=49 max_nesting=7 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertToIso,json_BufferAppend,json_BufferToString,json_Encode,json_IsUndefined,json_StringIsLargeNumber apis=22
+    api ConvertToJson*4
+    api JsonOptions.UseDoubleForLargeNumbers*1
+    api JsonValue.Keys*1
+    api VBA.CDate*1
+    api VBA.Replace*1
+    api VBA.Space*6
+    api VBA.String*6
+    api VBA.TypeName*2
+    api VBA.VarType*6
+    api VBA.vbArray*2
+    api VBA.vbBoolean*1
+    api VBA.vbByte*1
+    api VBA.vbCurrency*1
+    api VBA.vbDate*1
+    api VBA.vbDecimal*1
+    api VBA.vbDouble*1
+    api VBA.vbInteger*1
+    api VBA.vbLong*1
+    api VBA.vbNull*1
+    api VBA.vbObject*1
+    api VBA.vbSingle*1
+    api VBA.vbString*6
+  function json_ParseObject private lines 467-497: loc=31 logical_loc=28 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_ParseErrorMessage,json_ParseKey,json_ParseValue,json_Peek,json_SkipSpaces apis=3
+    api Err.Raise*1
+    api json_ParseObject.Item*2
+    api VBA.Mid*3
+  function json_ParseArray private lines 499-521: loc=23 logical_loc=20 cyclomatic=5 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_ParseErrorMessage,json_ParseValue,json_SkipSpaces apis=3
+    api Err.Raise*1
+    api json_ParseArray.Add*1
+    api VBA.Mid*3
+  function json_ParseValue private lines 523-548: loc=26 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_ParseArray,json_ParseErrorMessage,json_ParseNumber,json_ParseObject,json_ParseString,json_SkipSpaces apis=3
+    api Err.Raise*1
+    api VBA.InStr*1
+    api VBA.Mid*5
+  function json_ParseString private lines 550-608: loc=59 logical_loc=51 cyclomatic=12 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_BufferAppend,json_BufferToString,json_SkipSpaces apis=4
+    api Len*1
+    api VBA.ChrW*1
+    api VBA.Mid*4
+    api VBA.Val*1
+  function json_ParseNumber private lines 610-641: loc=32 logical_loc=21 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_SkipSpaces apis=6
+    api InStr*1
+    api JsonOptions.UseDoubleForLargeNumbers*1
+    api Len*3
+    api VBA.InStr*1
+    api VBA.Mid*1
+    api VBA.Val*1
+  function json_ParseKey private lines 643-669: loc=27 logical_loc=24 cyclomatic=9 max_nesting=3 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_ParseErrorMessage,json_ParseString,json_SkipSpaces apis=4
+    api Err.Raise*2
+    api JsonOptions.AllowUnquotedKeys*1
+    api Len*1
+    api VBA.Mid*4
+  function json_IsUndefined private lines 671-682: loc=12 logical_loc=11 cyclomatic=4 max_nesting=2 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api VBA.TypeName*1
+    api VBA.VarType*1
+    api VBA.vbEmpty*1
+    api VBA.vbObject*1
+  function json_Encode private lines 684-743: loc=60 logical_loc=39 cyclomatic=13 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_BufferAppend,json_BufferToString apis=6
+    api JsonOptions.EscapeSolidus*1
+    api VBA.AscW*1
+    api VBA.Hex*1
+    api VBA.Len*1
+    api VBA.Mid*1
+    api VBA.Right*1
+  function json_Peek private lines 745-749: loc=5 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=json_SkipSpaces apis=1
+    api VBA.Mid*1
+  sub json_SkipSpaces private lines 751-756: loc=6 logical_loc=5 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api VBA.Len*1
+    api VBA.Mid*1
+  function json_StringIsLargeNumber private lines 758-784: loc=27 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
+    api VBA.Asc*1
+    api VBA.Len*1
+    api VBA.Mid*1
+  function json_ParseErrorMessage private lines 786-812: loc=27 logical_loc=13 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api VBA.Len*2
+    api VBA.Mid*1
+    api VBA.Space*1
+    api VBA.vbNewLine*3
+  sub json_BufferAppend private lines 814-860: loc=47 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=4 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api CStr*1
+    api Mid*1
+    api VBA.Len*1
+    api VBA.Space*1
+  function json_BufferToString private lines 862-866: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+    api VBA.Left*1
+  function ParseUtc public lines 899-918: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=utc_ConvertDate,utc_DateToSystemTime,utc_SystemTimeToDate apis=5
+    api Err.Description*1
+    api Err.Number*1
+    api Err.Raise*1
+    api utc_GetTimeZoneInformation*1
+    api utc_SystemTimeToTzSpecificLocalTime*1
+  function ConvertToUtc public lines 928-947: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=utc_ConvertDate,utc_DateToSystemTime,utc_SystemTimeToDate apis=5
+    api Err.Description*1
+    api Err.Number*1
+    api Err.Raise*1
+    api utc_GetTimeZoneInformation*1
+    api utc_TzSpecificLocalTimeToSystemTime*1
+  function ParseIso public lines 957-1025: loc=69 logical_loc=57 cyclomatic=14 max_nesting=4 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ParseUtc apis=13
+    api Err.Description*1
+    api Err.Number*1
+    api Err.Raise*1
+    api Len*1
+    api VBA.CInt*13
+    api VBA.DateSerial*1
+    api VBA.InStr*3
+    api VBA.Left*1
+    api VBA.Replace*1
+    api VBA.Right*1
+    api VBA.Split*6
+    api VBA.TimeSerial*3
+    api VBA.Val*2
+  function ConvertToIso public lines 1035-1044: loc=10 logical_loc=7 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=ConvertToUtc apis=4
+    api Err.Description*1
+    api Err.Number*1
+    api Err.Raise*1
+    api VBA.Format*1
+  function utc_ConvertDate private lines 1052-1081: loc=30 logical_loc=21 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=utc_ExecuteInShell apis=4
+    api Err.Raise*1
+    api Split*3
+    api utc_Result.utc_Output*2
+    api VBA.Format*2
+  function utc_ExecuteInShell private lines 1083-1110: loc=28 logical_loc=24 cyclomatic=5 max_nesting=2 parameters=1 goto_count=0 external_dependencies=4 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
+    api CLng*3
+    api Len*1
+    api utc_ExecuteInShell.utc_ExitCode*1
+    api utc_ExecuteInShell.utc_Output*2
+    api utc_feof*1
+    api utc_fread*1
+    api utc_pclose*1
+    api utc_popen*1
+    api VBA.Left*1
+    api VBA.Space*1
+  function utc_DateToSystemTime private lines 1114-1122: loc=9 logical_loc=9 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
+    api utc_DateToSystemTime.utc_wDay*1
+    api utc_DateToSystemTime.utc_wHour*1
+    api utc_DateToSystemTime.utc_wMilliseconds*1
+    api utc_DateToSystemTime.utc_wMinute*1
+    api utc_DateToSystemTime.utc_wMonth*1
+    api utc_DateToSystemTime.utc_wSecond*1
+    api utc_DateToSystemTime.utc_wYear*1
+    api VBA.Day*1
+    api VBA.Hour*1
+    api VBA.Minute*1
+    api VBA.Month*1
+    api VBA.Second*1
+    api VBA.Year*1
+  function utc_SystemTimeToDate private lines 1124-1127: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api utc_Value.utc_wDay*1
+    api utc_Value.utc_wHour*1
+    api utc_Value.utc_wMinute*1
+    api utc_Value.utc_wMonth*1
+    api utc_Value.utc_wSecond*1
+    api utc_Value.utc_wYear*1
 parse:
   declaration Option(Explicit) line 52
   declaration Directive(If) line 55

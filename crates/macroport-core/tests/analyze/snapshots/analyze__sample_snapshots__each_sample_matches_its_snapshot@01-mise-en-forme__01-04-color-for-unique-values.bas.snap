@@ -10,7 +10,21 @@ traits: none
 file: loc=73 logical_loc=39 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 01-04-color-for-unique-values (standard): loc=73 logical_loc=39 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub ColorForUnique public lines 7-73: loc=67 logical_loc=39 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ColorForUnique public lines 7-73: loc=67 logical_loc=39 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=14
+    api Application.RandBetween*3
+    api Application.ScreenUpdating*2
+    api Application.Transpose*2
+    api dictColorsOnly.Exists*1
+    api dictKeysAndColors.Add*1
+    api dictKeysAndColors.Exists*1
+    api Intersect*1
+    api Join*1
+    api rowToColor.Columns.count*1
+    api rowToColor.EntireRow.Interior.Color*1
+    api rowToColor.Interior.Color*1
+    api rowToColor.Value*2
+    api targetRange.Parent.UsedRange*1
+    api targetRange.Rows*1
 parse:
   procedure sub ColorForUnique public static=false parameters=0 lines 7-73 recoveries=none unbalanced_blocks=false
   recoveries: none

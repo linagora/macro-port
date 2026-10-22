@@ -10,11 +10,35 @@ traits: none
 file: loc=284 logical_loc=175 procedures=5 cyclomatic=13 cyclomatic_total=49 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 08-06-udf-chemins-fichiers-tableaux (standard): loc=284 logical_loc=175 procedures=5 cyclomatic=13 cyclomatic_total=49 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  function IS_FILE public lines 68-114: loc=47 logical_loc=39 cyclomatic=10 max_nesting=3 parameters=1 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function IS_FOLDER public lines 116-162: loc=47 logical_loc=39 cyclomatic=10 max_nesting=3 parameters=1 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function LOCAL_PATH public lines 164-214: loc=51 logical_loc=42 cyclomatic=13 max_nesting=3 parameters=2 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function REMOTE_PATH public lines 216-266: loc=51 logical_loc=42 cyclomatic=13 max_nesting=3 parameters=2 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function GetArrayDimsCount private lines 273-284: loc=12 logical_loc=11 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function IS_FILE public lines 68-114: loc=47 logical_loc=39 cyclomatic=10 max_nesting=3 parameters=1 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetArrayDimsCount apis=6
+    api Application.Volatile*1
+    api CStr*3
+    api filePaths.Areas.Count*1
+    api filePaths.Value2*1
+    api LibFileTools.IsFile*3
+    api LibUDFs.TriggerFastUDFCalculation*1
+  function IS_FOLDER public lines 116-162: loc=47 logical_loc=39 cyclomatic=10 max_nesting=3 parameters=1 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetArrayDimsCount apis=6
+    api Application.Volatile*1
+    api CStr*3
+    api folderPaths.Areas.Count*1
+    api folderPaths.Value2*1
+    api LibFileTools.IsFolder*3
+    api LibUDFs.TriggerFastUDFCalculation*1
+  function LOCAL_PATH public lines 164-214: loc=51 logical_loc=42 cyclomatic=13 max_nesting=3 parameters=2 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetArrayDimsCount apis=6
+    api Application.Volatile*1
+    api CStr*3
+    api fullPaths.Areas.Count*1
+    api fullPaths.Value2*1
+    api LibFileTools.GetLocalPath*3
+    api LibUDFs.TriggerFastUDFCalculation*1
+  function REMOTE_PATH public lines 216-266: loc=51 logical_loc=42 cyclomatic=13 max_nesting=3 parameters=2 goto_count=2 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetArrayDimsCount apis=6
+    api Application.Volatile*1
+    api CStr*3
+    api fullPaths.Areas.Count*1
+    api fullPaths.Value2*1
+    api LibFileTools.GetRemotePath*3
+    api LibUDFs.TriggerFastUDFCalculation*1
+  function GetArrayDimsCount private lines 273-284: loc=12 logical_loc=11 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
 parse:
   declaration Option(Explicit) line 36
   declaration Directive(Const) line 65

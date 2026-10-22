@@ -10,7 +10,9 @@ traits: none
 file: loc=15 logical_loc=6 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 forms=0 declare_count=0 external_dependencies=0
 module 14-06-xlm-et-feuille-tres-masquee (standard): loc=15 logical_loc=6 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub MasquerParametres public lines 11-15: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub MasquerParametres public lines 11-15: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api Application.ExecuteExcel4Macro*2
+    api ThisWorkbook.Worksheets.Visible*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub MasquerParametres public static=false parameters=0 lines 11-15 recoveries=none unbalanced_blocks=false

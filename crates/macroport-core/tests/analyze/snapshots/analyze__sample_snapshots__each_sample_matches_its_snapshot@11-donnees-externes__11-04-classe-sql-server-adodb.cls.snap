@@ -10,20 +10,108 @@ traits: none
 file: loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_let ServerName default lines 46-48: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_get DatabaseName default lines 50-52: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_let DatabaseName default lines 54-56: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_get UserName default lines 58-60: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_let UserName default lines 62-64: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_get Password default lines 66-68: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_let Password default lines 70-72: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_get DSN default lines 74-87: loc=14 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  property_get isReady default lines 95-124: loc=30 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function StringFormat private lines 146-159: loc=14 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  function SQL_CopyToSheet public lines 187-237: loc=51 logical_loc=30 cyclomatic=5 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub AddQueryTable public lines 286-383: loc=98 logical_loc=55 cyclomatic=6 max_nesting=1 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub RunSQLAndExportNewWorkbook public lines 422-531: loc=110 logical_loc=72 cyclomatic=8 max_nesting=2 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let ServerName default lines 46-48: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get DatabaseName default lines 50-52: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let DatabaseName default lines 54-56: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get UserName default lines 58-60: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let UserName default lines 62-64: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get Password default lines 66-68: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let Password default lines 70-72: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get DSN default lines 74-87: loc=14 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=StringFormat apis=0
+  property_get isReady default lines 95-124: loc=30 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DatabaseName,ServerName apis=1
+    api Trim*1
+  function StringFormat private lines 146-159: loc=14 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+    api Replace*1
+  function SQL_CopyToSheet public lines 187-237: loc=51 logical_loc=30 cyclomatic=5 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DSN,isReady apis=18
+    api Application.EnableCancelKey*1
+    api cn.Close*2
+    api cn.Execute*1
+    api cn.Open*1
+    api cn.State*1
+    api Me.DSN*1
+    api Me.isReady*1
+    api Range.Font.Bold*1
+    api rngTargetCell.Cells*2
+    api rngTargetCell.Cells.CopyFromRecordset*1
+    api rngTargetCell.Cells.Count*1
+    api rngTargetCell.Cells.Value*1
+    api rngTargetCell.CurrentRegion*1
+    api rs.Close*1
+    api rs.CursorLocation*1
+    api rs.Fields.Count*1
+    api rs.Fields.Name*1
+    api XlEnableCancelKey.xlDisabled*1
+  sub AddQueryTable public lines 286-383: loc=98 logical_loc=55 cyclomatic=6 max_nesting=1 parameters=5 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DSN,isReady apis=36
+    api ActiveWindow.FreezePanes*1
+    api Application.EnableCancelKey*1
+    api Application.EnableEvents*3
+    api Application.Workbooks*1
+    api Err.Number*1
+    api Me.DSN*1
+    api Me.isReady*1
+    api qt.AdjustColumnWidth*1
+    api qt.BackgroundQuery*1
+    api qt.CommandText*1
+    api qt.Delete*1
+    api qt.FieldNames*1
+    api qt.FillAdjacentFormulas*1
+    api qt.Name*7
+    api qt.PreserveFormatting*1
+    api qt.Refresh*1
+    api qt.RefreshOnFileOpen*1
+    api qt.RefreshPeriod*1
+    api qt.RefreshStyle*1
+    api qt.RowNumbers*1
+    api qt.SaveData*1
+    api qt.SavePassword*1
+    api rngTarget.Parent.Name*1
+    api rngTarget.Parent.Parent.Name*1
+    api Selection.Address*1
+    api Selection.AutoFilter*1
+    api Selection.Columns.EntireColumn.AutoFit*1
+    api Selection.EntireRow.Address*1
+    api sh.Names.Add*2
+    api sh.QueryTables.Add*1
+    api sh.Range.Cells.Select*2
+    api sh.Range.Rows.Select*2
+    api wb.Connections.Count*1
+    api wb.Connections.Name*1
+    api wb.Worksheets*1
+    api XlEnableCancelKey.xlDisabled*1
+  sub RunSQLAndExportNewWorkbook public lines 422-531: loc=110 logical_loc=72 cyclomatic=8 max_nesting=2 parameters=3 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddQueryTable,isReady apis=32
+    api ActiveWindow.DisplayGridlines*1
+    api ActiveWindow.FreezePanes*1
+    api Application.DisplayAlerts*3
+    api Application.EnableCancelKey*1
+    api Application.EnableEvents*3
+    api Err.Clear*2
+    api Format*1
+    api Left*3
+    api Me.AddQueryTable*1
+    api Me.isReady*1
+    api sh.Cells*7
+    api sh.Cells.Font.Bold*1
+    api sh.Cells.Font.Italic*1
+    api sh.Cells.Font.Size*2
+    api sh.Cells.Select*1
+    api sh.Cells.Value*2
+    api sh.Columns.AutoFit*1
+    api sh.PageSetup*1
+    api sh.PageSetup.CenterFooter*1
+    api sh.PageSetup.FitToPagesTall*1
+    api sh.PageSetup.FitToPagesWide*1
+    api sh.PageSetup.Orientation*1
+    api sh.PageSetup.PrintTitleRows*1
+    api sh.PageSetup.RightFooter*1
+    api sh.PageSetup.Zoom*1
+    api sh.Range.Merge*2
+    api wb.ActiveSheet*1
+    api wb.Worksheets.Count*2
+    api wb.Worksheets.Delete*1
+    api Workbooks.Add*1
+    api XlEnableCancelKey.xlDisabled*1
+    api XlPageOrientation.xlLandscape*1
 parse:
   declaration Option(Explicit) line 27
   declaration Option(Compare) line 28

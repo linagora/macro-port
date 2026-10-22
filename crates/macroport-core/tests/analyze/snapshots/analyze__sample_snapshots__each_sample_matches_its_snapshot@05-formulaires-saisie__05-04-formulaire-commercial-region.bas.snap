@@ -10,10 +10,17 @@ traits: compile_error_suspected
 file: loc=40 logical_loc=25 procedures=4 cyclomatic=2 cyclomatic_total=5 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 05-04-formulaire-commercial-region (standard): loc=40 logical_loc=25 procedures=4 cyclomatic=2 cyclomatic_total=5 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub cmdCancel_Click private lines 13-16: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub cmdOK_Click private lines 18-24: loc=7 logical_loc=6 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub UserForm_Initialize private lines 26-28: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub LaunchSalesPersonForm default lines 31-40: loc=10 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub cmdCancel_Click private lines 13-16: loc=4 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+    api Module1.blnCancelled*1
+  sub cmdOK_Click private lines 18-24: loc=7 logical_loc=6 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api lstRegions.List*1
+    api lstRegions.ListIndex*1
+    api Module1.blnCancelled*1
+    api txtSalesPersonID.Text*1
+  sub UserForm_Initialize private lines 26-28: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+    api Module1.blnCancelled*1
+  sub LaunchSalesPersonForm default lines 31-40: loc=10 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+    api frmSalesPeople.Show*1
 parse:
   declaration Variable line 8
   declaration Variable line 9

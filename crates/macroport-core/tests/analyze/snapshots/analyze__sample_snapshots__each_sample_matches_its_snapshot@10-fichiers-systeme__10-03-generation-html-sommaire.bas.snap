@@ -10,7 +10,11 @@ traits: none
 file: loc=84 logical_loc=63 procedures=1 cyclomatic=12 cyclomatic_total=12 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 10-03-generation-html-sommaire (standard): loc=84 logical_loc=63 procedures=1 cyclomatic=12 cyclomatic_total=12 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub CreateHTML default lines 7-84: loc=78 logical_loc=63 cyclomatic=12 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CreateHTML default lines 7-84: loc=78 logical_loc=63 cyclomatic=12 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+    api ActiveWorkbook.Path*1
+    api Cells.Value*3
+    api Shell*1
+    api WorksheetFunction.CountA*1
 parse:
   procedure sub CreateHTML default static=false parameters=0 lines 7-84 recoveries=none unbalanced_blocks=false
   recoveries: none

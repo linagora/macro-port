@@ -10,7 +10,13 @@ traits: none
 file: loc=20 logical_loc=11 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 forms=0 declare_count=0 external_dependencies=1
 module 14-04-identifiants-en-clair (standard): loc=20 logical_loc=11 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=0 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ChargerEcritures public lines 13-20: loc=8 logical_loc=9 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ChargerEcritures public lines 13-20: loc=8 logical_loc=9 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api cn.Close*1
+    api cn.Execute*1
+    api cn.Open*1
+    api CreateObject:ADODB.Connection*1
+    api rs.Close*1
+    api ThisWorkbook.Worksheets.Range.CopyFromRecordset*1
 parse:
   declaration Option(Explicit) line 8
   declaration Const line 11

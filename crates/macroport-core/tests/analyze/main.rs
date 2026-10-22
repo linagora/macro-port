@@ -11,6 +11,8 @@
 // counter in a test adds one.
 #![allow(clippy::arithmetic_side_effects, clippy::expect_used)]
 
+mod apis;
+mod calls;
 mod corpus;
 mod failures;
 mod file_report;

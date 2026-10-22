@@ -10,7 +10,9 @@ traits: none
 file: loc=17 logical_loc=9 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=1
 module 13-03-wscript-popup-temporise (standard): loc=17 logical_loc=9 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub MessageBoxTimer default lines 7-17: loc=11 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub MessageBoxTimer default lines 7-17: loc=11 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=1 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api CreateObject:WScript.Shell*1
+    api InfoBox.Popup*1
 parse:
   procedure sub MessageBoxTimer default static=false parameters=0 lines 7-17 recoveries=none unbalanced_blocks=false
   recoveries: none

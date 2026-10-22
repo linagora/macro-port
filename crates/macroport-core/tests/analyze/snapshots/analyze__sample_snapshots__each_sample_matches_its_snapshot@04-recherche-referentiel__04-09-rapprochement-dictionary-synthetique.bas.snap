@@ -10,7 +10,30 @@ traits: none
 file: loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 04-09-rapprochement-dictionary-synthetique (standard): loc=60 logical_loc=44 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub RapprocherPaieEtRH public lines 12-60: loc=49 logical_loc=43 cyclomatic=7 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub RapprocherPaieEtRH public lines 12-60: loc=49 logical_loc=43 cyclomatic=7 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=23
+    api Application.DisplayAlerts*2
+    api CreateObject:Scripting.Dictionary*1
+    api CStr*2
+    api dictRH.Add*1
+    api dictRH.CompareMode*1
+    api dictRH.Exists*2
+    api dictRH.Keys*1
+    api dictRH.Remove*1
+    api Len*1
+    api ThisWorkbook.Worksheets*2
+    api ThisWorkbook.Worksheets.Add*1
+    api ThisWorkbook.Worksheets.Delete*1
+    api Trim*2
+    api wsPaie.Cells.End.Row*1
+    api wsPaie.Cells.Value*2
+    api wsPaie.Rows.Count*1
+    api wsRes.Cells.Value*6
+    api wsRes.Columns.AutoFit*1
+    api wsRes.Name*1
+    api wsRes.Range.Value*1
+    api wsRH.Cells.End.Row*1
+    api wsRH.Cells.Value*2
+    api wsRH.Rows.Count*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub RapprocherPaieEtRH public static=false parameters=0 lines 12-60 recoveries=none unbalanced_blocks=false

@@ -10,7 +10,26 @@ traits: none
 file: loc=71 logical_loc=47 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 02-04-consolidating-workbooks-filedialog (standard): loc=71 logical_loc=47 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ConsolidatingMultipleWb default lines 9-71: loc=63 logical_loc=46 cyclomatic=5 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ConsolidatingMultipleWb default lines 9-71: loc=63 logical_loc=46 cyclomatic=5 max_nesting=3 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=19
+    api Application.CutCopyMode*1
+    api Application.DisplayAlerts*2
+    api Application.FileDialog*1
+    api Application.ScreenUpdating*2
+    api CopyRange.Copy*1
+    api CurrentWB.ActiveSheet.UsedRange*1
+    api CurrentWB.Close*1
+    api CurrentWB.Sheets*1
+    api IndvFiles.AllowMultiSelect*1
+    api IndvFiles.ButtonName*1
+    api IndvFiles.Filters.Clear*1
+    api IndvFiles.SelectedItems*1
+    api IndvFiles.SelectedItems.Count*1
+    api IndvFiles.Show*1
+    api IndvFiles.Title*1
+    api Workbooks.Open*1
+    api ws.Range.End.Row*3
+    api ws.Range.PasteSpecial*1
+    api ws.Rows.Count*3
 parse:
   declaration Option(Explicit) line 8
   procedure sub ConsolidatingMultipleWb default static=false parameters=0 lines 9-71 recoveries=none unbalanced_blocks=false

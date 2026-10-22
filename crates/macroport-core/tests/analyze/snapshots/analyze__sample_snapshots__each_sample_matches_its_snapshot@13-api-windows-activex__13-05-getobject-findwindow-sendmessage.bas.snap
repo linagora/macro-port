@@ -10,8 +10,16 @@ traits: compile_error_suspected
 file: loc=71 logical_loc=29 procedures=2 cyclomatic=4 cyclomatic_total=6 max_nesting=2 forms=0 declare_count=2 external_dependencies=2
 module 13-05-getobject-findwindow-sendmessage (standard): loc=71 logical_loc=29 procedures=2 cyclomatic=4 cyclomatic_total=6 max_nesting=2 declare_count=2
   declarations: declare_count=2 with_events_count=0 option_explicit=false option_vba_support=false
-  sub GetExcel default lines 17-56: loc=40 logical_loc=17 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 external_dependencies=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub DetectExcel default lines 58-71: loc=14 logical_loc=10 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub GetExcel default lines 17-56: loc=40 logical_loc=17 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 external_dependencies=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=DetectExcel apis=6
+    api Err.Clear*1
+    api Err.Number*1
+    api GetObject:Excel.Application*1
+    api MyXL.Application.Quit*1
+    api MyXL.Application.Visible*1
+    api MyXL.Parent.Windows.Visible*1
+  sub DetectExcel default lines 58-71: loc=14 logical_loc=10 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 external_dependencies=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api FindWindow*1
+    api SendMessage*1
 parse:
   declaration Declare { name: "FindWindow", is_function: true } line 8
   declaration Declare { name: "SendMessage", is_function: true } line 12

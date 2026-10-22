@@ -10,7 +10,9 @@ traits: none
 file: loc=15 logical_loc=6 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 09-06-controle-avant-enregistrement (document): loc=15 logical_loc=6 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Workbook_BeforeSave private lines 7-15: loc=9 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Workbook_BeforeSave private lines 7-15: loc=9 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
+    api WorksheetFunction.CountA*1
+    api Worksheets.Range*1
 parse:
   procedure sub Workbook_BeforeSave private static=false parameters=2 lines 7-15 recoveries=none unbalanced_blocks=false
   recoveries: none
