@@ -10,8 +10,54 @@ traits: compile_error_suspected
 file: loc=117 logical_loc=82 procedures=2 cyclomatic=7 cyclomatic_total=8 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 06-02-mise-en-page-impression-rapport (standard): loc=117 logical_loc=82 procedures=2 cyclomatic=7 cyclomatic_total=8 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub editReportNew public lines 9-75: loc=67 logical_loc=45 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub editingProperties private lines 77-117: loc=41 logical_loc=36 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub editReportNew public lines 9-75: loc=67 logical_loc=45 cyclomatic=7 max_nesting=3 parameters=0 goto_count=1 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=editingProperties apis=15
+    api ActiveWorkbook.Worksheets.Count*1
+    api Application.Match*1
+    api Application.ScreenUpdating*4
+    api currentProgressBar.cancelIsPressed*1
+    api currentProgressBar.Configure*1
+    api currentProgressBar.SetStatus*1
+    api currentProgressBar.SetValue*1
+    api currentProgressBar.Show*1
+    api Debug.Print*3
+    api Err.Description*2
+    api Split*1
+    api Worksheets.Activate*1
+    api Worksheets.Name*2
+    api WS.Name*3
+    api WS.PrintOut*1
+  sub editingProperties private lines 77-117: loc=41 logical_loc=36 cyclomatic=1 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=31
+    api ActiveWindow.Split*1
+    api Application.ActiveSheet*1
+    api Application.InchesToPoints*6
+    api Selection.Merge*1
+    api WS.Cells.EntireColumn.AutoFit*1
+    api WS.Cells.EntireRow.AutoFit*1
+    api WS.Columns.EntireColumn.Hidden*1
+    api WS.PageSetup*1
+    api WS.PageSetup.BottomMargin*1
+    api WS.PageSetup.CenterFooter*1
+    api WS.PageSetup.CenterHeader*1
+    api WS.PageSetup.FitToPagesTall*1
+    api WS.PageSetup.FitToPagesWide*1
+    api WS.PageSetup.FooterMargin*1
+    api WS.PageSetup.HeaderMargin*1
+    api WS.PageSetup.LeftFooter*1
+    api WS.PageSetup.LeftHeader*1
+    api WS.PageSetup.LeftMargin*1
+    api WS.PageSetup.Orientation*1
+    api WS.PageSetup.PrintArea*1
+    api WS.PageSetup.PrintTitleColumns*1
+    api WS.PageSetup.PrintTitleRows*1
+    api WS.PageSetup.RightFooter*1
+    api WS.PageSetup.RightHeader*1
+    api WS.PageSetup.RightMargin*1
+    api WS.PageSetup.TopMargin*1
+    api WS.PageSetup.Zoom*1
+    api WS.Range.Copy*1
+    api WS.Range.Font.Size*2
+    api WS.Range.PasteSpecial*1
+    api WS.Range.Select*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub editReportNew public static=false parameters=0 lines 9-75 recoveries=Unparseable@11 unbalanced_blocks=false
