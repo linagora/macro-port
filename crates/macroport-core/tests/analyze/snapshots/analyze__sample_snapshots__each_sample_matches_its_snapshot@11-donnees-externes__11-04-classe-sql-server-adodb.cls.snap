@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 forms=0 declare_count=0
+file: loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

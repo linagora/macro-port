@@ -194,6 +194,40 @@ fn the_progids_of_the_security_samples_are_the_classes_they_create() {
 }
 
 #[test]
+fn a_crude_reader_finds_the_calls_of_the_library_where_the_reader_does() {
+    // The crude reader: a run of names of the library, each with its dot, then
+    // a name that no `.`, `!` or `=` follows, once the strings and the types
+    // after `As` are blanked. The corpus holds such calls (`VBA.Mid$(s, 1)`,
+    // `VBA.vbCr`), and none that an object qualifies.
+    let blank =
+        Regex::new(r#"(?i)"(?:[^"]|"")*"|\bas\s+(?:new\s+)?[\w.]+"#).expect("a regular expression");
+    let library = Regex::new(concat!(
+        r"(?i)(?:^|[^.\w!])(?:(?:vba|conversion|datetime|filesystem|financial|",
+        r"information|interaction|math|strings)\s*\.\s*)+([a-z_]\w*)\$?\s*([.!=]?)"
+    ))
+    .expect("a regular expression");
+    let mut found = 0usize;
+    for statement in &statements() {
+        let code = blank.replace_all(&statement.text, " ");
+        let crude = library.captures_iter(&code);
+        let mut crude: Vec<_> = crude
+            .filter(|captures| captures[2].is_empty())
+            .map(|captures| captures[1].to_lowercase())
+            .collect();
+        let calls = &statement.facts.calls;
+        let flagged: Vec<_> = calls.iter().filter(|call| call.library).collect();
+        assert!(flagged.iter().all(|call| call.after_dot));
+        let mut read: Vec<_> = flagged.iter().map(|c| c.name.to_lowercase()).collect();
+        crude.sort();
+        read.sort();
+        let place = format!("{}:{}: {}", statement.path, statement.line, statement.text);
+        assert_eq!(read, crude, "{place}");
+        found += read.len();
+    }
+    assert!(found > 400, "{found} calls of the library");
+}
+
+#[test]
 fn the_only_statements_with_the_marks_of_obfuscation_are_those_of_sample_14_02() {
     let all = statements();
     let marked: Vec<_> = all

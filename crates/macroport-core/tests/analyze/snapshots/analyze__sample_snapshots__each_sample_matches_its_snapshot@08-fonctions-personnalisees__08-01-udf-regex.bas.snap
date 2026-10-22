@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0
+file: loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 08-01-udf-regex (standard): loc=242 logical_loc=146 procedures=12 cyclomatic=7 cyclomatic_total=23 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   function RegexReplace default lines 9-25: loc=17 logical_loc=11 cyclomatic=1 max_nesting=1 parameters=6 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
