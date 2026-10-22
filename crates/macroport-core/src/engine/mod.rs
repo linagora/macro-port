@@ -17,6 +17,7 @@ mod hit;
 mod input;
 mod matchers;
 mod names;
+pub mod security;
 #[cfg(test)]
 pub(crate) mod testing;
 mod unit;
