@@ -1,0 +1,16 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/01-mise-en-forme/01-05-common-print-settings.bas
+---
+families/01-mise-en-forme/01-05-common-print-settings.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 forms=0 declare_count=0
+module 01-05-common-print-settings (standard): loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
+  sub Rand_CommonPrintSettings default lines 7-68: loc=62 logical_loc=58 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  procedure sub Rand_CommonPrintSettings default static=false parameters=0 lines 7-68 recoveries=none unbalanced_blocks=false
+  recoveries: none

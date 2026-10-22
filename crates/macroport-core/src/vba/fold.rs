@@ -7,9 +7,10 @@
 //! one; or known values joined with `&` or `+`. Everything else is unknown,
 //! and nothing is guessed about it: arithmetic, `Mid`, `Replace`, `vbCrLf`, a
 //! variable, a number joined to a string, and `ChrB`, which makes a one-byte
-//! string that only another byte completes into a character. Folding never
-//! runs anything and reads no state but the text of the statement and the
-//! constants of the module.
+//! string that only another byte completes into a character (the reader
+//! counts its calls all the same, as it counts those of `Chr` and `ChrW`).
+//! Folding never runs anything and reads no state but the text of the
+//! statement and the constants of the module.
 //!
 //! The expression reader ([`super::expr`]) walks the expressions; this module
 //! holds what it folds with.
@@ -36,13 +37,18 @@ const UTF16_MAX: u32 = 65_535;
 /// times its own text: enough for a short statement to join a few constants.
 const BUDGET_FLOOR: usize = 1024;
 
-/// The functions of the closed set that make or change a string.
+/// The functions that the reader knows by name: those of the closed set that
+/// make or change a string, and `ChrB`, which is outside the set and folds
+/// nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Folding {
     /// `Chr`: the character of an ASCII code.
     Chr,
     /// `ChrW`: the character of a UTF-16 code unit.
     ChrW,
+    /// `ChrB`: a byte. The string it makes is half a character when the
+    /// next byte is not there, so it is known by name and never folded.
+    ChrB,
     /// `StrReverse`
     StrReverse,
     /// `LCase`
@@ -58,6 +64,7 @@ impl Folding {
         [
             ("chr", Self::Chr),
             ("chrw", Self::ChrW),
+            ("chrb", Self::ChrB),
             ("strreverse", Self::StrReverse),
             ("lcase", Self::LCase),
             ("ucase", Self::UCase),
@@ -67,9 +74,16 @@ impl Folding {
         .map(|(_, found)| found)
     }
 
+    /// Whether the function makes a character out of a number: the three that
+    /// obfuscated code builds a string with, one code at a time.
+    pub(super) fn makes_character(self) -> bool {
+        matches!(self, Self::Chr | Self::ChrW | Self::ChrB)
+    }
+
     /// What the function makes of `argument`, if it is one it folds: a whole
-    /// number for `Chr` and `ChrW`, a string for the others. A string it makes
-    /// out of another is paid for out of `budget`, by the length of the other.
+    /// number for `Chr` and `ChrW`, a string for the others but `ChrB`, which
+    /// folds nothing. A string it makes out of another is paid for out of
+    /// `budget`, by the length of the other.
     pub(super) fn apply(self, argument: &Value, budget: &mut Budget) -> Option<String> {
         match (self, argument) {
             (Self::Chr, Value::Number(code)) => character(*code, ASCII_MAX).map(String::from),
@@ -83,6 +97,7 @@ impl Folding {
             (Self::UCase, Value::Text(text)) => budget
                 .take(text.len())
                 .then(|| map_case(text, char::to_uppercase)),
+            // `ChrB`, and a function given an argument that is not its kind.
             _ => None,
         }
     }
@@ -328,11 +343,29 @@ mod tests {
     fn a_function_of_the_set_is_found_by_name_in_any_letter_case() {
         assert_eq!(Folding::named("CHRW"), Some(Folding::ChrW));
         assert_eq!(Folding::named("strreverse"), Some(Folding::StrReverse));
-        // `ChrB` is not in the set, and the reader strips the `$` before it
-        // asks.
-        for name in ["ChrB", "Chr$", "Asc", "Chrx", ""] {
+        assert_eq!(Folding::named("cHRb"), Some(Folding::ChrB));
+        // The reader strips the `$` before it asks.
+        for name in ["Chr$", "Asc", "Chrx", ""] {
             assert_eq!(Folding::named(name), None, "{name}");
         }
+    }
+
+    #[test]
+    fn three_functions_make_a_character_and_chrb_folds_nothing() {
+        let made: Vec<_> = ["Chr", "ChrW", "ChrB", "StrReverse", "LCase", "UCase"]
+            .into_iter()
+            .filter_map(Folding::named)
+            .map(Folding::makes_character)
+            .collect();
+        assert_eq!(made, [true, true, true, false, false, false]);
+        let mut budget = Budget::for_text("");
+        for argument in [Value::Number(65), Value::Text("A".into()), Value::Unknown] {
+            assert_eq!(Folding::ChrB.apply(&argument, &mut budget), None);
+        }
+        assert_eq!(
+            Folding::Chr.apply(&Value::Number(65), &mut budget),
+            Some("A".into())
+        );
     }
 
     #[test]
