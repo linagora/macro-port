@@ -5,6 +5,7 @@
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::LazyLock;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -13,11 +14,14 @@ use macroport_cli::render::html::render;
 use macroport_core::report::{Lang, Level, Report, Status, Totals};
 use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::report_problems;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const TEMPLATE: &str = include_str!("../templates/report.html");
 const RENDERER: &str = include_str!("../src/render/html.rs");
 const STYLE: &str = include_str!("../templates/report.css");
+const SCRIPT: &str = include_str!("../templates/report.js");
+const SCHEMA: &str = include_str!("../../../schema/report.schema.json");
 
 const LANGS: [Lang; 2] = [Lang::En, Lang::Fr];
 
@@ -25,6 +29,23 @@ const LANGS: [Lang; 2] = [Lang::En, Lang::Fr];
 /// comment, of a script and of an element with a handler, the end of a script
 /// (with a NUL inside, and in capitals), both quotes and an ampersand.
 const HOSTILE: &str = "<!--<script>x</scr\0ipt></SCRIPT >\"'&<img src=x onerror=alert(1)>";
+
+/// Where the strings that the page shows are in a report: JSON pointers, with
+/// `*` for the index in a list.
+const SHOWN: [&str; 12] = [
+    "/generated_at",
+    "/tool/name",
+    "/tool/version",
+    "/tool/rules_version",
+    "/scan/roots/*",
+    "/files/*/path",
+    "/files/*/sha256",
+    "/files/*/errors/*/code",
+    "/files/*/errors/*/message",
+    "/files/*/vba_project/name",
+    "/files/*/vba_project/references/*",
+    "/files/*/notes/*",
+];
 
 /// The element that holds the report as JSON.
 const DATA_OPEN: &str = r#"<script type="application/json" id="report-data">"#;
@@ -45,21 +66,42 @@ fn empty() -> Report {
 }
 
 /// The fleet with a hostile string, each one different, in every string that
-/// the page shows. The report is no longer valid, and the strings are returned.
+/// the page shows ([`SHOWN`]). The report is no longer valid, and the strings
+/// are returned.
 fn hostile() -> (Report, Vec<String>) {
-    let mut report = common::fleet();
+    let mut value = serde_json::to_value(common::fleet()).expect("a report is JSON");
     let mut strings = Vec::new();
-    let mut hostile = |field: &str| {
-        let string = format!("{field}:{HOSTILE}");
-        strings.push(string.clone());
-        string
-    };
-    report.generated_at = hostile("generated_at");
-    report.tool.name = hostile("tool.name");
-    report.tool.version = hostile("tool.version");
-    report.tool.rules_version = hostile("tool.rules_version");
-    report.scan.roots = Some(vec![hostile("root")]);
+    make_hostile(&mut value, "", &mut strings);
+    for place in SHOWN {
+        let start = format!("{place}#");
+        assert!(
+            strings.iter().any(|string| string.starts_with(&start)),
+            "the fleet has a string at {place}"
+        );
+    }
+    let report = serde_json::from_value(value).expect("the report is still a report");
     (report, strings)
+}
+
+/// Replaces the strings of [`SHOWN`] in `value`, which is at `place`.
+fn make_hostile(value: &mut Value, place: &str, strings: &mut Vec<String>) {
+    match value {
+        Value::String(text) if SHOWN.contains(&place) => {
+            *text = format!("{place}#{}:{HOSTILE}", strings.len());
+            strings.push(text.clone());
+        }
+        Value::Array(items) => {
+            for item in items {
+                make_hostile(item, &format!("{place}/*"), strings);
+            }
+        }
+        Value::Object(members) => {
+            for (key, member) in members {
+                make_hostile(member, &format!("{place}/{key}"), strings);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// What lies between `open` and the next `close`. `open` must occur once.
@@ -72,11 +114,15 @@ fn between<'a>(page: &'a str, open: &str, close: &str) -> &'a str {
     inside
 }
 
-/// The page without what lies in its `<style>` and in its data block: the
-/// markup that the template writes around the text.
+/// The page without what lies in its `<style>`, in its data block and in its
+/// `<script>`: the markup that the template writes around the text.
 fn markup(page: &str) -> String {
     let mut markup = page.to_owned();
-    for (open, close) in [("<style>", "</style>"), (DATA_OPEN, "</script>")] {
+    for (open, close) in [
+        ("<style>", "</style>"),
+        (DATA_OPEN, "</script>"),
+        ("<script>", "</script>"),
+    ] {
         let element = format!("{open}{}{close}", between(page, open, close));
         markup = markup.replacen(&element, &format!("{open}{close}"), 1);
     }
@@ -124,7 +170,7 @@ fn hash_source(text: &str) -> String {
 }
 
 #[test]
-fn the_policy_comes_first_and_allows_the_inline_style_by_hash_only() {
+fn the_policy_comes_first_and_allows_the_inline_style_and_script_by_hash_only() {
     for report in [common::fleet(), common::injection()] {
         let page = page(&report, Lang::En);
 
@@ -145,12 +191,15 @@ fn the_policy_comes_first_and_allows_the_inline_style_by_hash_only() {
             })
             .collect();
         let style = hash_source(between(&page, "<style>", "</style>"));
+        let script = hash_source(between(&page, "<script>", "</script>"));
         assert_eq!(
             directives,
             [
                 ("default-src", vec!["'none'"]),
+                ("script-src", vec![script.as_str()]),
                 ("style-src", vec![style.as_str()]),
                 ("img-src", vec!["data:"]),
+                ("connect-src", vec!["'none'"]),
                 ("base-uri", vec!["'none'"]),
                 ("form-action", vec!["'none'"]),
             ]
@@ -159,13 +208,47 @@ fn the_policy_comes_first_and_allows_the_inline_style_by_hash_only() {
 }
 
 #[test]
-fn the_page_has_one_style_and_no_script_but_the_data_block() {
+fn the_page_has_one_style_and_two_scripts_the_data_block_and_the_filter() {
     let page = page(&common::injection(), Lang::En);
     let markup = markup(&page);
     assert_eq!(markup.matches("<style").count(), 1);
-    assert_eq!(markup.matches("<script").count(), 1);
-    assert_eq!(markup.matches("</script").count(), 1);
+    assert_eq!(markup.matches("<script").count(), 2);
+    assert_eq!(markup.matches("</script").count(), 2);
     assert_eq!(markup.matches("<link").count(), 1);
+    // The filter is the script of this crate, as the line breaks of a browser
+    // read it.
+    assert_eq!(
+        between(&page, "<script>", "</script>"),
+        SCRIPT.replace("\r\n", "\n")
+    );
+}
+
+#[test]
+fn the_script_looks_for_what_the_template_writes() {
+    let report = common::fleet();
+    let page = page(&report, Lang::En);
+    let ids: Vec<&str> = (SCRIPT.split("getElementById(\"").skip(1))
+        .filter_map(|rest| rest.split_once('"'))
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(ids, ["toolbar", "filter", "shown", "expand", "collapse"]);
+    for id in ids {
+        assert_eq!(page.matches(&format!(" id=\"{id}\"")).count(), 1, "{id}");
+    }
+
+    // It matches a file on its path and on the value of each of its chips.
+    assert!(SCRIPT.contains(r#"querySelectorAll("details.file")"#));
+    assert!(SCRIPT.contains(r#"querySelectorAll("summary .path, summary .value")"#));
+    let files = &report.files;
+    let chips = files.len()
+        + (files.iter().filter(|file| file.complexity_level.is_some())).count()
+        + (files.iter().filter(|file| file.max_severity.is_some())).count();
+    assert_eq!(
+        page.matches(r#"<details class="file">"#).count(),
+        files.len()
+    );
+    assert_eq!(page.matches(r#"<span class="path">"#).count(), files.len());
+    assert_eq!(page.matches(r#"<span class="value">"#).count(), chips);
 }
 
 #[test]
@@ -182,14 +265,27 @@ fn the_data_block_cannot_end_its_element_and_gives_the_report_back() {
     assert_eq!(read, report);
 }
 
+/// The strings of the injection fixture that the page shows.
+fn injected(report: &Report) -> Vec<String> {
+    let first = &report.files[0];
+    let second = &report.files[1];
+    let project = first.vba_project.as_ref().expect("a project");
+    let mut shown = vec![first.path.as_str(), second.path.as_str()];
+    shown.extend(report.scan.roots.iter().flatten().map(String::as_str));
+    shown.extend(project.name.as_deref());
+    shown.extend(project.references.iter().flatten().map(String::as_str));
+    shown.extend(second.errors.iter().flatten().map(|e| e.message.as_str()));
+    assert_eq!(shown.len(), 7, "the fixture has seven strings to show");
+    shown.into_iter().map(str::to_owned).collect()
+}
+
 #[test]
 fn what_an_analysed_file_names_is_shown_as_text() {
     let injection = common::injection();
-    let roots = injection.scan.roots.clone().expect("the fixture has roots");
-    assert_eq!(roots, ["<img src=x onerror=alert(1)>"]);
+    let injected = injected(&injection);
     let (hostile, strings) = hostile();
 
-    for (report, shown) in [(injection, roots), (hostile, strings)] {
+    for (report, shown) in [(injection, injected), (hostile, strings)] {
         for lang in LANGS {
             let markup = markup(&page(&report, lang));
             let text = visible_text(&markup);
@@ -253,15 +349,37 @@ fn parse_tag(inside: &str) -> Tag {
     }
 }
 
-const ELEMENTS: [&str; 26] = [
+const ELEMENTS: [&str; 33] = [
     "html", "head", "meta", "title", "link", "style", "body", "header", "main", "section", "h1",
-    "h2", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter", "code",
-    "script",
+    "h2", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter", "label",
+    "input", "button", "output", "details", "summary", "span", "code", "script",
 ];
 
-/// Whether the page may write `element` with `attribute` set to `value`. No
-/// string of the report is among the values: the page writes only fixed words
-/// and, in a `meter`, numbers.
+/// The classes that lay the page out.
+const LAYOUT_CLASSES: &str =
+    "facts notice totals distributions count toolbar file path chip hint value";
+
+/// The classes that colour a word after a value of the schema: `status-ok`,
+/// `level-low`, `severity-high`.
+static COLOUR_CLASSES: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+    let schema: Value = serde_json::from_str(SCHEMA).expect("the schema parses");
+    let mut classes = BTreeSet::new();
+    for (kind, pointer) in [
+        ("status", "/$defs/file/properties/status/enum"),
+        ("level", "/$defs/level/enum"),
+        ("severity", "/$defs/severity/enum"),
+    ] {
+        let values = (schema.pointer(pointer).and_then(Value::as_array))
+            .unwrap_or_else(|| panic!("{pointer} is a list"));
+        let values = values.iter().filter_map(Value::as_str);
+        classes.extend(values.map(|value| format!("{kind}-{value}")));
+    }
+    classes
+});
+
+/// Whether the page may write `element` with `attribute` set to `value`. What
+/// comes from the report is never among the values: the page writes only
+/// fixed words, the names of values of the schema, and numbers.
 fn is_allowed(element: &str, attribute: &str, value: &str) -> bool {
     let number = !value.is_empty() && value.chars().all(|c| c.is_ascii_digit());
     match (element, attribute) {
@@ -276,10 +394,21 @@ fn is_allowed(element: &str, attribute: &str, value: &str) -> bool {
         ("link", "href") => value == "data:,",
         ("script", "type") => value == "application/json",
         ("script", "id") => value == "report-data",
+        ("div", "id") => value == "toolbar",
+        ("input", "id") => value == "filter",
+        ("button", "id") => ["expand", "collapse"].contains(&value),
+        ("output", "id") => value == "shown",
+        ("div", "hidden") => value.is_empty(),
+        ("label", "for") => value == "filter",
+        ("input", "type") => value == "search",
+        ("button", "type") => value == "button",
         ("th", "scope") => value == "row",
         ("meter", "min" | "max" | "value") => number,
         ("meter", "aria-hidden") => value == "true",
-        (_, "class") => ["facts", "notice", "totals", "distributions", "count"].contains(&value),
+        (_, "class") => value.split(' ').all(|class| {
+            LAYOUT_CLASSES.split(' ').any(|layout| layout == class)
+                || COLOUR_CLASSES.contains(class)
+        }),
         _ => false,
     }
 }
@@ -289,7 +418,7 @@ fn the_markup_has_only_known_elements_and_attributes_whatever_the_report_says() 
     for report in [common::fleet(), common::injection(), empty(), hostile().0] {
         for lang in LANGS {
             let tags = tags(&markup(&page(&report, lang)));
-            assert!(tags.len() > 30, "the page has markup");
+            assert!(tags.len() > 50, "the page has markup");
             for tag in tags {
                 assert!(ELEMENTS.contains(&tag.name.as_str()), "<{}>", tag.name);
                 for (name, value) in tag.attributes {
@@ -305,9 +434,30 @@ fn the_markup_has_only_known_elements_and_attributes_whatever_the_report_says() 
 }
 
 #[test]
-fn the_style_makes_no_request() {
+fn the_style_and_the_script_make_no_request_and_cannot_end_their_element() {
     for token in ["@import", "url(", "expression(", "behavior"] {
         assert!(!STYLE.contains(token), "the style has no `{token}`");
+    }
+    // A tripwire, not a proof. The script reads text from the page and sets
+    // properties of its elements, so it has none of the calls below, which
+    // reach out, write markup or run a string; a change that adds one fails here
+    // and gets a look. What holds if this list misses one is the policy of the
+    // page: scripts by hash, no `unsafe-eval`, `connect-src 'none'`.
+    let code = (SCRIPT.lines())
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let banned = "fetch XMLHttpRequest WebSocket EventSource sendBeacon Worker import location \
+                  window.open src href eval Function setTimeout setInterval innerHTML outerHTML \
+                  insertAdjacentHTML document.write DOMParser createContextualFragment \
+                  createElement append prepend setAttribute";
+    for token in banned.split(' ') {
+        assert!(!code.contains(token), "the script has no `{token}`");
+    }
+    // Both are written into the page as they are.
+    for (name, text) in [("style", STYLE), ("script", SCRIPT)] {
+        assert!(!text.contains("</"), "the {name} ends no element");
+        assert!(!text.contains("<!--"), "the {name} opens no comment");
     }
 }
 
@@ -372,9 +522,9 @@ fn the_template_writes_no_word_of_its_own() {
 }
 
 #[test]
-fn only_the_style_and_the_data_are_marked_safe() {
+fn only_the_style_the_script_and_the_data_are_marked_safe() {
     // A `Safe` value is written as it is, without escaping.
-    assert_eq!(RENDERER.matches("Safe(").count(), 2);
+    assert_eq!(RENDERER.matches("Safe(").count(), 3);
 }
 
 /// The code of the renderer: no comment and no unit test, so that an id in
@@ -430,10 +580,15 @@ fn the_page_is_in_the_language_that_was_asked_for() {
 
     assert!(en.contains("<html lang=\"en\">"));
     assert!(en.contains("<title>Macro-Port report</title>"));
-    assert!(visible_text(&markup(&en)).contains("Scan duration"));
+    let shown = words(&markup(&en));
+    assert!(shown.contains("Scan duration 842 ms"), "{shown}");
+    assert!(shown.contains("Status Suspicious archive"), "{shown}");
+
     assert!(fr.contains("<html lang=\"fr\">"));
     assert!(fr.contains("<title>Rapport Macro-Port</title>"));
-    assert!(visible_text(&markup(&fr)).contains("Durée de l’analyse"));
+    let shown = words(&markup(&fr));
+    assert!(shown.contains("Durée de l’analyse 842 ms"), "{shown}");
+    assert!(shown.contains("Statut Archive suspecte"), "{shown}");
 }
 
 #[test]
@@ -547,11 +702,54 @@ fn the_totals_that_the_summary_lacks_are_left_out() {
 }
 
 #[test]
+fn each_file_has_its_path_chips_and_facts() {
+    let shown = words(&markup(&page(&common::fleet(), Lang::En)));
+
+    // The first file of the fleet: a workbook with a project that is not
+    // protected, and no error.
+    assert!(shown.contains(
+        "examples/14-01-auto-open-shell.xlsm Status Analysed Complexity Low \
+         Highest severity High"
+    ));
+    assert!(shown.contains(
+        "Format XLSM Size 14321 bytes SHA-256 \
+         f01be4b0b98c36f5ad66974216461d080278970f204e50c92f41ada6cf24187e \
+         VBA project VBAProject References Visual Basic For Applications \
+         Microsoft Excel 16.0 Object Library OLE Automation Microsoft Office 16.0 Object Library"
+    ));
+    // A protected project, Excel 4.0 macros and their sheets, a workbook that is
+    // encrypted, an error and a note.
+    assert!(shown.contains("VBA project BudgetTools Protected Yes"));
+    assert!(shown.contains("Excel 4.0 macros Yes Excel 4.0 macro sheets 2"));
+    assert!(shown.contains("Workbook encrypted Yes"));
+    assert!(shown.contains("Errors ooxml.encrypted The package is password-protected"));
+    assert!(shown.contains("Notes encrypted_default_password_possible"));
+    // Each one is shown for the one file of the fleet that has it, and not as a
+    // "No" for the others.
+    for fact in ["Protected", "Excel 4.0 macros", "Workbook encrypted"] {
+        assert_eq!(shown.matches(fact).count(), 1, "{fact}");
+    }
+}
+
+#[test]
+fn the_toolbar_is_hidden_until_the_script_shows_it() {
+    let page = page(&common::fleet(), Lang::En);
+    assert!(page.contains(r#"<div id="toolbar" class="toolbar" hidden>"#));
+    assert!(page.contains(r#"<output id="shown">11 / 11</output>"#));
+    // The script is what shows it. No test runs the script, so this guards the
+    // line only by its text.
+    assert!(SCRIPT.contains("toolbar.hidden = false;"));
+}
+
+#[test]
 fn a_report_on_no_file_says_so() {
     let report = empty();
-    let en = words(&markup(&page(&report, Lang::En)));
-    // The three distributions have no row.
-    assert_eq!(en.matches("None.").count(), 3, "{en}");
+    let en_markup = markup(&page(&report, Lang::En));
+    let en = words(&en_markup);
+    // The three distributions have no row, and the list has no file, so it has
+    // nothing to filter either.
+    assert_eq!(en.matches("None.").count(), 4, "{en}");
+    assert!(!en_markup.contains("toolbar"));
     assert!(
         en.contains(
             "Totals Files 0 Files with macros 0 Files that failed 0 Modules 0 Procedures 0 \
@@ -560,7 +758,7 @@ fn a_report_on_no_file_says_so() {
         "{en}"
     );
     let fr = words(&markup(&page(&report, Lang::Fr)));
-    assert_eq!(fr.matches("Aucun.").count(), 3, "{fr}");
+    assert_eq!(fr.matches("Aucun.").count(), 4, "{fr}");
 }
 
 #[test]

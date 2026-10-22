@@ -12,6 +12,7 @@ html-duration = Scan duration
 html-ms = ms
 html-redacted = Redacted report: paths and project names are hashed, code snippets are removed and error messages are replaced by “[redacted]”. Module and procedure names are kept, unless they were hashed on request.
 html-none = None.
+html-yes = Yes
 
 ## Totals
 
@@ -29,3 +30,24 @@ html-possibly-unused = Possibly unused procedures
 html-by-status = Files by status
 html-by-complexity = Files by complexity
 html-by-severity = Files by highest severity
+
+## The files
+
+html-filter = Filter the files
+html-expand-all = Expand all
+html-collapse-all = Collapse all
+html-status = Status
+html-complexity = Complexity
+html-severity = Highest severity
+html-container = Format
+html-size = Size
+html-bytes = bytes
+html-sha256 = SHA-256
+html-vba-project = VBA project
+html-protected = Protected
+html-references = References
+html-xlm = Excel 4.0 macros
+html-xlm-sheets = Excel 4.0 macro sheets
+html-encrypted = Workbook encrypted
+html-errors = Errors
+html-notes = Notes

@@ -55,7 +55,122 @@ expression: body
 </table>
 </section>
 </div>
+<section>
+<h2>Files</h2>
+<div id="toolbar" class="toolbar" hidden>
+<label for="filter">Filter the files</label>
+<input id="filter" type="search">
+<button id="expand" type="button">Expand all</button>
+<button id="collapse" type="button">Collapse all</button>
+<output id="shown">11 / 11</output>
+</div>
+<details class="file">
+<summary><span class="path">examples/14-01-auto-open-shell.xlsm</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-high"><span class="hint">Highest severity</span> <span class="value">High</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSM</dd></div>
+<div><dt>Size</dt><dd>14321 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>f01be4b0b98c36f5ad66974216461d080278970f204e50c92f41ada6cf24187e</code></dd></div>
+<div><dt>VBA project</dt><dd><code>VBAProject</code></dd></div>
+<div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">legacy/budget.xls</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-medium"><span class="hint">Complexity</span> <span class="value">Medium</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLS</dd></div>
+<div><dt>Size</dt><dd>48640 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>46dd0b311575cf070768c8c5ee6103187f963067c1358250c2ec1fb2ebc7e27a</code></dd></div>
+<div><dt>VBA project</dt><dd><code>BudgetTools</code></dd></div>
+<div><dt>Protected</dt><dd>Yes</dd></div>
+<div><dt>References</dt><dd><ul><li><code>Visual Basic For Applications</code></li><li><code>Microsoft Excel 16.0 Object Library</code></li><li><code>OLE Automation</code></li><li><code>Microsoft Office 16.0 Object Library</code></li><li><code>Microsoft Outlook 16.0 Object Library</code></li></ul></dd></div>
+<div><dt>Workbook encrypted</dt><dd>Yes</dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">legacy/xlm-only.xlsb</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSB</dd></div>
+<div><dt>Size</dt><dd>20480 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>cff1722b249616216f1ad1771e1aafb245f1ad9ede5b6a51f04abafad86a6471</code></dd></div>
+<div><dt>Excel 4.0 macros</dt><dd>Yes</dd></div>
+<div><dt>Excel 4.0 macro sheets</dt><dd>2</dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">locked/payroll.xlsm</span> <span class="chip status-encrypted"><span class="hint">Status</span> <span class="value">Encrypted</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSM</dd></div>
+<div><dt>Size</dt><dd>31744 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>96861e34cbca2de697ca015535a40a411a0739b4ed0b780c20d8042ea711e329</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>ooxml.encrypted</code> The package is password-protected: its content cannot be read</li></ul></dd></div>
+<div><dt>Notes</dt><dd><ul><li><code>encrypted_default_password_possible</code></li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">broken/truncated.xlsm</span> <span class="chip status-corrupted"><span class="hint">Status</span> <span class="value">Corrupted</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSM</dd></div>
+<div><dt>Size</dt><dd>1024 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>4c5fc124e1e819a73415df53243c5ffe5d5aa4761f04434e371bc538ab4df33a</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>zip.truncated</code> End of central directory not found, &#34;PK&#34; signature expected,
+file is 1024 bytes long</li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">blank/empty.xlsx</span> <span class="chip status-no_macros"><span class="hint">Status</span> <span class="value">No macros</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSX</dd></div>
+<div><dt>Size</dt><dd>8192 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>c5bc857aa0aca9416401a7fabc0438049474b1962fe0cef64e836bd6a2576799</code></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">text/Module1.bas</span> <span class="chip status-ok"><span class="hint">Status</span> <span class="value">Analysed</span></span> <span class="chip level-low"><span class="hint">Complexity</span> <span class="value">Low</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>Text module</dd></div>
+<div><dt>Size</dt><dd>412 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>368d0297fe4c5474038f15d2fee5ff75fcdf2e0e97a99c19f67854d5d88f7bfe</code></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">bomb/zip-bomb.xlsm</span> <span class="chip status-suspicious_archive"><span class="hint">Status</span> <span class="value">Suspicious archive</span></span> <span class="chip severity-medium"><span class="hint">Highest severity</span> <span class="value">Medium</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSM</dd></div>
+<div><dt>Size</dt><dd>5120 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>273315a547c9efad2cfb277e3d31500ef14bad2a40a47d2f327736c9812e9366</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>zip.ratio</code> Compression ratio above 1000:1 in xl/vbaProject.bin</li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">huge/archive.xlsb</span> <span class="chip status-too_large"><span class="hint">Status</span> <span class="value">Too large</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSB</dd></div>
+<div><dt>Size</dt><dd>250000000 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>d7eb23cb1b120088f6e44b33cdaa8d77017b0b1eebe629f86e723be0e24a30cf</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>file.too_large</code> The file is larger than 200 MB</li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">misc/not-excel.xls</span> <span class="chip status-unsupported"><span class="hint">Status</span> <span class="value">Unsupported</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>Unknown</dd></div>
+<div><dt>Size</dt><dd>77 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>8887ba33283dfa57ac088f8a9cdc6037ef2286ef3970c3aa9ea41eab4605e7e8</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>container.unrecognised</code> Not a recognised Excel container</li></ul></dd></div>
+</dl>
+</details>
+<details class="file">
+<summary><span class="path">crash/internal.xlsm</span> <span class="chip status-error"><span class="hint">Status</span> <span class="value">Error</span></span></summary>
+<dl class="facts">
+<div><dt>Format</dt><dd>XLSM</dd></div>
+<div><dt>Size</dt><dd>2048 bytes</dd></div>
+<div><dt>SHA-256</dt><dd><code>0a19567224af6ac60254edeb9685ac94b18f153965fffcd2f510209ef16d2f68</code></dd></div>
+<div><dt>Errors</dt><dd><ul><li><code>internal.error</code> Unexpected internal error</li></ul></dd></div>
+</dl>
+</details>
+</section>
 </main>
 <script type="application/json" id="report-data"></script>
+<script></script>
 </body>
 </html>
