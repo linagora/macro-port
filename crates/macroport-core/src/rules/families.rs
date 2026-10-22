@@ -24,7 +24,8 @@ pub struct Scoring {
     pub min_score: f64,
     /// Secondary families score at least this ratio of the primary score.
     pub secondary_ratio: f64,
-    /// Cap on the hits counted per signal and procedure, unless the signal sets its own.
+    /// Cap on the lines that a signal counts in a procedure (ADR-0008), unless the
+    /// signal sets its own.
     #[serde(deserialize_with = "yaml::whole_number")]
     pub default_max_hits_per_procedure: u32,
 }
