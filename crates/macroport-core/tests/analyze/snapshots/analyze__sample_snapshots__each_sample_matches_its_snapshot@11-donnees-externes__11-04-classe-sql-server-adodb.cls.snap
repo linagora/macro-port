@@ -10,20 +10,20 @@ traits: none
 file: loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures=14 cyclomatic=8 cyclomatic_total=37 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_let ServerName default lines 46-48: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_get DatabaseName default lines 50-52: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_let DatabaseName default lines 54-56: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_get UserName default lines 58-60: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_let UserName default lines 62-64: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_get Password default lines 66-68: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_let Password default lines 70-72: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_get DSN default lines 74-87: loc=14 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=0
-  property_get isReady default lines 95-124: loc=30 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=1
+  property_get ServerName default lines 42-44: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let ServerName default lines 46-48: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get DatabaseName default lines 50-52: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let DatabaseName default lines 54-56: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get UserName default lines 58-60: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let UserName default lines 62-64: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get Password default lines 66-68: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_let Password default lines 70-72: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  property_get DSN default lines 74-87: loc=14 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=StringFormat apis=0
+  property_get isReady default lines 95-124: loc=30 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DatabaseName,ServerName apis=1
     api Trim*1
-  function StringFormat private lines 146-159: loc=14 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=1
+  function StringFormat private lines 146-159: loc=14 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Replace*1
-  function SQL_CopyToSheet public lines 187-237: loc=51 logical_loc=30 cyclomatic=5 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=18
+  function SQL_CopyToSheet public lines 187-237: loc=51 logical_loc=30 cyclomatic=5 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DSN,isReady apis=18
     api Application.EnableCancelKey*1
     api cn.Close*2
     api cn.Execute*1
@@ -42,7 +42,7 @@ module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures
     api rs.Fields.Count*1
     api rs.Fields.Name*1
     api XlEnableCancelKey.xlDisabled*1
-  sub AddQueryTable public lines 286-383: loc=98 logical_loc=55 cyclomatic=6 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=36
+  sub AddQueryTable public lines 286-383: loc=98 logical_loc=55 cyclomatic=6 max_nesting=1 parameters=5 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DSN,isReady apis=36
     api ActiveWindow.FreezePanes*1
     api Application.EnableCancelKey*1
     api Application.EnableEvents*3
@@ -79,7 +79,7 @@ module 11-04-classe-sql-server-adodb (class): loc=531 logical_loc=226 procedures
     api wb.Connections.Name*1
     api wb.Worksheets*1
     api XlEnableCancelKey.xlDisabled*1
-  sub RunSQLAndExportNewWorkbook public lines 422-531: loc=110 logical_loc=72 cyclomatic=8 max_nesting=2 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=32
+  sub RunSQLAndExportNewWorkbook public lines 422-531: loc=110 logical_loc=72 cyclomatic=8 max_nesting=2 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=AddQueryTable,isReady apis=32
     api ActiveWindow.DisplayGridlines*1
     api ActiveWindow.FreezePanes*1
     api Application.DisplayAlerts*3
