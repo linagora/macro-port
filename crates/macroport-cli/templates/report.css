@@ -81,6 +81,11 @@ details.file > .facts { padding: .75rem 1rem 1rem; border-top: 1px solid var(--b
   white-space: nowrap;
 }
 .hint { opacity: .7; }
+h3 { margin: .75rem 1rem .25rem; font-size: .95rem; }
+.families, .signals { margin: 0 1rem 1rem; }
+.families > li, .signals > li { margin-bottom: .4rem; }
+.evidence { margin: .15rem 0 0 1rem; color: var(--muted); font-size: .85rem; }
+.score { margin-left: .25rem; color: var(--muted); font-size: .85rem; }
 .status-ok, .level-low, .severity-info, .severity-low { color: var(--ok); }
 .status-no_macros { color: var(--muted); }
 .status-encrypted, .status-unsupported, .level-medium, .severity-medium { color: var(--warn); }

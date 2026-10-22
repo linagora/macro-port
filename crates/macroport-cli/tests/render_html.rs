@@ -11,7 +11,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use macroport_cli::i18n::{Messages, RESOURCES};
 use macroport_cli::render::html::render;
-use macroport_core::report::{Lang, Level, Report, Status, Totals};
+use macroport_core::report::{Evidence, FamilyScore, Lang, Level, Report, Signal, Status, Totals};
 use macroport_core::rules::{RuleSet, RulesSources, Severity};
 use macroport_testkit::report_problems;
 use serde_json::Value;
@@ -30,8 +30,9 @@ const LANGS: [Lang; 2] = [Lang::En, Lang::Fr];
 /// (with a NUL inside, and in capitals), both quotes and an ampersand.
 const HOSTILE: &str = "<!--<script>x</scr\0ipt></SCRIPT >\"'&<img src=x onerror=alert(1)>";
 
-/// Where the strings that the page shows are in a report: JSON pointers, with
-/// `*` for the index in a list.
+/// Where the strings that [`hostile`] replaces are in a report: JSON pointers,
+/// with `*` for the index in a list. The names of families, signals and traits,
+/// the places and the lines of evidence are those of [`hostile_names`].
 const SHOWN: [&str; 12] = [
     "/generated_at",
     "/tool/name",
@@ -51,9 +52,13 @@ const SHOWN: [&str; 12] = [
 const DATA_OPEN: &str = r#"<script type="application/json" id="report-data">"#;
 const POLICY_OPEN: &str = r#"<meta http-equiv="Content-Security-Policy" content=""#;
 
-/// The page of `report`, which asks for no message that does not exist.
+fn rules() -> RuleSet {
+    RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load")
+}
+
+/// The page of `report`, which asks for no word that does not exist.
 fn page(report: &Report, lang: Lang) -> String {
-    let messages = Messages::new(lang);
+    let messages = Messages::new(lang, &rules());
     let page = render(report, &messages).expect("the report renders");
     assert_eq!(messages.problems(), Vec::<String>::new(), "{lang:?}");
     page
@@ -61,13 +66,11 @@ fn page(report: &Report, lang: Lang) -> String {
 
 /// A report on no file, with no root and no duration.
 fn empty() -> Report {
-    let rules = RuleSet::load(&RulesSources::EMBEDDED).expect("the shipped rules load");
-    Report::empty(&rules, "1970-01-01T00:00:00Z".to_owned(), Lang::En)
+    Report::empty(&rules(), "1970-01-01T00:00:00Z".to_owned(), Lang::En)
 }
 
-/// The fleet with a hostile string, each one different, in every string that
-/// the page shows ([`SHOWN`]). The report is no longer valid, and the strings
-/// are returned.
+/// The fleet with a hostile string, each one different, in every string of
+/// [`SHOWN`]. The report is no longer valid, and the strings are returned.
 fn hostile() -> (Report, Vec<String>) {
     let mut value = serde_json::to_value(common::fleet()).expect("a report is JSON");
     let mut strings = Vec::new();
@@ -242,13 +245,19 @@ fn the_script_looks_for_what_the_template_writes() {
     let files = &report.files;
     let chips = files.len()
         + (files.iter().filter(|file| file.complexity_level.is_some())).count()
-        + (files.iter().filter(|file| file.max_severity.is_some())).count();
+        + (files.iter().filter(|file| file.max_severity.is_some())).count()
+        + (files.iter().filter(|file| file.primary_family.is_some())).count();
     assert_eq!(
         page.matches(r#"<details class="file">"#).count(),
         files.len()
     );
-    assert_eq!(page.matches(r#"<span class="path">"#).count(), files.len());
-    assert_eq!(page.matches(r#"<span class="value">"#).count(), chips);
+    // The chips of the signals, further down in a file, are not in a summary.
+    let summaries = cut(&page, "<summary>", "</summary>").1.concat();
+    assert_eq!(
+        summaries.matches(r#"<span class="path">"#).count(),
+        files.len()
+    );
+    assert_eq!(summaries.matches(r#"<span class="value">"#).count(), chips);
 }
 
 #[test]
@@ -275,7 +284,9 @@ fn injected(report: &Report) -> Vec<String> {
     shown.extend(project.name.as_deref());
     shown.extend(project.references.iter().flatten().map(String::as_str));
     shown.extend(second.errors.iter().flatten().map(|e| e.message.as_str()));
-    assert_eq!(shown.len(), 7, "the fixture has seven strings to show");
+    let lines = (first.signals.iter().flatten()).flat_map(|s| s.evidence.iter().flatten());
+    shown.extend(lines.filter_map(|line| line.snippet.as_deref()));
+    assert_eq!(shown.len(), 8, "the fixture has eight strings to show");
     shown.into_iter().map(str::to_owned).collect()
 }
 
@@ -349,15 +360,15 @@ fn parse_tag(inside: &str) -> Tag {
     }
 }
 
-const ELEMENTS: [&str; 33] = [
+const ELEMENTS: [&str; 34] = [
     "html", "head", "meta", "title", "link", "style", "body", "header", "main", "section", "h1",
-    "h2", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter", "label",
-    "input", "button", "output", "details", "summary", "span", "code", "script",
+    "h2", "h3", "dl", "div", "dt", "dd", "p", "ul", "li", "table", "tr", "th", "td", "meter",
+    "label", "input", "button", "output", "details", "summary", "span", "code", "script",
 ];
 
 /// The classes that lay the page out.
-const LAYOUT_CLASSES: &str =
-    "facts notice totals distributions count toolbar file path chip hint value";
+const LAYOUT_CLASSES: &str = "facts notice totals distributions count toolbar file path chip \
+                              hint value families signals evidence score";
 
 /// The classes that colour a word after a value of the schema: `status-ok`,
 /// `level-low`, `severity-high`.
@@ -501,8 +512,9 @@ fn the_template_applies_no_filter_and_has_only_plain_blocks() {
     for block in blocks {
         let block = block.trim_matches(|c: char| c.is_whitespace() || "+-~".contains(c));
         let keyword = block.split_whitespace().next().unwrap_or_default();
+        let keywords = "if else endif for endfor macro endmacro call endcall";
         assert!(
-            ["if", "else", "endif", "for", "endfor"].contains(&keyword),
+            keywords.split(' ').any(|k| k == keyword),
             "a block {block:?}"
         );
     }
@@ -564,7 +576,7 @@ fn the_page_asks_for_every_message_of_html_ftl_and_for_no_other() {
     assert_eq!(asked, defined);
 
     for lang in LANGS {
-        let messages = Messages::new(lang);
+        let messages = Messages::new(lang, &rules());
         for id in &asked {
             assert_ne!(messages.text(id), *id, "{id} in {lang:?}");
         }
@@ -604,6 +616,8 @@ fn the_totals_and_the_distributions_are_those_of_the_report() {
          Too large 1 Suspicious archive 1 Error 1",
         "Files by complexity Low 4 Medium 1",
         "Files by highest severity Medium 3 High 1",
+        "Procedures by family Formatting and layout 1 Lookup and reference data 1 \
+         Forms and data entry 2 Event-driven automation 2 Unclassified 1",
     ] {
         assert!(en.contains(expected), "{expected:?} in {en}");
     }
@@ -614,18 +628,22 @@ fn the_totals_and_the_distributions_are_those_of_the_report() {
          Trop volumineux 1 Archive suspecte 1 Erreur 1",
         "Fichiers par complexité Faible 4 Moyenne 1",
         "Fichiers par gravité maximale Moyenne 3 Élevée 1",
+        "Procédures par famille Mise en forme 1 Recherche et référentiel 1 \
+         Formulaires de saisie 2 Événements 2 Non classée 1",
     ] {
         assert!(fr.contains(expected), "{expected:?} in {fr}");
     }
 
-    // A full bar is the 11 files of the scan, in each of the 12 rows.
+    // A full bar is the 11 files of the scan, in each of the 12 rows of the first
+    // three tables, and the 7 procedures of the summary, in the 5 of the last.
     let page = page(&report, Lang::En);
     let bar =
         |value: u32| format!(r#"<meter min="0" max="11" value="{value}" aria-hidden="true">"#);
-    assert_eq!(page.matches("<meter ").count(), 12);
+    assert_eq!(page.matches("<meter ").count(), 17);
     assert_eq!(page.matches(&bar(4)).count(), 2);
     assert_eq!(page.matches(&bar(3)).count(), 1);
     assert_eq!(page.matches(&bar(1)).count(), 9);
+    assert_eq!(page.matches(r#"<meter min="0" max="7" "#).count(), 5);
 }
 
 #[test]
@@ -659,6 +677,12 @@ fn each_number_is_shown_with_its_own_label() {
         (Severity::Medium, 63),
         (Severity::High, 64),
     ]);
+    report.summary.by_family = BTreeMap::from([
+        ("01-formatting".to_owned(), 71),
+        ("05-forms".to_owned(), 72),
+        ("13-windows-api".to_owned(), 73),
+        ("unclassified".to_owned(), 74),
+    ]);
 
     let page = page(&report, Lang::En);
     let shown = words(&markup(&page));
@@ -669,10 +693,15 @@ fn each_number_is_shown_with_its_own_label() {
          Too large 46 Suspicious archive 47 Error 48",
         "Files by complexity Low 51 Medium 52 High 53",
         "Files by highest severity Info 61 Low 62 Medium 63 High 64",
+        "Procedures by family Formatting and layout 71 Forms and data entry 72 \
+         Windows API, shell and ActiveX 73 Unclassified 74",
     ] {
         assert!(shown.contains(expected), "{expected:?} in {shown}");
     }
+    // A bar is a share of the files of the scan, or of the procedures that the
+    // rows of the families add up to (71 + 72 + 73 + 74).
     assert_eq!(page.matches(r#"<meter min="0" max="31" "#).count(), 15);
+    assert_eq!(page.matches(r#"<meter min="0" max="290" "#).count(), 4);
 }
 
 #[test]
@@ -709,7 +738,11 @@ fn each_file_has_its_path_chips_and_facts() {
     // protected, and no error.
     assert!(shown.contains(
         "examples/14-01-auto-open-shell.xlsm Status Analysed Complexity Low \
-         Highest severity High"
+         Highest severity High Family Event-driven automation Format XLSM"
+    ));
+    // A file with no family has no chip for it.
+    assert!(shown.contains(
+        "legacy/xlm-only.xlsb Status Analysed Complexity Low Highest severity Medium Format"
     ));
     assert!(shown.contains(
         "Format XLSM Size 14321 bytes SHA-256 \
@@ -732,6 +765,155 @@ fn each_file_has_its_path_chips_and_facts() {
 }
 
 #[test]
+fn a_file_lists_its_traits_families_and_signals_with_their_labels() {
+    let report = common::fleet();
+    let en = words(&markup(&page(&report, Lang::En)));
+    let fr = words(&markup(&page(&report, Lang::Fr)));
+
+    // Two families with one score and a chain that two lines raised; the
+    // families of a file in the order of the report, which is that of their
+    // scores; a trait; a signal with no place and no line.
+    for expected in [
+        "Families Event-driven automation score 3 Windows API, shell and ActiveX score 3 \
+         Security signals High Auto-execution combined with program launch \
+         sec.chain.autoexec-execution sec.auto-exec Line 4 sec.shell Line 6",
+        "Families Forms and data entry score 8 Formatting and layout score 7 \
+         Lookup and reference data score 6 Event-driven automation score 5 \
+         Report generation and printing score 4",
+        "Traits Recorded macro style",
+        "Security signals Medium Contains Excel 4.0 (XLM) macro sheets sec.xlm-macrosheet",
+    ] {
+        assert!(en.contains(expected), "{expected:?} in {en}");
+    }
+    for expected in [
+        "Familles Événements score 3 API Windows et ActiveX score 3 Signaux de sécurité \
+         Élevée Exécution automatique combinée au lancement d'un programme \
+         sec.chain.autoexec-execution sec.auto-exec Ligne 4 sec.shell Ligne 6",
+        "Caractéristiques Macro enregistrée",
+    ] {
+        assert!(fr.contains(expected), "{expected:?} in {fr}");
+    }
+    // A section is there for the files that have something to list in it.
+    for (heading, files) in [("Families", 3), ("Security signals", 3), ("Traits", 1)] {
+        assert_eq!(en.matches(heading).count(), files, "{heading}");
+    }
+}
+
+#[test]
+fn the_lines_that_raised_a_family_or_a_signal_are_shown_with_where_they_are() {
+    let evidence = |rule_id: &str, line, snippet: Option<&str>| Evidence {
+        rule_id: rule_id.to_owned(),
+        line,
+        snippet: snippet.map(str::to_owned),
+    };
+    let mut report = common::fleet();
+    let families = report.files[0].families.as_mut().expect("families");
+    families[0].evidence = Some(vec![
+        evidence("evt.auto-macros", 12, Some("Sub Auto_Open()")),
+        evidence("evt.handler", 30, None),
+    ]);
+    // A signal raised in a procedure of a module, in a module, in a procedure.
+    for (file, module, procedure) in [
+        (0, Some("M_14_01"), Some("Auto_Open")),
+        (2, Some("XlmSheet"), None),
+        (7, None, Some("Unpack")),
+    ] {
+        let signal = &mut report.files[file].signals.as_mut().expect("a signal")[0];
+        signal.module = module.map(str::to_owned);
+        signal.procedure = procedure.map(str::to_owned);
+    }
+    let json = serde_json::to_string(&report).expect("a report is JSON");
+    assert_eq!(report_problems(&json), Vec::<String>::new());
+
+    let en = words(&markup(&page(&report, Lang::En)));
+    for expected in [
+        "Families Event-driven automation score 3 evt.auto-macros Line 12 Sub Auto_Open() \
+         evt.handler Line 30 Windows API, shell and ActiveX score 3",
+        "sec.chain.autoexec-execution M_14_01.Auto_Open sec.auto-exec Line 4",
+        "sec.xlm-macrosheet XlmSheet locked/payroll.xlsm",
+        "sec.suspicious-archive Unpack huge/archive.xlsb",
+    ] {
+        assert!(en.contains(expected), "{expected:?} in {en}");
+    }
+}
+
+/// A hostile string for `place`, which `strings` holds from then on.
+fn hostile_for(strings: &mut Vec<String>, place: &str) -> String {
+    let string = format!("{place}#{}:{HOSTILE}", strings.len());
+    strings.push(string.clone());
+    string
+}
+
+/// The fleet with a hostile string, each one different, as the name of a family,
+/// a signal and a trait, as a place and as a line of evidence, in the first
+/// file and in the summary. The rules know none of those names. The report is
+/// returned with the strings.
+fn hostile_names() -> (Report, Vec<String>) {
+    let mut strings = Vec::new();
+    let evidence_of = |strings: &mut Vec<String>, place: &str| {
+        Some(vec![Evidence {
+            rule_id: hostile_for(strings, &format!("{place} rule")),
+            line: 7,
+            snippet: Some(hostile_for(strings, &format!("{place} snippet"))),
+        }])
+    };
+    let mut report = common::fleet();
+    let file = &mut report.files[0];
+    file.primary_family = Some(hostile_for(&mut strings, "primary"));
+    file.traits = Some(vec![hostile_for(&mut strings, "trait")]);
+    file.families = Some(vec![FamilyScore {
+        family: hostile_for(&mut strings, "family"),
+        score: 1.5,
+        evidence: evidence_of(&mut strings, "family"),
+    }]);
+    file.signals = Some(vec![Signal {
+        signal_id: hostile_for(&mut strings, "signal"),
+        severity: Severity::High,
+        module: Some(hostile_for(&mut strings, "module")),
+        procedure: Some(hostile_for(&mut strings, "procedure")),
+        evidence: evidence_of(&mut strings, "signal"),
+    }]);
+    let family = hostile_for(&mut strings, "by family");
+    report.summary.by_family.insert(family, 1);
+    (report, strings)
+}
+
+#[test]
+fn the_names_that_a_file_gives_to_families_signals_and_places_are_shown_as_text() {
+    let (report, shown) = hostile_names();
+    // A score is written as the language writes a number.
+    for (lang, score) in [(Lang::En, "score 1.5"), (Lang::Fr, "score 1,5")] {
+        let messages = Messages::new(lang, &rules());
+        let markup = markup(&render(&report, &messages).expect("the report renders"));
+        let text = visible_text(&markup);
+        for string in &shown {
+            assert!(text.contains(string), "{string:?} is shown as it is");
+            assert!(!markup.contains(string), "{string:?} is not markup");
+        }
+        for tag in tags(&markup) {
+            assert!(ELEMENTS.contains(&tag.name.as_str()), "<{}>", tag.name);
+            for (name, value) in tag.attributes {
+                assert!(
+                    is_allowed(&tag.name, &name, &value),
+                    "<{} {name}>",
+                    tag.name
+                );
+            }
+        }
+        assert!(words(&markup).contains(score), "{score}");
+
+        // The page asked for a label of each of the five names that carry one
+        // (three families, a signal and a trait), and for no word that is missing.
+        let problems = messages.problems();
+        assert_eq!(problems.len(), 5, "{problems:?}");
+        assert!(
+            problems.iter().all(|p| p.contains(" label '")),
+            "{problems:?}"
+        );
+    }
+}
+
+#[test]
 fn the_toolbar_is_hidden_until_the_script_shows_it() {
     let page = page(&common::fleet(), Lang::En);
     assert!(page.contains(r#"<div id="toolbar" class="toolbar" hidden>"#));
@@ -746,9 +928,9 @@ fn a_report_on_no_file_says_so() {
     let report = empty();
     let en_markup = markup(&page(&report, Lang::En));
     let en = words(&en_markup);
-    // The three distributions have no row, and the list has no file, so it has
+    // The four distributions have no row, and the list has no file, so it has
     // nothing to filter either.
-    assert_eq!(en.matches("None.").count(), 4, "{en}");
+    assert_eq!(en.matches("None.").count(), 5, "{en}");
     assert!(!en_markup.contains("toolbar"));
     assert!(
         en.contains(
@@ -758,7 +940,7 @@ fn a_report_on_no_file_says_so() {
         "{en}"
     );
     let fr = words(&markup(&page(&report, Lang::Fr)));
-    assert_eq!(fr.matches("Aucun.").count(), 4, "{fr}");
+    assert_eq!(fr.matches("Aucun.").count(), 5, "{fr}");
 }
 
 #[test]

@@ -2,20 +2,26 @@
 //! The words of the reports, in English and French.
 //!
 //! The vocabulary is Fluent: `i18n/en/*.ftl` and `i18n/fr/*.ftl`, embedded at
-//! build time. No string from an analysed file goes through Fluent: a renderer
-//! prints those as they are, escaped for its format, next to the words that
-//! [`Messages`] gives.
+//! build time. The labels of families, signals and traits are not Fluent
+//! messages but the `label` fields of the rules, which hold both languages;
+//! `unclassified`, which no rule defines, is the one family that has a message.
+//! No string from an analysed file goes through Fluent: a renderer prints those
+//! as they are, escaped for its format, next to the words that [`Messages`]
+//! gives.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fluent_bundle::{FluentBundle, FluentResource};
 use macroport_core::report::{Container, Lang, Level, ProcedureKind, Status, Visibility};
-use macroport_core::rules::{ModuleType, Severity};
+use macroport_core::rules::{Label, ModuleType, RuleSet, Severity};
 use serde::Serialize;
 use unic_langid::LanguageIdentifier;
 
 use crate::wire::wire_name;
+
+/// The id of the family of what no family claims, as the schema writes it.
+const UNCLASSIFIED: &str = "unclassified";
 
 /// One Fluent file, in both languages.
 ///
@@ -56,7 +62,7 @@ pub const RESOURCES: &[Resource] = &[
     },
 ];
 
-/// The words of one language.
+/// The words of one language: the Fluent messages and the labels of the rules.
 ///
 /// A word that does not exist is given as its id, so that a report stays
 /// readable, and is recorded in [`problems`](Self::problems). The tests of a
@@ -64,18 +70,19 @@ pub const RESOURCES: &[Resource] = &[
 pub struct Messages {
     lang: Lang,
     bundle: FluentBundle<FluentResource>,
+    labels: Labels,
     problems: RefCell<BTreeSet<String>>,
 }
 
 impl Messages {
-    /// The words of `lang`.
+    /// The words of `lang`, with the labels of `rules`.
     ///
     /// The Fluent files are embedded and the tests load them strictly: a syntax
     /// error, a message defined twice or a message that refers to one that does
     /// not exist cannot reach a release. So here what parsed is kept, a later
     /// definition overrides an earlier one, and formatting errors are not
     /// collected.
-    pub fn new(lang: Lang) -> Self {
+    pub fn new(lang: Lang, rules: &RuleSet) -> Self {
         let mut bundle = FluentBundle::new(vec![language_id(lang)]);
         // The words are printed as plain text: no Unicode isolation marks
         // (U+2068, U+2069) around placeables (ADR-0002).
@@ -88,6 +95,7 @@ impl Messages {
         Self {
             lang,
             bundle,
+            labels: Labels::new(lang, rules),
             problems: RefCell::default(),
         }
     }
@@ -103,16 +111,13 @@ impl Messages {
             .bundle
             .get_message(id)
             .and_then(|message| message.value());
-        if let Some(pattern) = pattern {
-            return self
+        match pattern {
+            Some(pattern) => self
                 .bundle
                 .format_pattern(pattern, None, &mut Vec::new())
-                .into_owned();
+                .into_owned(),
+            None => self.missing("message", id),
         }
-        self.problems
-            .borrow_mut()
-            .insert(format!("no message '{id}'"));
-        id.to_owned()
     }
 
     /// The outcome of the analysis of a file.
@@ -150,6 +155,34 @@ impl Messages {
         self.word("module-type", &module_type)
     }
 
+    /// The label of the family `id`: that of the rules, or the message for
+    /// `unclassified`.
+    pub fn family(&self, id: &str) -> String {
+        if id == UNCLASSIFIED {
+            return self.text("family-unclassified");
+        }
+        self.label("family label", &self.labels.families, id)
+    }
+
+    /// The label of a security signal, a chain or a container indicator.
+    pub fn signal(&self, id: &str) -> String {
+        self.label("signal label", &self.labels.signals, id)
+    }
+
+    /// The label of a complexity trait.
+    pub fn trait_label(&self, id: &str) -> String {
+        self.label("trait label", &self.labels.traits, id)
+    }
+
+    /// A number as the language writes it: French has a decimal comma.
+    pub fn number(&self, number: f64) -> String {
+        let text = number.to_string();
+        match self.lang {
+            Lang::En => text,
+            Lang::Fr => text.replace('.', ","),
+        }
+    }
+
     /// The words that were asked for and do not exist, sorted.
     pub fn problems(&self) -> Vec<String> {
         self.problems.borrow().iter().cloned().collect()
@@ -162,6 +195,55 @@ impl Messages {
             "{enumeration}-{}",
             wire_name(value).replace('_', "-")
         ))
+    }
+
+    /// The label of `id` among `labels`, or `id` itself, recorded as a missing
+    /// `what`.
+    fn label(&self, what: &str, labels: &BTreeMap<String, String>, id: &str) -> String {
+        let label = labels.get(id);
+        label.cloned().unwrap_or_else(|| self.missing(what, id))
+    }
+
+    /// Records that the `what` named `id` does not exist, and gives `id` in
+    /// its place.
+    fn missing(&self, what: &str, id: &str) -> String {
+        self.problems
+            .borrow_mut()
+            .insert(format!("no {what} '{id}'"));
+        id.to_owned()
+    }
+}
+
+/// The labels of the rules in one language, by id.
+struct Labels {
+    families: BTreeMap<String, String>,
+    signals: BTreeMap<String, String>,
+    traits: BTreeMap<String, String>,
+}
+
+impl Labels {
+    fn new(lang: Lang, rules: &RuleSet) -> Self {
+        let pick = |label: &Label| match lang {
+            Lang::En => label.en.clone(),
+            Lang::Fr => label.fr.clone(),
+        };
+        let security = &rules.security;
+        let signals = security.signals.iter().map(|s| (&s.id, &s.label));
+        let chains = security.chains.iter().map(|c| (&c.id, &c.label));
+        let indicators = (security.container_indicators.iter()).map(|i| (&i.id, &i.label));
+        Self {
+            families: (rules.families.families.iter())
+                .map(|family| (family.id.clone(), pick(&family.label)))
+                .collect(),
+            signals: signals
+                .chain(chains)
+                .chain(indicators)
+                .map(|(id, label)| (id.clone(), pick(label)))
+                .collect(),
+            traits: (rules.complexity.traits.iter())
+                .map(|item| (item.id.clone(), pick(&item.label)))
+                .collect(),
+        }
     }
 }
 
