@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=239 logical_loc=133 procedures=7 cyclomatic=5 cyclomatic_total=20 max_nesting=4 forms=0 declare_count=0
+file: loc=239 logical_loc=133 procedures=7 cyclomatic=5 cyclomatic_total=20 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 07-01-graphiques-series-temporelles (standard): loc=239 logical_loc=133 procedures=7 cyclomatic=5 cyclomatic_total=20 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub Chart_CreateChartWithSeriesForEachColumn public lines 10-34: loc=25 logical_loc=15 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=175 logical_loc=120 procedures=9 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0
+file: loc=175 logical_loc=120 procedures=9 cyclomatic=7 cyclomatic_total=23 max_nesting=3 forms=0 declare_count=0 external_dependencies=2
 module 10-05-import-export-csv-stream (standard): loc=175 logical_loc=120 procedures=9 cyclomatic=7 cyclomatic_total=23 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub Example1 default lines 16-32: loc=17 logical_loc=15 cyclomatic=4 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
