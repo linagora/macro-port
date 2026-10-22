@@ -50,7 +50,8 @@ fn family(id: &str, signals: Vec<FamilySignal>) -> Family {
     }
 }
 
-/// Rules with the scoring of `rules/families.yaml`.
+/// Rules with a scoring of their own: a minimum of 3 points, a secondary ratio
+/// of 0.6 and a cap of 3 hits. These tests do not read `rules/families.yaml`.
 fn rules(families: Vec<Family>) -> Families {
     Families {
         version: String::new(),
@@ -70,7 +71,15 @@ fn rules_of(signals: Vec<FamilySignal>) -> Families {
 
 /// A statement on the physical line `number` that uses the member `name`.
 fn uses(number: u32, name: &str) -> CodeLine {
-    line(number, &format!("x.{name}")).member(name)
+    uses_all(number, &[name])
+}
+
+/// A statement on the physical line `number` that uses each of the members
+/// `names` (`x.A: x.B` for `A` and `B`).
+fn uses_all(number: u32, names: &[&str]) -> CodeLine {
+    let text: Vec<_> = names.iter().map(|name| format!("x.{name}")).collect();
+    let first = line(number, &text.join(": "));
+    names.iter().fold(first, |line, name| line.member(name))
 }
 
 /// Statements that use these members, one per line from line 2.
@@ -448,6 +457,102 @@ fn the_code_of_a_module_with_no_procedure_counts_up_to_the_cap() {
     let rules = rules_of(vec![signal("a.foo", &["Foo"], 2).capped(1)]);
     let found = classify(&code_of(&["Foo"; 5]), &rules);
     assert_eq!(file_scores(&found), [("01-a", 2.0)]);
+}
+
+/// A procedure from line 1 whose body has one statement per line from line 2,
+/// each using the members `lines[n]` (several to a line) on line `n + 2`.
+fn statements_of(lines: &[&[&str]]) -> ProjectInput {
+    let statements: Vec<_> = (2..)
+        .zip(lines)
+        .map(|(n, &names)| uses_all(n, names))
+        .collect();
+    project_of(&statements)
+}
+
+#[test]
+fn a_signal_counts_a_line_once_however_many_times_it_matches() {
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 2)]);
+    // Three uses on line 2, then one on line 3: two hits, not four.
+    let project = statements_of(&[&["Foo", "Foo", "Foo"], &["Foo"]]);
+    let found = &classify(&project, &rules).modules[0][0];
+    assert_eq!(scores(found), [("01-a", 4.0)]);
+    assert_eq!(lines_cited(&found.families[0]), [2, 3]);
+}
+
+#[test]
+fn statements_split_from_one_line_with_a_colon_count_it_once() {
+    // `x.Foo: x.Foo` on line 2 is two statements that share the number 2.
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 2)]);
+    let project = project_of(&[uses(2, "Foo"), uses(2, "Foo"), uses(3, "Foo")]);
+    let found = &classify(&project, &rules).modules[0][0];
+    assert_eq!(scores(found), [("01-a", 4.0)]);
+    assert_eq!(lines_cited(&found.families[0]), [2, 3]);
+}
+
+#[test]
+fn the_signals_that_match_a_line_each_count_it() {
+    let rules = rules_of(vec![
+        signal("a.foo", &["Foo"], 2),
+        signal("a.bar", &["Bar"], 1),
+    ]);
+    let project = statements_of(&[&["Foo", "Bar", "Foo", "Bar"]]);
+    let found = &classify(&project, &rules).modules[0][0];
+    assert_eq!(scores(found), [("01-a", 3.0)]);
+    assert_eq!(cited(&found.families[0]), [("a.bar", 2), ("a.foo", 2)]);
+}
+
+#[test]
+fn the_cap_counts_lines_and_not_uses() {
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 1).capped(2)]);
+    let project = statements_of(&[&["Foo", "Foo"], &["Foo", "Foo"], &["Foo", "Foo"]]);
+    let found = &classify(&project, &rules).modules[0][0];
+    assert_eq!(scores(found), [("01-a", 2.0)]);
+    assert_eq!(lines_cited(&found.families[0]), [2, 3]);
+}
+
+#[test]
+fn a_signal_of_module_scope_counts_the_lines_of_the_module() {
+    // `Module1` uses `Foo` twice on line 2 of its declarations, once on line 3,
+    // and `First` uses it twice on line 6: three lines, 3 x 4 / 2 for each.
+    let twice = |number| uses_all(number, &["Foo", "Foo"]);
+    let first = procedure("First", 5, vec![twice(6)]);
+    let module = module("Module1", ModuleType::Standard, vec![first]);
+    let module = module.with_declarations(vec![twice(2), uses(3, "Foo")]);
+    let foo = signal("a.foo", &["Foo"], 4).at(Scope::Module).capped(9);
+    let found = classify(&project(vec![module]), &rules_of(vec![foo])).modules;
+    assert_eq!(scores(&found[0][0]), [("01-a", 6.0)]);
+}
+
+#[test]
+fn the_same_line_of_two_modules_is_two_lines() {
+    let in_module = |name| {
+        let body = vec![uses(2, "Foo")];
+        module(name, ModuleType::Standard, vec![procedure("Run", 1, body)])
+    };
+    let project = project(vec![in_module("Module1"), in_module("Module2")]);
+    let foo = signal("a.foo", &["Foo"], 4).at(Scope::Project);
+    let found = classify(&project, &rules_of(vec![foo])).modules;
+    // Two hits at half weight for each procedure.
+    assert_eq!(scores(&found[0][0]), [("01-a", 4.0)]);
+    assert_eq!(scores(&found[1][0]), [("01-a", 4.0)]);
+}
+
+#[test]
+fn hits_that_have_no_line_are_counted_one_by_one() {
+    // Two references match the signal: they share no line, so each is a hit.
+    let project = modules_with_foo().with_references(&["Kernel Library", "Kernel Extension"]);
+    let found = classify(&project, &rules_of(vec![kernel()])).modules;
+    assert_eq!(scores(&found[1][0]), [("01-a", 4.0)]);
+}
+
+#[test]
+fn the_code_of_a_module_with_no_procedure_counts_a_line_once() {
+    let code = module("Module1", ModuleType::Standard, Vec::new());
+    let twice = uses_all(2, &["Foo", "Foo"]);
+    let code = code.with_declarations(vec![twice, uses(3, "Foo")]);
+    let rules = rules_of(vec![signal("a.foo", &["Foo"], 2)]);
+    let found = classify(&project(vec![code]), &rules);
+    assert_eq!(file_scores(&found), [("01-a", 4.0)]);
 }
 
 #[test]
