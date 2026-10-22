@@ -661,6 +661,15 @@ fn a_redacted_scan_of_the_corpus_hashes_the_names_of_the_project() {
         !clear_names.is_empty(),
         "the scan found no module or procedure"
     );
+    // The calls between procedures are names of the project too.
+    let has_calls = clear
+        .files
+        .iter()
+        .filter_map(|file| file.vba_project.as_ref())
+        .flat_map(|project| &project.modules)
+        .flat_map(|module| &module.procedures)
+        .any(|procedure| procedure.calls.iter().flatten().next().is_some());
+    assert!(has_calls, "the scan found no call between procedures");
     // Every name of the project is a hash, and no hash is a name that the
     // project defines (which is lowercased before it is hashed).
     assert_eq!(redacted_names.len(), clear_names.len());
