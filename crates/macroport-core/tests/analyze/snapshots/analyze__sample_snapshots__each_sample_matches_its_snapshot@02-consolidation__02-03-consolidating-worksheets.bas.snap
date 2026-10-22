@@ -10,7 +10,20 @@ traits: none
 file: loc=49 logical_loc=32 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 02-03-consolidating-worksheets (standard): loc=49 logical_loc=32 procedures=1 cyclomatic=4 cyclomatic_total=4 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ConsolidatingMultipleWS default lines 9-49: loc=41 logical_loc=31 cyclomatic=4 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub ConsolidatingMultipleWS default lines 9-49: loc=41 logical_loc=31 cyclomatic=4 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
+    api ActiveWorkbook.Worksheets*1
+    api Application.CutCopyMode*1
+    api Application.ScreenUpdating*2
+    api CopyRange.Copy*1
+    api MasterWS.Name*1
+    api MasterWS.Range.End.Row*2
+    api MasterWS.Range.PasteSpecial*1
+    api MasterWS.Rows.Count*2
+    api ws.Activate*1
+    api ws.Name*1
+    api ws.Range.End.Row*1
+    api ws.Rows.Count*1
+    api ws.UsedRange*1
 parse:
   declaration Option(Explicit) line 8
   procedure sub ConsolidatingMultipleWS default static=false parameters=0 lines 9-49 recoveries=none unbalanced_blocks=false
