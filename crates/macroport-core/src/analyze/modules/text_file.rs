@@ -10,7 +10,7 @@
 
 use super::text::{capped, text_extraction, text_module, too_large_text};
 use super::{Analysis, Front};
-use crate::analyze::{Options, detect, sha256_hex};
+use crate::analyze::{Extraction, Options, detect, sha256_hex};
 use crate::ovba::decode_text;
 use crate::report::FileReport;
 use crate::rules::ModuleType;
@@ -71,13 +71,14 @@ pub(in crate::analyze) fn analyze_text(
     let analysis = front.analyse(&text);
     let module_type = module_type(&detect::extension(path), analysis.as_ref().ok());
     let mut module = text_module(&name, module_type, &text);
-    match analysis {
-        Ok(analysis) => front.fill(&mut module, &analysis),
-        Err(error) => front.fail(&name, error),
-    }
-    let extraction = text_extraction(path, size, sha256, vec![module], Vec::new(), options.rules);
-    let mut file = extraction.file;
-    front.seal(&mut file);
+    front.keep(&mut module, Some(analysis));
+    let extraction = text_extraction(path, size, sha256, vec![module], Vec::new());
+    let Extraction {
+        mut file,
+        indicators,
+        ..
+    } = extraction;
+    front.seal(&mut file, &indicators);
     file
 }
 
