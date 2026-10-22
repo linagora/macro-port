@@ -7,9 +7,10 @@ use macroport_core::analyze::{Options, analyze_modules};
 use macroport_core::report::{FileReport, ProcedureReport, Status};
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::MAX_NESTING;
-use macroport_testkit::linear::assert_linear_time;
 
-use crate::support::{checked, codes, module, options, procedures, report_of_modules, source};
+use crate::support::{
+    analyse_in_linear_time, checked, codes, module, procedures, report_of_modules, source,
+};
 
 /// The list of a procedure as `(name, count)` pairs, `None` if the report
 /// leaves it out.
@@ -396,16 +397,6 @@ fn the_functions_that_a_list_names_are_those_of_the_rules_in_use() {
 
     assert_eq!(lists(&shipped), [used(&[("Shell", 1)])]);
     assert_eq!(lists(&other), [used(&[("MyHelper", 1), ("Shell", 1)])]);
-}
-
-/// Analyses the module that `text` gives for a quarter of `size` statements,
-/// then the one it gives for `size`, and fails if the time grows faster than the
-/// size (`macroport_testkit::linear`).
-fn analyse_in_linear_time(what: &str, size: usize, text: impl Fn(usize) -> String) {
-    let modules = |statements| vec![source("Module1", ModuleType::Standard, &text(statements))];
-    assert_linear_time(what, size, modules, |modules| {
-        analyze_modules(modules.clone(), "Module1.bas", &options())
-    });
 }
 
 #[test]

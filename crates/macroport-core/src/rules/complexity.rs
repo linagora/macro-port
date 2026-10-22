@@ -4,10 +4,9 @@
 
 use std::collections::BTreeMap;
 
-use regex::Regex;
 use serde::Deserialize;
 
-use super::matcher::{self, Patterns, StructuralPredicate};
+use super::matcher::{self, Matcher, Patterns, StructuralPredicate};
 use super::{COMPLEXITY_FILE, Ids, Label, Problem, yaml};
 
 /// The content of `complexity.yaml`.
@@ -30,8 +29,66 @@ pub struct FileLevels {
 /// A bound on a metric of `metric_definitions`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetricCondition {
-    pub metric: String,
+    pub metric: Metric,
     pub bound: Bound,
+}
+
+/// A metric that conditions can bound: one of the metrics of a report, under
+/// the name that `report::Metrics` gives it. `metric_definitions` documents
+/// them, and a rules file defines only these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Metric {
+    Loc,
+    LogicalLoc,
+    Procedures,
+    /// Of a procedure, its own; of a file, the highest of its procedures.
+    Cyclomatic,
+    CyclomaticTotal,
+    MaxNesting,
+    Parameters,
+    GotoCount,
+    Forms,
+    DeclareCount,
+    ExternalDependencies,
+}
+
+impl Metric {
+    /// Every metric, in the order of the report.
+    pub const ALL: [Self; 11] = [
+        Self::Loc,
+        Self::LogicalLoc,
+        Self::Procedures,
+        Self::Cyclomatic,
+        Self::CyclomaticTotal,
+        Self::MaxNesting,
+        Self::Parameters,
+        Self::GotoCount,
+        Self::Forms,
+        Self::DeclareCount,
+        Self::ExternalDependencies,
+    ];
+
+    /// The name used in rules and reports.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Loc => "loc",
+            Self::LogicalLoc => "logical_loc",
+            Self::Procedures => "procedures",
+            Self::Cyclomatic => "cyclomatic",
+            Self::CyclomaticTotal => "cyclomatic_total",
+            Self::MaxNesting => "max_nesting",
+            Self::Parameters => "parameters",
+            Self::GotoCount => "goto_count",
+            Self::Forms => "forms",
+            Self::DeclareCount => "declare_count",
+            Self::ExternalDependencies => "external_dependencies",
+        }
+    }
+
+    /// Finds a metric by its name, or says which names exist.
+    fn from_name(name: &str) -> Result<Self, String> {
+        matcher::closed("metric", name, Self::ALL, Self::name)
+    }
 }
 
 /// The `gte` or `lte` of a metric condition.
@@ -67,14 +124,19 @@ pub enum TraitRule {
 /// flag says otherwise.
 #[derive(Debug, Clone)]
 pub enum Condition {
-    /// A bound on a procedure metric.
+    /// A bound on a metric.
     Metric(MetricCondition),
-    /// Regexes on comment text.
-    Comment(Vec<Regex>),
-    /// Regexes on the procedure name.
-    ProcedureName(Vec<Regex>),
+    /// The matcher finds something: `Matcher::Comment` for `match: comment`
+    /// (regexes on comment text) and `Matcher::ProcedureName` for
+    /// `match: procedure_name` (regexes on the procedure name).
+    Matches(Matcher),
     /// The occurrences of these members or chains, divided by the
-    /// procedure's `logical_loc`, reach `per_logical_loc_gte`.
+    /// `logical_loc`, reach `per_logical_loc_gte`. A name of `of` that holds a
+    /// dot is a chain and any other is a member. For a procedure, the
+    /// occurrences and the `logical_loc` are its own; for a file, the
+    /// occurrences are those of every module and the `logical_loc` is the
+    /// file's. The schema requires `of` not to be empty and the threshold to be
+    /// positive, and the loader leaves that to it.
     Ratio {
         of: Vec<String>,
         per_logical_loc_gte: f64,
@@ -171,7 +233,7 @@ enum RatioMatch {
 }
 
 /// Loads `complexity.yaml`. Problems come in the order of the file levels,
-/// then the traits.
+/// the metric definitions, then the traits.
 pub(super) fn load(text: &str) -> Result<Complexity, Vec<Problem>> {
     let RawComplexity {
         version,
@@ -187,6 +249,7 @@ pub(super) fn load(text: &str) -> Result<Complexity, Vec<Problem>> {
         medium: checker.level(file_levels.medium, "/file_levels/medium"),
         high: checker.level(file_levels.high, "/file_levels/high"),
     };
+    checker.check_definitions();
     let mut ids = Ids::new(COMPLEXITY_FILE, "trait id");
     let mut traits = Vec::with_capacity(raw_traits.len());
     for (index, raw) in raw_traits.into_iter().enumerate() {
@@ -273,10 +336,10 @@ impl Checker<'_> {
                     conditions.extend(self.metric(Some(rule), raw, &at).map(Condition::Metric));
                 }
                 RawCondition::Pattern(raw) => match matcher::regexes(raw.pattern) {
-                    Ok(regexes) => conditions.push(match raw.matcher {
-                        PatternMatch::Comment => Condition::Comment(regexes),
-                        PatternMatch::ProcedureName => Condition::ProcedureName(regexes),
-                    }),
+                    Ok(regexes) => conditions.push(Condition::Matches(match raw.matcher {
+                        PatternMatch::Comment => Matcher::Comment(regexes),
+                        PatternMatch::ProcedureName => Matcher::ProcedureName(regexes),
+                    })),
                     Err(errors) => self.problems.extend(
                         errors
                             .into_iter()
@@ -308,18 +371,34 @@ impl Checker<'_> {
                 None
             }
         };
-        if !self.metrics.contains_key(&raw.metric) {
+        let metric = match Metric::from_name(&raw.metric) {
+            Ok(metric) => metric,
+            Err(message) => {
+                self.push(rule, format!("{at}/metric"), message);
+                return None;
+            }
+        };
+        if !self.metrics.contains_key(metric.name()) {
             let message = format!(
                 "metric '{}' is not defined in metric_definitions",
-                raw.metric
+                metric.name()
             );
             self.push(rule, format!("{at}/metric"), message);
             return None;
         }
-        bound.map(|bound| MetricCondition {
-            metric: raw.metric,
-            bound,
-        })
+        bound.map(|bound| MetricCondition { metric, bound })
+    }
+
+    /// Reports the keys of `metric_definitions` that name no metric of the
+    /// report: no condition could use what they define.
+    fn check_definitions(&mut self) {
+        let metrics = self.metrics;
+        for name in metrics.keys() {
+            if let Err(message) = Metric::from_name(name) {
+                let at = format!("/metric_definitions/{}", pointer_segment(name));
+                self.push(None, at, message);
+            }
+        }
     }
 
     /// Reports the list at `at` if it is empty: an empty `any` would never
@@ -339,4 +418,9 @@ impl Checker<'_> {
             message,
         });
     }
+}
+
+/// A mapping key as a segment of a JSON Pointer, where `~` and `/` are escaped.
+fn pointer_segment(key: &str) -> String {
+    key.replace('~', "~0").replace('/', "~1")
 }

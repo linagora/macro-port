@@ -189,7 +189,8 @@ pub struct FileReport {
     pub complexity_level: Option<Level>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_family: Option<String>,
-    /// Aggregated over procedures (sum of scores).
+    /// Aggregated over procedures (sum of scores), and over the code of modules
+    /// that have no procedure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub families: Option<Vec<FamilyScore>>,
     /// The highest severity of the file's signals, null when it has none.
