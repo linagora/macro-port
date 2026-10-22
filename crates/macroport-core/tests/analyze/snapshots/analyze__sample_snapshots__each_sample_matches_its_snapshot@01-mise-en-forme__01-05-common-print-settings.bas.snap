@@ -10,7 +10,58 @@ traits: none
 file: loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 01-05-common-print-settings (standard): loc=68 logical_loc=58 procedures=1 cyclomatic=2 cyclomatic_total=2 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Rand_CommonPrintSettings default lines 7-68: loc=62 logical_loc=58 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Rand_CommonPrintSettings default lines 7-68: loc=62 logical_loc=58 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=51
+    api Application.InchesToPoints*6
+    api Application.ScreenUpdating*2
+    api sht.PageSetup*1
+    api sht.PageSetup.AlignMarginsHeaderFooter*1
+    api sht.PageSetup.BlackAndWhite*1
+    api sht.PageSetup.BottomMargin*1
+    api sht.PageSetup.CenterFooter*1
+    api sht.PageSetup.CenterHeader*1
+    api sht.PageSetup.CenterHorizontally*1
+    api sht.PageSetup.CenterVertically*1
+    api sht.PageSetup.DifferentFirstPageHeaderFooter*1
+    api sht.PageSetup.Draft*1
+    api sht.PageSetup.EvenPage.CenterFooter.Text*1
+    api sht.PageSetup.EvenPage.CenterHeader.Text*1
+    api sht.PageSetup.EvenPage.LeftFooter.Text*1
+    api sht.PageSetup.EvenPage.LeftHeader.Text*1
+    api sht.PageSetup.EvenPage.RightFooter.Text*1
+    api sht.PageSetup.EvenPage.RightHeader.Text*1
+    api sht.PageSetup.FirstPage.CenterFooter.Text*1
+    api sht.PageSetup.FirstPage.CenterHeader.Text*1
+    api sht.PageSetup.FirstPage.LeftFooter.Text*1
+    api sht.PageSetup.FirstPage.LeftHeader.Text*1
+    api sht.PageSetup.FirstPage.RightFooter.Text*1
+    api sht.PageSetup.FirstPage.RightHeader.Text*1
+    api sht.PageSetup.FirstPageNumber*1
+    api sht.PageSetup.FitToPagesTall*1
+    api sht.PageSetup.FitToPagesWide*1
+    api sht.PageSetup.FooterMargin*1
+    api sht.PageSetup.HeaderMargin*1
+    api sht.PageSetup.LeftFooter*1
+    api sht.PageSetup.LeftHeader*1
+    api sht.PageSetup.LeftMargin*1
+    api sht.PageSetup.OddAndEvenPagesHeaderFooter*1
+    api sht.PageSetup.Order*1
+    api sht.PageSetup.Orientation*1
+    api sht.PageSetup.PaperSize*1
+    api sht.PageSetup.PrintArea*2
+    api sht.PageSetup.PrintComments*1
+    api sht.PageSetup.PrintErrors*1
+    api sht.PageSetup.PrintGridlines*1
+    api sht.PageSetup.PrintHeadings*1
+    api sht.PageSetup.PrintQuality*1
+    api sht.PageSetup.PrintTitleColumns*1
+    api sht.PageSetup.PrintTitleRows*1
+    api sht.PageSetup.RightFooter*1
+    api sht.PageSetup.RightHeader*1
+    api sht.PageSetup.RightMargin*1
+    api sht.PageSetup.ScaleWithDocHeaderFooter*1
+    api sht.PageSetup.TopMargin*1
+    api sht.PageSetup.Zoom*1
+    api sht.ResetAllPageBreaks*1
 parse:
   procedure sub Rand_CommonPrintSettings default static=false parameters=0 lines 7-68 recoveries=none unbalanced_blocks=false
   recoveries: none
