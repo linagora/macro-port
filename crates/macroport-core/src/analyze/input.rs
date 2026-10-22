@@ -315,6 +315,8 @@ fn read_module(
     // Whether a statement of the module is too deep to be read. The analysis
     // knows what the parser and the measure found, not that.
     let mut suspect = false;
+    // A mark of obfuscation in a statement outside the procedures is dropped
+    // with its run: the engine cites the statements of procedures only.
     for gap in &outside {
         let run = converter.code_lines(slice(logical, gap))?;
         input.declarations.extend(run.lines);
@@ -334,7 +336,7 @@ fn read_module(
             lines: run.lines,
             predicates: ParserPredicates {
                 udf_candidate: vba::is_udf_candidate(module_type, procedure, &analysis.lines),
-                chr_obfuscation: run.obfuscated,
+                chr_obfuscation: run.chr_obfuscation,
                 nested_loop_compare: measure.nested_loop_compare.clone(),
                 parse_recovered: analysis.procedure_recovered(index) || run.too_deep,
                 ..ParserPredicates::default()
@@ -409,8 +411,9 @@ struct Statement {
     line: CodeLine,
     /// The statement nests expressions deeper than the reader follows.
     too_deep: bool,
-    /// An expression of the statement shows a mark of obfuscation.
-    obfuscated: bool,
+    /// An expression of the statement shows a mark of obfuscation (SPEC section
+    /// 7, `chr_obfuscation`).
+    chr_obfuscation: bool,
 }
 
 /// The lines of the engine for a run of statements, with what reading them
@@ -420,10 +423,31 @@ struct Run {
     /// A statement of the run nests expressions deeper than the reader follows.
     too_deep: bool,
     /// The position among `lines` of each statement that shows a mark of
-    /// obfuscation: what `chr_obfuscation` cites. A position takes 8 bytes, which
-    /// the room does not count: a mark needs three calls, so its statement
-    /// weighs far more than that.
-    obfuscated: Vec<usize>,
+    /// obfuscation: what the predicate `chr_obfuscation` cites. A position takes
+    /// a `usize`, which the room does not count: the line of its statement was
+    /// counted, and weighs at least `size_of::<CodeLine>()`, many times that.
+    chr_obfuscation: Vec<usize>,
+}
+
+impl Run {
+    /// An empty run, with room for `capacity` lines.
+    fn new(capacity: usize) -> Self {
+        Self {
+            lines: Vec::with_capacity(capacity),
+            too_deep: false,
+            chr_obfuscation: Vec::new(),
+        }
+    }
+
+    /// Adds the next statement of the run. A mark is cited by the position that
+    /// the statement takes among the lines.
+    fn push(&mut self, statement: Statement) {
+        self.too_deep |= statement.too_deep;
+        if statement.chr_obfuscation {
+            self.chr_obfuscation.push(self.lines.len());
+        }
+        self.lines.push(statement.line);
+    }
 }
 
 impl Converter<'_, '_> {
@@ -439,18 +463,10 @@ impl Converter<'_, '_> {
         // The room limits what is kept, so room is not made for all the lines
         // at once: a module of a quarter of a million lines would take 50 MB
         // before the first of them was refused.
-        let mut run = Run {
-            lines: Vec::with_capacity(lines.len().min(1 << 12)),
-            too_deep: false,
-            obfuscated: Vec::new(),
-        };
+        let mut run = Run::new(lines.len().min(1 << 12));
         for line in lines {
             let statement = self.code_line(&mut reader, line)?;
-            run.too_deep |= statement.too_deep;
-            if statement.obfuscated {
-                run.obfuscated.push(run.lines.len());
-            }
-            run.lines.push(statement.line);
+            run.push(statement);
         }
         Ok(run)
     }
@@ -477,7 +493,7 @@ impl Converter<'_, '_> {
             return Ok(Statement {
                 line: code,
                 too_deep: false,
-                obfuscated: false,
+                chr_obfuscation: false,
             });
         }
         // A statement that cannot fit is refused on its tokens, before its
@@ -503,7 +519,7 @@ impl Converter<'_, '_> {
         Ok(Statement {
             line: converted,
             too_deep: facts.too_deep,
-            obfuscated: facts.chr_obfuscation,
+            chr_obfuscation: facts.chr_obfuscation,
         })
     }
 }
@@ -674,12 +690,12 @@ mod tests {
 
     #[test]
     fn the_predicate_that_the_front_end_does_not_read_yet_is_left_unset() {
-        // A sub that nothing calls, and two character codes, which are no mark
-        // of obfuscation.
-        let adapted = adapted("Sub Run()\n    x = Chr(65) & Chr(66)\nEnd Sub\n");
+        // A private sub that nothing calls: not an entry point, so the call graph
+        // will find it possibly unused. Two character codes are no mark of
+        // obfuscation.
+        let adapted = adapted("Private Sub Run()\n    x = Chr(65) & Chr(66)\nEnd Sub\n");
 
         let procedure = &adapted.input.procedures[0];
-        assert!(!procedure.predicates.possibly_unused);
         assert_eq!(procedure.predicates, ParserPredicates::default());
     }
 
@@ -740,17 +756,55 @@ mod tests {
     }
 
     #[test]
-    fn a_mark_of_obfuscation_outside_any_procedure_is_cited_nowhere() {
+    fn a_mark_of_obfuscation_outside_any_procedure_is_given_to_no_procedure() {
         let adapted =
             adapted("Const Hidden = Chr(1) & Chr(2) & Chr(3)\nSub Run()\n    x = 1\nEnd Sub\n");
 
-        // The engine cites the statements of procedures only.
+        // The statement is a declaration, and the predicate lists the statements
+        // of the procedure. That nothing cites it is checked on the report.
         let procedure = &adapted.input.procedures[0];
         assert!(procedure.predicates.chr_obfuscation.is_empty());
         assert_eq!(
             raws(&adapted.input.declarations),
             [(1, "Const Hidden = Chr(1) & Chr(2) & Chr(3)")]
         );
+    }
+
+    #[test]
+    fn a_statement_over_several_physical_lines_is_one_position_with_the_first_number() {
+        let text = [
+            "Sub Run()",
+            "    x = 1",
+            "    y = Chr(72) & _",
+            "        Chr(105) & _",
+            "        Chr(33)",
+            "End Sub",
+            "",
+        ]
+        .join("\n");
+
+        let adapted = adapted(&text);
+
+        let procedure = &adapted.input.procedures[0];
+        assert_eq!(procedure.predicates.chr_obfuscation, [2]);
+        assert_eq!(procedure.lines[2].line, 3);
+    }
+
+    #[test]
+    fn a_statement_too_deep_to_be_read_keeps_the_mark_found_before_the_depth() {
+        // The three codes are read before the reader gives up on the depth, in
+        // the same statement.
+        let deep = format!(
+            "x = Chr(1) & Chr(2) & Chr(3) & {}1{}",
+            "(".repeat(MAX_NESTING + 1),
+            ")".repeat(MAX_NESTING + 1)
+        );
+
+        let adapted = adapted(&format!("Sub Run()\n    {deep}\nEnd Sub\n"));
+
+        let procedure = &adapted.input.procedures[0];
+        assert!(procedure.predicates.parse_recovered);
+        assert_eq!(procedure.predicates.chr_obfuscation, [1]);
     }
 
     #[test]

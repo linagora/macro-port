@@ -137,6 +137,37 @@ fn a_statement_that_builds_a_string_from_character_codes_raises_the_signal_of_ob
 }
 
 #[test]
+fn a_statement_over_several_lines_is_cited_by_its_first_physical_line() {
+    let continued = [
+        "Sub Spell()",
+        "    x = 1",
+        "    s = Chr(72) & _",
+        "        Chr(105) & _",
+        "        Chr(33)",
+        "End Sub",
+        "",
+    ]
+    .join("\n");
+
+    let file = report_of(&continued);
+
+    // The lines count as the file shows them (SPEC section 5).
+    assert_eq!(
+        cited(&file, "sec.chr-obfuscation"),
+        [(3, "s = Chr(72) & Chr(105) & Chr(33)")]
+    );
+}
+
+#[test]
+fn a_mark_of_obfuscation_outside_any_procedure_raises_no_signal() {
+    // The engine cites the statements of procedures only.
+    let file =
+        report_of("Const Hidden = Chr(1) & Chr(2) & Chr(3)\nSub Run()\n    x = 1\nEnd Sub\n");
+
+    assert!(signals_of(&file).is_empty());
+}
+
+#[test]
 fn a_function_that_a_formula_could_call_is_classified_as_a_udf() {
     let udf = "Function Twice(x)\n    Twice = x * 2\nEnd Function\n";
 
@@ -163,9 +194,10 @@ fn a_procedure_is_judged_on_its_own_measures() {
     assert_eq!(procedures[1].metrics.external_dependencies, Some(0));
 }
 
-/// A procedure of three logical lines that creates the object `class`.
-fn creating(class: &str) -> String {
-    format!("Sub Create()\n    Set o = CreateObject({class})\nEnd Sub\n")
+/// A procedure of three logical lines that creates an object, `argument` being
+/// the expression that `CreateObject` takes.
+fn creating(argument: &str) -> String {
+    format!("Sub Create()\n    Set o = CreateObject({argument})\nEnd Sub\n")
 }
 
 #[test]
@@ -298,19 +330,23 @@ fn a_procedure_that_calls_a_declared_routine_has_a_dependency_and_is_not_trivial
 
 #[test]
 fn a_routine_that_a_later_module_declares_is_a_dependency_of_the_procedures_before_it() {
-    let ticking = "Sub Tick()\n    x = GetTickCount()\n    y = GetTickCount()\nEnd Sub\n";
-    let declare = "Private Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
+    let once = "Sub Once()\n    x = GetTickCount()\nEnd Sub\n";
+    let twice = "Sub Twice()\n    x = GetTickCount()\n    y = GetTickCount()\nEnd Sub\n";
+    let declare = "Public Declare Function GetTickCount Lib \"kernel32\" () As Long\n";
 
     let file = report_of_modules(vec![
-        source("Caller", ModuleType::Standard, ticking),
+        source("Caller", ModuleType::Standard, &format!("{once}{twice}")),
         source("Api", ModuleType::Standard, declare),
     ]);
 
-    // The routine counts once however many times it is called, and the module
-    // that declares it was read after the one that calls it.
-    let tick = &modules(&file)[0].procedures[0];
-    assert_eq!(tick.metrics.external_dependencies, Some(1));
-    assert_eq!(trait_ids(&tick.traits), Some(Vec::new()));
+    // The module that declares the routine was read after the one that calls
+    // it. `Once` has three logical lines, so only its dependency keeps it from
+    // being trivial.
+    let procedures = &modules(&file)[0].procedures;
+    assert_eq!(procedures[0].metrics.external_dependencies, Some(1));
+    assert_eq!(trait_ids(&procedures[0].traits), Some(Vec::new()));
+    // The routine counts once however many times it is called.
+    assert_eq!(procedures[1].metrics.external_dependencies, Some(1));
 }
 
 #[test]

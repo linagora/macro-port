@@ -10,8 +10,9 @@
 //! measured from the input of the rule engine once every module is read
 //! ([`project_metrics`]), and [`report_dependencies`] gives it to the report.
 //! The count is as complete as the reading of the statements: a statement
-//! nested too deep to be read has no ProgID, and the procedure that holds it is
-//! flagged as one that did not parse.
+//! nested too deep is read flat from the point where it gets too deep, so a
+//! ProgID past that point is not counted, and the procedure that holds the
+//! statement is flagged as one that did not parse.
 //!
 //! [`measure_procedure`]: crate::vba::measure_procedure
 //! [`module_metrics`]: crate::vba::module_metrics
@@ -77,22 +78,14 @@ pub(super) fn project_metrics(
 /// Writes into the report of `file` the dependencies that `metrics` counts for
 /// its procedures. The report of a procedure is made when its module is read,
 /// and a routine that it calls may be declared by a module read after it, so
-/// the count waits for the whole project. `measured` has an entry for each
-/// module, as `metrics` does: a module that was not read has no procedure to
-/// complete.
-pub(super) fn report_dependencies(
-    file: &mut FileReport,
-    metrics: &ProjectMetrics,
-    measured: &[Measured],
-) {
+/// the count waits for the whole project. `metrics` has an entry for each
+/// module of the report, with no count for a module that was not read: its
+/// report is left as it is.
+pub(super) fn report_dependencies(file: &mut FileReport, metrics: &ProjectMetrics) {
     let Some(project) = file.vba_project.as_mut() else {
         return;
     };
-    let counted = (project.modules.iter_mut().zip(&metrics.procedures)).zip(measured);
-    for ((module, counts), measured) in counted {
-        if !measured.read {
-            continue;
-        }
+    for (module, counts) in project.modules.iter_mut().zip(&metrics.procedures) {
         for (procedure, counted) in module.procedures.iter_mut().zip(counts) {
             procedure.metrics.external_dependencies = counted.external_dependencies;
         }

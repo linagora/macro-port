@@ -217,8 +217,10 @@ impl<'r> Front<'r> {
     /// Puts what `analysis` shows of a module into its report: its procedures
     /// with their spans and metrics, the metrics of the module, and its
     /// declarations. What the rule engine decides is left for
-    /// [`seal`](Self::seal). Fails, and leaves the report alone, when what the
-    /// engine reads of the module does not fit in the room that is left.
+    /// [`seal`](Self::seal), and so are the dependencies of the procedures,
+    /// which need the routines that the other modules declare. Fails, and leaves
+    /// the report alone, when what the engine reads of the module does not fit in
+    /// the room that is left.
     fn fill(
         &mut self,
         module: &mut ModuleReport,
@@ -241,6 +243,7 @@ impl<'r> Front<'r> {
 
     /// Completes the report of a file once its modules are read: the metrics of
     /// the file follow from those of its modules and of their procedures, the
+    /// procedures get their external dependencies ([`report_dependencies`]), the
     /// rule engine decides the families, the signals, the traits and the level,
     /// the errors of the front end join those of the extraction, and the status
     /// follows from the procedures. `indicators` are the ids of the container
@@ -277,7 +280,7 @@ impl<'r> Front<'r> {
         if has_project {
             file.metrics = Some(metrics.file.clone());
         }
-        report_dependencies(file, &metrics, &measured);
+        report_dependencies(file, &metrics);
         let judged = measured.iter().any(|module| module.read);
         if judged || !indicators.is_empty() {
             let decided = findings::run(&project, rules, &metrics, indicators);
