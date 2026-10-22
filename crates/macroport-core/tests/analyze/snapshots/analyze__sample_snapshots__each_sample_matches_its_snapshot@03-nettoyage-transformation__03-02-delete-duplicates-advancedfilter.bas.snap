@@ -10,7 +10,7 @@ traits: none
 file: loc=26 logical_loc=17 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 03-02-delete-duplicates-advancedfilter (standard): loc=26 logical_loc=17 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub DeleteDuplicates default lines 7-26: loc=20 logical_loc=17 cyclomatic=1 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
+  sub DeleteDuplicates default lines 7-26: loc=20 logical_loc=17 cyclomatic=1 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=10
     api ActiveSheet.ShowAllData*1
     api Application.ScreenUpdating*2
     api Cells.End.Row*1
