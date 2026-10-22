@@ -1,0 +1,166 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/13-api-windows-activex/13-06-stdclipboard-api-presse-papiers.cls
+---
+families/13-api-windows-activex/13-06-stdclipboard-api-presse-papiers.cls
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=1005 logical_loc=696 procedures=37 cyclomatic=29 cyclomatic_total=164 max_nesting=3 forms=0 declare_count=58 external_dependencies=1
+module 13-06-stdclipboard-api-presse-papiers (class): loc=1005 logical_loc=696 procedures=37 cyclomatic=29 cyclomatic_total=164 max_nesting=3 declare_count=58
+  declarations: declare_count=58 with_events_count=0 option_explicit=false option_vba_support=false
+  property_get ClipboardID public lines 225-227: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get value public lines 232-268: loc=37 logical_loc=32 cyclomatic=10 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let value public lines 269-319: loc=51 logical_loc=39 cyclomatic=15 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Await public lines 322-327: loc=6 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Clear public lines 330-334: loc=5 logical_loc=5 cyclomatic=4 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get text public lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_let text public lines 344-346: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function IsFormatAvailable public lines 352-364: loc=13 logical_loc=12 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function FormatSize public lines 370-378: loc=9 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function RegisterFormat public lines 404-406: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get formats public lines 411-427: loc=17 logical_loc=17 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get formatIDs public lines 432-448: loc=17 logical_loc=17 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get Picture public lines 452-464: loc=13 logical_loc=11 cyclomatic=4 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_set Picture public lines 465-478: loc=14 logical_loc=14 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_set XLPicture public lines 486-492: loc=7 logical_loc=7 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_set XLShapeAsPicture public lines 498-504: loc=7 logical_loc=7 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_get files public lines 509-515: loc=7 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  property_set files public lines 516-523: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SetFilesArr public lines 527-534: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub protSetFilesText public lines 541-543: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub protSetFilesText public lines 545-581: loc=37 logical_loc=22 cyclomatic=9 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function protGetFilesArr public lines 587-616: loc=30 logical_loc=26 cyclomatic=6 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SendPaste public lines 622-628: loc=7 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub SendCopy public lines 633-639: loc=7 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetClipFormatFromCopyPictureFormat public lines 650-659: loc=10 logical_loc=10 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetFormatSize private lines 674-690: loc=17 logical_loc=16 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CriticalRaise private lines 696-705: loc=10 logical_loc=9 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function BytesFromPointer private lines 714-726: loc=13 logical_loc=13 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function StringFromPointerW private lines 733-742: loc=10 logical_loc=10 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function StringFromPointerA private lines 749-758: loc=10 logical_loc=10 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetClipboardFormatName private lines 764-802: loc=39 logical_loc=68 cyclomatic=29 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetPictureFromClipboard private lines 813-855: loc=43 logical_loc=30 cyclomatic=7 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function CreatePicture private lines 864-897: loc=34 logical_loc=23 cyclomatic=5 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function fnOLEError private lines 903-942: loc=40 logical_loc=37 cyclomatic=12 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CopyVariant private lines 948-954: loc=7 logical_loc=7 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function OpenClipboardTimeout private lines 962-977: loc=16 logical_loc=12 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function getAppHwnd private lines 980-1005: loc=26 logical_loc=27 cyclomatic=8 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Enum line 67
+  declaration Directive(If) line 99
+  declaration Type line 103
+  declaration Declare { name: "EmptyClipboard", is_function: true } line 109
+  declaration Declare { name: "SetClipboardData", is_function: true } line 110
+  declaration Declare { name: "GlobalAlloc", is_function: true } line 111
+  declaration Declare { name: "GlobalLock", is_function: true } line 112
+  declaration Declare { name: "GlobalUnlock", is_function: true } line 113
+  declaration Declare { name: "GlobalSize", is_function: true } line 114
+  declaration Declare { name: "GlobalFree", is_function: true } line 115
+  declaration Declare { name: "lstrcpyA", is_function: true } line 116
+  declaration Declare { name: "lstrcpyW", is_function: true } line 117
+  declaration Declare { name: "IsClipboardFormatAvailable", is_function: true } line 118
+  declaration Declare { name: "OpenClipboard", is_function: true } line 119
+  declaration Declare { name: "GetClipboardData", is_function: true } line 120
+  declaration Declare { name: "CloseClipboard", is_function: true } line 121
+  declaration Declare { name: "OleCreatePictureIndirect", is_function: true } line 122
+  declaration Declare { name: "CopyEnhMetaFile", is_function: true } line 123
+  declaration Declare { name: "CopyImage", is_function: true } line 124
+  declaration Declare { name: "EnumClipboardFormats", is_function: true } line 125
+  declaration Declare { name: "GetClipboardFormatNameW", is_function: true } line 126
+  declaration Declare { name: "CopyMemory", is_function: false } line 127
+  declaration Declare { name: "GetLastError", is_function: true } line 128
+  declaration Declare { name: "IIDFromString", is_function: true } line 129
+  declaration Declare { name: "SendMessage", is_function: true } line 130
+  declaration Declare { name: "DragQueryFile", is_function: true } line 131
+  declaration Declare { name: "lstrlenW", is_function: true } line 132
+  declaration Declare { name: "lstrlenA", is_function: true } line 133
+  declaration Declare { name: "GetTickCount", is_function: true } line 134
+  declaration Declare { name: "RegisterClipboardFormatA", is_function: true } line 135
+  declaration Declare { name: "GetClipboardSequenceNumber", is_function: true } line 136
+  declaration Declare { name: "WindowFromAccessibleObject", is_function: true } line 137
+  declaration Directive(Else) line 138
+  declaration Type line 139
+  declaration Declare { name: "EmptyClipboard", is_function: true } line 145
+  declaration Declare { name: "SetClipboardData", is_function: true } line 146
+  declaration Declare { name: "GlobalAlloc", is_function: true } line 147
+  declaration Declare { name: "GlobalLock", is_function: true } line 148
+  declaration Declare { name: "GlobalUnlock", is_function: true } line 149
+  declaration Declare { name: "GlobalSize", is_function: true } line 150
+  declaration Declare { name: "GlobalFree", is_function: true } line 151
+  declaration Declare { name: "lstrcpyA", is_function: true } line 152
+  declaration Declare { name: "lstrcpyW", is_function: true } line 153
+  declaration Declare { name: "IsClipboardFormatAvailable", is_function: true } line 154
+  declaration Declare { name: "OpenClipboard", is_function: true } line 155
+  declaration Declare { name: "GetClipboardData", is_function: true } line 156
+  declaration Declare { name: "CloseClipboard", is_function: true } line 157
+  declaration Declare { name: "OleCreatePictureIndirect", is_function: true } line 158
+  declaration Declare { name: "CopyEnhMetaFile", is_function: true } line 159
+  declaration Declare { name: "CopyImage", is_function: true } line 160
+  declaration Declare { name: "EnumClipboardFormats", is_function: true } line 161
+  declaration Declare { name: "GetClipboardFormatNameW", is_function: true } line 162
+  declaration Declare { name: "CopyMemory", is_function: false } line 163
+  declaration Declare { name: "GetLastError", is_function: true } line 164
+  declaration Declare { name: "IIDFromString", is_function: true } line 165
+  declaration Declare { name: "SendMessage", is_function: true } line 166
+  declaration Declare { name: "DragQueryFile", is_function: true } line 167
+  declaration Declare { name: "lstrlenW", is_function: true } line 168
+  declaration Declare { name: "lstrlenA", is_function: true } line 169
+  declaration Declare { name: "GetTickCount", is_function: true } line 170
+  declaration Declare { name: "RegisterClipboardFormatA", is_function: true } line 171
+  declaration Declare { name: "GetClipboardSequenceNumber", is_function: true } line 172
+  declaration Declare { name: "WindowFromAccessibleObject", is_function: true } line 173
+  declaration Directive(EndIf) line 174
+  declaration Type line 178
+  declaration Type line 184
+  declaration Enum line 191
+  declaration Type line 211
+  declaration Directive(If) line 540
+  declaration Directive(Else) line 544
+  declaration Directive(EndIf) line 582
+  declaration Directive(If) line 621
+  declaration Directive(If) line 632
+  declaration Directive(If) line 713
+  declaration Directive(If) line 732
+  declaration Directive(If) line 748
+  declaration Directive(If) line 863
+  declaration Directive(If) line 979
+  procedure property_get ClipboardID public static=false parameters=0 lines 225-227 recoveries=none unbalanced_blocks=false
+  procedure property_get value public static=false parameters=1 lines 232-268 recoveries=none unbalanced_blocks=false
+  procedure property_let value public static=false parameters=2 lines 269-319 recoveries=none unbalanced_blocks=false
+  procedure sub Await public static=false parameters=0 lines 322-327 recoveries=none unbalanced_blocks=false
+  procedure sub Clear public static=false parameters=0 lines 330-334 recoveries=none unbalanced_blocks=false
+  procedure property_get text public static=false parameters=0 lines 341-343 recoveries=none unbalanced_blocks=false
+  procedure property_let text public static=false parameters=1 lines 344-346 recoveries=none unbalanced_blocks=false
+  procedure function IsFormatAvailable public static=false parameters=1 lines 352-364 recoveries=none unbalanced_blocks=false
+  procedure function FormatSize public static=false parameters=1 lines 370-378 recoveries=none unbalanced_blocks=false
+  procedure function RegisterFormat public static=false parameters=1 lines 404-406 recoveries=none unbalanced_blocks=false
+  procedure property_get formats public static=false parameters=0 lines 411-427 recoveries=none unbalanced_blocks=false
+  procedure property_get formatIDs public static=false parameters=0 lines 432-448 recoveries=none unbalanced_blocks=false
+  procedure property_get Picture public static=false parameters=0 lines 452-464 recoveries=none unbalanced_blocks=false
+  procedure property_set Picture public static=false parameters=1 lines 465-478 recoveries=none unbalanced_blocks=false
+  procedure property_set XLPicture public static=false parameters=3 lines 486-492 recoveries=none unbalanced_blocks=false
+  procedure property_set XLShapeAsPicture public static=false parameters=3 lines 498-504 recoveries=none unbalanced_blocks=false
+  procedure property_get files public static=false parameters=0 lines 509-515 recoveries=none unbalanced_blocks=false
+  procedure property_set files public static=false parameters=1 lines 516-523 recoveries=none unbalanced_blocks=false
+  procedure sub SetFilesArr public static=false parameters=1 lines 527-534 recoveries=none unbalanced_blocks=false
+  procedure sub protSetFilesText public static=false parameters=1 lines 541-543 recoveries=none unbalanced_blocks=false
+  procedure sub protSetFilesText public static=false parameters=1 lines 545-581 recoveries=none unbalanced_blocks=false
+  procedure function protGetFilesArr public static=false parameters=0 lines 587-616 recoveries=none unbalanced_blocks=false
+  procedure sub SendPaste public static=false parameters=1 lines 622-628 recoveries=none unbalanced_blocks=false
+  procedure sub SendCopy public static=false parameters=1 lines 633-639 recoveries=none unbalanced_blocks=false
+  procedure function GetClipFormatFromCopyPictureFormat public static=false parameters=1 lines 650-659 recoveries=none unbalanced_blocks=false
+  procedure function GetFormatSize private static=false parameters=1 lines 674-690 recoveries=none unbalanced_blocks=false
+  procedure sub CriticalRaise private static=false parameters=2 lines 696-705 recoveries=none unbalanced_blocks=false
+  procedure function BytesFromPointer private static=false parameters=2 lines 714-726 recoveries=none unbalanced_blocks=false
+  procedure function StringFromPointerW private static=false parameters=1 lines 733-742 recoveries=none unbalanced_blocks=false
+  procedure function StringFromPointerA private static=false parameters=1 lines 749-758 recoveries=none unbalanced_blocks=false
+  procedure function GetClipboardFormatName private static=false parameters=1 lines 764-802 recoveries=none unbalanced_blocks=false
+  procedure function GetPictureFromClipboard private static=false parameters=1 lines 813-855 recoveries=none unbalanced_blocks=false
+  procedure function CreatePicture private static=false parameters=3 lines 864-897 recoveries=none unbalanced_blocks=false
+  procedure function fnOLEError private static=false parameters=1 lines 903-942 recoveries=none unbalanced_blocks=false
+  procedure sub CopyVariant private static=false parameters=2 lines 948-954 recoveries=none unbalanced_blocks=false
+  procedure function OpenClipboardTimeout private static=false parameters=2 lines 962-977 recoveries=none unbalanced_blocks=false
+  procedure function getAppHwnd private static=false parameters=0 lines 980-1005 recoveries=none unbalanced_blocks=false
+  recoveries: none

@@ -1,0 +1,17 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/12-interop-office/12-07-export-powerpoint-synthetique.bas
+---
+families/12-interop-office/12-07-export-powerpoint-synthetique.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 forms=0 declare_count=0 external_dependencies=1
+module 12-07-export-powerpoint-synthetique (standard): loc=38 logical_loc=23 procedures=1 cyclomatic=3 cyclomatic_total=3 max_nesting=1 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub ExporterVersPowerPoint public lines 11-38: loc=28 logical_loc=22 cyclomatic=3 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub ExporterVersPowerPoint public static=false parameters=0 lines 11-38 recoveries=none unbalanced_blocks=false
+  recoveries: none

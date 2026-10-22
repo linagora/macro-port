@@ -2,14 +2,14 @@
 //! The modules of a file, from their source to their report (SPEC M2).
 //!
 //! The front end reads each module on its own, from its text alone. [`Analysis`]
-//! holds what it makes of one: the lines, and the procedures that the parser
-//! finds in them. [`Front`] puts that into the report of the module, and
-//! completes the report of the file once every module is read. [`finish`] runs
-//! it on the modules of an extraction, those that were found in a workbook. The
-//! text modules have two doors of their own: [`analyze_modules`] (the `text`
-//! submodule) wraps modules that the caller has as text in a file, and
-//! `analyze_text` (the `text_file` submodule) reads a `.bas`, `.cls` or `.frm`
-//! file as the one module of a file.
+//! holds what it makes of one: the lines, the procedures that the parser finds
+//! in them, and what measuring each procedure shows. [`Front`] puts that into
+//! the report of the module, and completes the report of the file once every
+//! module is read. [`finish`] runs it on the modules of an extraction, those
+//! that were found in a workbook. The text modules have two doors of their own:
+//! [`analyze_modules`] (the `text` submodule) wraps modules that the caller has
+//! as text in a file, and `analyze_text` (the `text_file` submodule) reads a
+//! `.bas`, `.cls` or `.frm` file as the one module of a file.
 //!
 //! The file is `ok` when a module has a procedure or is suspected of having lost
 //! its source, when it has Excel 4.0 macro sheets or when the encryption of the
@@ -18,29 +18,38 @@
 //! report of a module that no stage measured, and its failure gives the file its
 //! status.
 //!
-//! Only what the parser shows is filled so far: the spans and the sizes of the
-//! procedures, the declarations of the modules (and the count of their `Declare`
-//! statements, a metric), and the trait that the recoveries of the parser give.
-//! The other fields are left out until the stages that measure them run, since a
-//! missing value is not a zero. The exceptions are three fields of a procedure
-//! that the schema requires and that only the rule engine can decide: until it
-//! runs, `primary_family` is `unclassified`, and `families` and `signals` are
-//! empty.
+//! Only what the parser, the metrics and the statements show is filled so far:
+//! the spans of the procedures and their metrics (sizes, cyclomatic complexity,
+//! nesting, parameters and `GoTo`s), the metrics of the modules and of the file
+//! (their sizes, their counts, what their procedures add up to, and the
+//! external dependencies of the file: the ProgIDs of its statements, its
+//! references and its `Declare` statements), the declarations of the modules
+//! (and the count of their `Declare` statements, a metric), and the trait that
+//! the recoveries of the parser and the blocks that do not match give. The other
+//! fields are left out until the stages that measure them run, since a missing
+//! value is not a zero: the external dependencies of a procedure are such a
+//! field. The exceptions are three fields of a procedure that the schema
+//! requires and that only the rule engine can decide: until it runs,
+//! `primary_family` is `unclassified`, and `families` and `signals` are empty.
+//!
+//! The statements of a module are read once, in the `statements` submodule,
+//! which hands the facts of each to the stages that want them.
 //!
 //! Nothing here executes or evaluates anything from the file.
 
+mod statements;
 mod text;
 mod text_file;
 
+use self::statements::ExternalProgids;
 use super::{Extraction, Failure, Options, readable_status};
 use crate::report::{
     Declarations, FileReport, Metrics, ModuleReport, Orientation, ProcedureReport, Status,
-    VbaProject,
 };
-use crate::rules::{ModuleType, RuleSet, StructuralPredicate, TraitRule};
+use crate::rules::{RuleSet, StructuralPredicate, TraitRule};
 use crate::vba::{
-    Declaration, DeclarationKind, LogicalKind, LogicalLine, OptionKind, ParsedModule, Procedure,
-    SourceLines, VbaError, parse, split_lines,
+    Declaration, DeclarationKind, OptionKind, ParsedModule, Procedure, ProcedureMeasure,
+    SourceLines, VbaError, file_metrics, measure_procedure, module_metrics, parse, split_lines,
 };
 
 pub use self::text::analyze_modules;
@@ -70,6 +79,9 @@ pub(super) struct Analysis {
     pub(super) lines: SourceLines,
     /// Its procedures, and where the parser stepped over something.
     pub(super) module: ParsedModule,
+    /// What measuring each procedure shows: one for each of the procedures of
+    /// `module`, in the same order.
+    pub(super) measures: Vec<ProcedureMeasure>,
 }
 
 impl Analysis {
@@ -77,7 +89,29 @@ impl Analysis {
     fn of(text: &str) -> Result<Self, VbaError> {
         let lines = split_lines(text)?;
         let module = parse(&lines);
-        Ok(Self { lines, module })
+        let measures = (module.procedures.iter())
+            .map(|procedure| measure_parsed(procedure, &lines))
+            .collect();
+        Ok(Self {
+            lines,
+            module,
+            measures,
+        })
+    }
+
+    /// Whether the structural predicate `parse_recovered` holds for the
+    /// procedure at `index` (SPEC M2 item 6): the parser stepped over something
+    /// in it, or its blocks do not match.
+    pub(super) fn procedure_recovered(&self, index: usize) -> bool {
+        let parsed = (self.module.procedures.get(index)).is_some_and(Procedure::is_recovered);
+        parsed || (self.measures.get(index)).is_some_and(|measure| measure.unbalanced_blocks)
+    }
+
+    /// Whether `parse_recovered` holds for the module as a whole: for a
+    /// procedure, or for the code outside the procedures.
+    pub(super) fn is_recovered(&self) -> bool {
+        self.module.is_recovered()
+            || (self.measures.iter()).any(|measure| measure.unbalanced_blocks)
     }
 
     /// How many lines reading the module took: the greater of its physical and
@@ -94,11 +128,16 @@ struct Front {
     /// The procedures that the modules may still report.
     procedures_left: u32,
     /// The ids of the traits that the rules give to the predicate
-    /// `parse_recovered`. The parser decides that one, so the procedures and
-    /// the file that have it can be marked before the rule engine runs.
+    /// `parse_recovered`. The parser and the metrics decide that one, so the
+    /// procedures and the file that have it can be marked before the rule engine
+    /// runs.
     recovery_traits: Vec<String>,
-    /// Whether the parser stepped over something in a module read so far.
+    /// Whether `parse_recovered` holds for a module read so far.
     recovered: bool,
+    /// The ProgIDs that the statements of the modules read so far pass to
+    /// `CreateObject` and `GetObject`, those that count as external
+    /// dependencies.
+    external_progids: ExternalProgids,
     /// Why modules were not read, in the order they were met.
     failures: Vec<Failure>,
 }
@@ -110,6 +149,7 @@ impl Front {
             procedures_left: MAX_FILE_PROCEDURES,
             recovery_traits: recovery_traits(rules),
             recovered: false,
+            external_progids: ExternalProgids::default(),
             failures: Vec::new(),
         }
     }
@@ -154,28 +194,41 @@ impl Front {
         Ok(analysis)
     }
 
-    /// Puts what `analysis` shows of a module into its report: the sizes of the
-    /// module and its procedures with their spans, and its declarations.
+    /// Puts what `analysis` shows of a module into its report: its procedures
+    /// with their spans and metrics, the metrics of the module, and its
+    /// declarations. The ProgIDs that its statements pass to `CreateObject` and
+    /// `GetObject` go to the file.
     fn fill(&mut self, module: &mut ModuleReport, analysis: &Analysis) {
-        let lines = &analysis.lines;
-        module.procedures = (analysis.module.procedures.iter())
-            .map(|procedure| procedure_report(procedure, lines, &self.recovery_traits))
+        self.external_progids.read(analysis);
+        let found = (analysis.module.procedures.iter()).zip(&analysis.measures);
+        module.procedures = (found.enumerate())
+            .map(|(index, (procedure, measure))| {
+                let traits = self.recovery_traits_if(analysis.procedure_recovered(index));
+                procedure_report(procedure, measure, traits)
+            })
             .collect();
         let declarations = declarations_report(&analysis.module.declarations);
+        let procedure_metrics = analysis.measures.iter().map(|measure| &measure.metrics);
         module.metrics = Metrics {
-            loc: lines.physical_lines,
-            logical_loc: logical_lines(&lines.logical),
-            procedures: Some(count(module.procedures.len())),
             declare_count: declarations.declare_count,
-            ..Metrics::default()
+            ..module_metrics(&analysis.lines, procedure_metrics)
         };
         module.declarations = Some(declarations);
-        self.recovered |= analysis.module.is_recovered();
+        self.recovered |= analysis.is_recovered();
+    }
+
+    /// The traits of a procedure or of a file that `recovered` says did not
+    /// parse cleanly: those that the rules tie to the predicate
+    /// `parse_recovered`. `None` if it parsed cleanly, or if no rule has that
+    /// predicate.
+    fn recovery_traits_if(&self, recovered: bool) -> Option<Vec<String>> {
+        (recovered && !self.recovery_traits.is_empty()).then(|| self.recovery_traits.clone())
     }
 
     /// Completes the report of a file once its modules are read: the metrics of
-    /// the file sum those of its modules, the errors of the front end join those
-    /// of the extraction, and the status follows from the procedures.
+    /// the file follow from those of its modules and of their procedures and
+    /// from the ProgIDs of their statements, the errors of the front end join
+    /// those of the extraction, and the status follows from the procedures.
     ///
     /// A file that extraction could not read keeps the status of its first
     /// failure. Otherwise the first failure of the front end gives the status,
@@ -187,7 +240,7 @@ impl Front {
     /// container indicators.
     fn seal(self, file: &mut FileReport) {
         if let Some(project) = &file.vba_project {
-            file.metrics = Some(file_metrics(project));
+            file.metrics = Some(file_metrics(project, self.external_progids.iter()));
         }
         if matches!(file.status, Status::Ok | Status::NoMacros) {
             file.status = match self.failures.first() {
@@ -199,8 +252,8 @@ impl Front {
                 }
             };
         }
-        if self.recovered && !self.recovery_traits.is_empty() {
-            file.traits = Some(self.recovery_traits);
+        if let Some(traits) = self.recovery_traits_if(self.recovered) {
+            file.traits = Some(traits);
         }
         let errors = file.errors.get_or_insert_with(Vec::new);
         errors.extend(self.failures.into_iter().map(|failure| failure.error));
@@ -245,13 +298,25 @@ fn recovery_traits(rules: &RuleSet) -> Vec<String> {
         .collect()
 }
 
-/// The report of a procedure, as far as the structure of the module shows it.
+/// What measuring a procedure that the parser found shows: its metrics, and
+/// whether its blocks match. `lines` are those of the module that holds it.
+fn measure_parsed(procedure: &Procedure, lines: &SourceLines) -> ProcedureMeasure {
+    let code = (lines.logical.get(procedure.lines.clone())).unwrap_or_default();
+    measure_procedure(
+        procedure.start_line,
+        procedure.end_line,
+        procedure.parameter_count,
+        code,
+    )
+}
+
+/// The report of a procedure, as far as its structure and its measure show it,
+/// with the `traits` that the front end gives it, if any.
 fn procedure_report(
     procedure: &Procedure,
-    lines: &SourceLines,
-    recovery_traits: &[String],
+    measure: &ProcedureMeasure,
+    traits: Option<Vec<String>>,
 ) -> ProcedureReport {
-    let recovered = procedure.is_recovered() && !recovery_traits.is_empty();
     ProcedureReport {
         name: procedure.name.clone(),
         kind: procedure.kind,
@@ -261,14 +326,14 @@ fn procedure_report(
         possibly_unused: None,
         start_line: procedure.start_line,
         end_line: procedure.end_line,
-        metrics: procedure_metrics(procedure, lines),
+        metrics: measure.metrics.clone(),
         calls: None,
         apis: None,
         primary_family: UNCLASSIFIED.to_owned(),
         secondary_families: None,
         families: Vec::new(),
         signals: Vec::new(),
-        traits: recovered.then(|| recovery_traits.to_vec()),
+        traits,
         orientation: Orientation,
     }
 }
@@ -298,43 +363,9 @@ fn declarations_report(declarations: &[Declaration]) -> Declarations {
     }
 }
 
-/// The metrics of a procedure.
-fn procedure_metrics(procedure: &Procedure, lines: &SourceLines) -> Metrics {
-    let code = (lines.logical.get(procedure.lines.clone())).unwrap_or_default();
-    Metrics {
-        loc: (procedure.end_line.saturating_sub(procedure.start_line)).saturating_add(1),
-        logical_loc: logical_lines(code),
-        parameters: Some(count(procedure.parameter_count)),
-        ..Metrics::default()
-    }
-}
-
-/// The number of logical lines that are not comment-only.
-fn logical_lines(lines: &[LogicalLine]) -> u32 {
-    let code = (lines.iter()).filter(|line| line.kind != LogicalKind::CommentOnly);
-    count(code.count())
-}
-
 /// A length as the `u32` that the report holds: `u32::MAX` if it is larger.
 fn count(len: usize) -> u32 {
     u32::try_from(len).unwrap_or(u32::MAX)
-}
-
-/// The metrics of a file: the sizes of its modules summed.
-fn file_metrics(project: &VbaProject) -> Metrics {
-    let mut metrics = Metrics::default();
-    let (mut procedures, mut forms, mut declares) = (0u32, 0u32, 0u32);
-    for module in &project.modules {
-        metrics.loc = metrics.loc.saturating_add(module.metrics.loc);
-        metrics.logical_loc = (metrics.logical_loc).saturating_add(module.metrics.logical_loc);
-        procedures = procedures.saturating_add(count(module.procedures.len()));
-        forms = forms.saturating_add(u32::from(module.module_type == ModuleType::Form));
-        declares = declares.saturating_add(module.metrics.declare_count.unwrap_or(0));
-    }
-    metrics.procedures = Some(procedures);
-    metrics.forms = Some(forms);
-    metrics.declare_count = Some(declares);
-    metrics
 }
 
 #[cfg(test)]
@@ -389,5 +420,43 @@ mod tests {
         assert_eq!(weight("a\nb\nc"), 3);
         assert_eq!(weight("a: b: c: d"), 4);
         assert_eq!(weight(""), 0);
+    }
+
+    #[test]
+    fn an_analysis_measures_each_procedure_in_order() {
+        let analysis =
+            Analysis::of("Sub A()\nEnd Sub\nSub B(x)\n    If x Then\n    End If\nEnd Sub\n")
+                .expect("a short module");
+
+        let cyclomatic: Vec<_> = (analysis.measures.iter())
+            .map(|measure| measure.metrics.cyclomatic)
+            .collect();
+        assert_eq!(analysis.measures.len(), analysis.module.procedures.len());
+        assert_eq!(cyclomatic, [Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn an_analysis_tells_which_procedures_did_not_parse_cleanly() {
+        let of = |text| Analysis::of(text).expect("a short module");
+
+        // The blocks of the first of three procedures do not match, and the
+        // parser recovers in the second, which has no end. There is no fourth.
+        let both = of("Sub A()\n    If x Then\nEnd Sub\nSub B()\nSub C()\nEnd Sub\n");
+        let recovered: Vec<_> = (0..4)
+            .map(|index| both.procedure_recovered(index))
+            .collect();
+        assert_eq!(recovered, [true, true, false, false]);
+        assert!(both.is_recovered());
+
+        // The blocks alone, and the code outside the procedures alone.
+        let blocks = of("Sub A()\n    Next\nEnd Sub\n");
+        assert!(!blocks.module.is_recovered());
+        assert!(blocks.procedure_recovered(0) && blocks.is_recovered());
+        let outside = of("Sub A()\nEnd Sub\nEnd Sub\n");
+        assert!(!outside.procedure_recovered(0));
+        assert!(outside.is_recovered());
+
+        let clean = of("Sub A()\n    If x Then\n    End If\nEnd Sub\n");
+        assert!(!clean.procedure_recovered(0) && !clean.is_recovered());
     }
 }
