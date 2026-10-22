@@ -3,9 +3,10 @@
 
 use std::sync::LazyLock;
 
-use macroport_core::analyze::{Extraction, Options, analyze, extract};
+use macroport_core::analyze::{Extraction, Options, analyze, analyze_modules, extract};
 use macroport_core::report::{FileReport, Lang, ModuleReport, ProcedureReport, Report, Signal};
-use macroport_core::rules::{RuleSet, RulesSources, Severity};
+use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity};
+use macroport_core::vba::ModuleSource;
 use macroport_testkit::{corpus, report_problems};
 use sha2::{Digest, Sha256};
 
@@ -115,6 +116,20 @@ pub fn samples() -> Vec<String> {
 /// The text of the sample `path` of `corpus/`, relative to it.
 pub fn sample_text(path: &str) -> String {
     String::from_utf8(corpus::read(path)).expect("a sample is UTF-8")
+}
+
+/// The module `name` of `module_type`, whose source is `text`.
+pub fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
+    ModuleSource {
+        name: name.to_owned(),
+        module_type,
+        text: text.to_owned(),
+    }
+}
+
+/// The report of `modules` as a text file, checked against the report schema.
+pub fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
+    checked(analyze_modules(modules, "Book.bas", &options()))
 }
 
 /// The modules of the VBA project of `file`.

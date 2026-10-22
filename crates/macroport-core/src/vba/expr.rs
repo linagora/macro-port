@@ -15,7 +15,11 @@
 //! invoked with arguments, or when it stands alone as an operand without being
 //! assigned to: the reader does not know which names are variables, so it
 //! takes those that the syntax does not rule out, like the calibration
-//! prototype.
+//! prototype. A name after a dot belongs to an object and is a call only with
+//! arguments, unless every name before it is one of the VBA library
+//! (`VBA.Shell "calc"`, `Interaction.Shell("calc")`): it is then the function
+//! of the library, a call in the same cases as a name alone, and the call says
+//! so ([`CallSite::library`]).
 //!
 //! The names joined by dots make a chain, the arguments of the calls in it
 //! left out. A dot continues the chain when it touches the name before it or
@@ -68,6 +72,25 @@ const LIBRARIES: [&str; 2] = ["VBA", "Strings"];
 /// `VBA.Interaction.CreateObject("X")`. `Interaction` holds no function of the
 /// closed set, so that it is not among [`LIBRARIES`].
 const OBJECT_LIBRARIES: [&str; 2] = ["VBA", "Interaction"];
+
+/// The names that may qualify any function of the library of VBA, each
+/// followed by a `.`: the library and the modules of its standard library, as
+/// in `VBA.Shell`, `Interaction.Shell` and `VBA.Interaction.Shell`. The two
+/// lists above are exact for the functions they serve; this one serves the
+/// calls, which a rule names whichever module holds them. `Constants` is not
+/// in it: it holds constants and no function. ADR-0010 gives the reasons and
+/// the cost of the choice.
+const STANDARD_LIBRARY: [&str; 9] = [
+    "VBA",
+    "Conversion",
+    "DateTime",
+    "FileSystem",
+    "Financial",
+    "Information",
+    "Interaction",
+    "Math",
+    "Strings",
+];
 
 /// The functions that create an object of a class, each with the position of
 /// the argument that names the class: `CreateObject(Class, [ServerName])` and
@@ -127,6 +150,17 @@ enum Operator {
     Join,
     /// Any other: its operands are read, and nothing is known of the result.
     Other,
+}
+
+/// How the name of a call is qualified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Qualifier {
+    /// Not at all: `Shell(x)`.
+    Bare,
+    /// By names of the VBA library only: `VBA.Shell(x)`, `Interaction.Shell(x)`.
+    Library,
+    /// By anything else, so that it is the member of an object: `ws.Cells(1, 1)`.
+    Member,
 }
 
 /// The binding powers of the binary operator `kind` and what it does. The
@@ -241,6 +275,19 @@ fn block_object_start(tokens: &[Token]) -> Option<usize> {
     opens.then(|| head.saturating_add(1))
 }
 
+/// Whether `name` is one of `names`, whatever the case.
+fn is_one_of(name: &str, names: &[&str]) -> bool {
+    names
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(name))
+}
+
+/// Whether `name` is a name of the VBA library, which may qualify a function
+/// of it ([`STANDARD_LIBRARY`]).
+fn is_standard_library(name: &str) -> bool {
+    is_one_of(name, &STANDARD_LIBRARY)
+}
+
 /// The facts `found`, each with the index of the token it was found at, in
 /// the order of the source.
 fn in_order<T>(mut found: Vec<(usize, T)>) -> Vec<T> {
@@ -261,11 +308,28 @@ struct Chain {
     /// Whether they are only the names that may qualify `CreateObject` and
     /// `GetObject` (`VBA.Interaction.`), so that the next may be one of them.
     object_library: bool,
+    /// Whether they are only names of the VBA library (`Interaction.`,
+    /// `VBA.Strings.`), so that the next is a function of it, a call that
+    /// [`CallSite::library`] flags. It starts true, for no name is read, but
+    /// for a chain that continues the object of a `With` block: it is true
+    /// then if the object holds only such names.
+    standard_library: bool,
     /// The names read so far, the object of the `With` block in front of them
     /// if a dot started the chain.
     elements: Vec<String>,
     /// How many of the first elements are that object.
     inherited: usize,
+}
+
+impl Chain {
+    /// How the element about to be read is qualified by the ones before it.
+    fn qualifier(&self) -> Qualifier {
+        match (self.qualified, self.standard_library) {
+            (false, _) => Qualifier::Bare,
+            (true, true) => Qualifier::Library,
+            (true, false) => Qualifier::Member,
+        }
+    }
 }
 
 /// What a name weighs in memory beyond its bytes: the header of its `String`
@@ -289,12 +353,18 @@ pub(super) struct WithObject {
     elements: Vec<String>,
     /// What it weighs: the bytes of the names, and [`NAME_OVERHEAD`] for each.
     weight: usize,
+    /// Whether the names are all names of the VBA library, so that a dot in
+    /// the block qualifies a function of it (`With VBA` then `.Shell "calc"`).
+    /// Kept apart from the names, which a statement may not be allowed to
+    /// copy, and which an enclosing block may have given in part.
+    standard_library: bool,
 }
 
 impl WithObject {
-    /// The object whose chain is `elements`. None when it weighs more than
+    /// The object whose chain is `elements`, which holds only names of the VBA
+    /// library if `standard_library` is true. None when it weighs more than
     /// [`MAX_OBJECT_WEIGHT`], without copying it.
-    fn new(elements: &[String]) -> Option<Self> {
+    fn new(elements: &[String], standard_library: bool) -> Option<Self> {
         let mut weight = 0usize;
         for name in elements {
             weight = weight
@@ -307,6 +377,7 @@ impl WithObject {
         Some(Self {
             elements: elements.to_vec(),
             weight,
+            standard_library,
         })
     }
 
@@ -528,19 +599,49 @@ impl<'a> Reader<'a> {
                 }
                 TokenKind::Identifier => {
                     self.member(at, next == Some(TokenKind::ColonEquals));
-                    let before = at.checked_sub(1).and_then(kind_of);
-                    let after_dot = matches!(before, Some(TokenKind::Dot | TokenKind::Bang));
                     if next == Some(TokenKind::LeftParen) {
-                        self.call(at, after_dot);
-                    } else if !after_dot && !matches!(next, Some(TokenKind::Dot | TokenKind::Bang))
-                    {
-                        self.bare_call(at, next);
+                        let qualifier = self.flat_qualifier(at);
+                        self.call(at, qualifier);
+                    } else if !matches!(next, Some(TokenKind::Dot | TokenKind::Bang)) {
+                        match self.flat_qualifier(at) {
+                            Qualifier::Member => {}
+                            qualifier => self.bare_call(at, qualifier, next),
+                        }
                     }
                 }
                 _ => {}
             }
         }
         self.pos = tokens.len();
+    }
+
+    /// How the name at `at` is qualified in the part of the statement that is
+    /// read flat, read back from the tokens before it: by the library if each
+    /// `Name.` pair before it holds a name of the VBA library, by an object if
+    /// another token or a `!` is there, and not at all if no dot touches it.
+    /// The object of a `With` block is not followed. Only names that no dot
+    /// follows are asked about, so no pair is read back twice and the time
+    /// stays linear.
+    fn flat_qualifier(&self, at: usize) -> Qualifier {
+        let kind_of = |index: usize| self.tokens.get(index).map(|token| token.kind);
+        let mut qualifier = Qualifier::Bare;
+        let mut named = at;
+        while let Some(dot) = named.checked_sub(1) {
+            match kind_of(dot) {
+                Some(TokenKind::Dot) => {}
+                Some(TokenKind::Bang) => return Qualifier::Member,
+                _ => break,
+            }
+            let before = dot
+                .checked_sub(1)
+                .filter(|&n| is_standard_library(self.name_at(n)));
+            let Some(before) = before else {
+                return Qualifier::Member;
+            };
+            qualifier = Qualifier::Library;
+            named = before;
+        }
+        qualifier
     }
 
     /// Lists the string a node holds, if it holds one: its expression ends
@@ -757,8 +858,9 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// Lists the name at `at` as a call, unless the statement declares it.
-    fn call(&mut self, at: usize, after_dot: bool) {
+    /// Lists the name at `at`, qualified as `qualifier` says, as a call,
+    /// unless the statement declares it.
+    fn call(&mut self, at: usize, qualifier: Qualifier) {
         if self.declaration {
             return;
         }
@@ -767,7 +869,8 @@ impl<'a> Reader<'a> {
                 at,
                 CallSite {
                     name: name.to_owned(),
-                    after_dot,
+                    after_dot: qualifier != Qualifier::Bare,
+                    library: qualifier == Qualifier::Library,
                 },
             ));
         }
@@ -801,11 +904,12 @@ impl<'a> Reader<'a> {
     /// make a chain.
     fn primary(&mut self) -> Node {
         let start = self.pos;
-        let qualified = matches!(self.kind(), Some(TokenKind::Dot | TokenKind::Bang));
-        let elements = if qualified {
+        let first = self.kind();
+        let qualified = matches!(first, Some(TokenKind::Dot | TokenKind::Bang));
+        let (elements, block_library) = if qualified {
             self.object_of_block(start)
         } else {
-            Vec::new()
+            (Vec::new(), false)
         };
         if qualified {
             self.advance();
@@ -815,6 +919,11 @@ impl<'a> Reader<'a> {
             qualified,
             library: !qualified,
             object_library: !qualified,
+            // A name starts the chain: no name is read yet that is not the
+            // library's. A dot continues the object of a block, which counts
+            // if it holds only such names, and a bang is no qualification by a
+            // module.
+            standard_library: !qualified || (block_library && first == Some(TokenKind::Dot)),
             inherited: elements.len(),
             elements,
         };
@@ -824,15 +933,18 @@ impl<'a> Reader<'a> {
             chain.elements.push(self.name_at(at).to_owned());
             let arguments = self.argument_lists(&mut chain);
             if !self.continues_operand() {
+                let standard_library = chain.standard_library
+                    && arguments.is_none()
+                    && is_standard_library(self.name_at(at));
                 let node = self.last_element(&chain, at, arguments);
-                self.end_chain(chain);
+                self.end_chain(chain, standard_library);
                 return node;
             }
             self.inner_element(&mut chain, at, arguments);
             self.advance();
             chain.qualified = true;
         }
-        self.end_chain(chain);
+        self.end_chain(chain, false);
         Node::unknown(start)
     }
 
@@ -884,23 +996,28 @@ impl<'a> Reader<'a> {
     /// `at` continues: the object of the `With` block that the statement lies
     /// in. Empty when a `)` lies before the dot, which continues what the
     /// parenthesis closed, when the block has no known object, and when the
-    /// allowance for copying it falls short.
-    fn object_of_block(&mut self, at: usize) -> Vec<String> {
+    /// allowance for copying it falls short. It also tells whether the object
+    /// holds only names of the VBA library, which no allowance can change.
+    fn object_of_block(&mut self, at: usize) -> (Vec<String>, bool) {
         let after_group = self
             .token_before(at)
             .is_some_and(|token| token.kind == TokenKind::RightParen);
         match &mut self.enclosing {
-            Some(enclosing) if !after_group => enclosing.object.copy(enclosing.allowance),
-            _ => Vec::new(),
+            Some(enclosing) if !after_group => (
+                enclosing.object.copy(enclosing.allowance),
+                enclosing.object.standard_library,
+            ),
+            _ => (Vec::new(), false),
         }
     }
 
-    /// Ends `chain`. It is listed if it has an element of its own besides the
-    /// first. It is the object of the block that the statement opens if it is
-    /// the whole of the expression after the `With`.
-    fn end_chain(&mut self, chain: Chain) {
+    /// Ends `chain`, whose names are all names of the VBA library if
+    /// `standard_library` is true. It is listed if it has an element of its
+    /// own besides the first. It is the object of the block that the statement
+    /// opens if it is the whole of the expression after the `With`.
+    fn end_chain(&mut self, chain: Chain, standard_library: bool) {
         if self.object_start == Some(chain.start) && self.at_end() {
-            self.opened = WithObject::new(&chain.elements);
+            self.opened = WithObject::new(&chain.elements, standard_library);
         }
         if chain.elements.len() > chain.inherited.max(1) {
             self.chains.push((chain.start, chain.elements));
@@ -916,10 +1033,7 @@ impl<'a> Reader<'a> {
 
     /// Whether the token at `index` is one of the library `names`.
     fn names_one_of(&self, index: usize, names: &[&str]) -> bool {
-        let name = self.name_at(index);
-        names
-            .iter()
-            .any(|library| library.eq_ignore_ascii_case(name))
+        is_one_of(self.name_at(index), names)
     }
 
     /// An element of `chain` that a `.` or a `!` follows, which is the token
@@ -933,12 +1047,15 @@ impl<'a> Reader<'a> {
         arguments: Option<Vec<Option<Node>>>,
     ) {
         self.member(at, false);
+        let qualifier = chain.qualifier();
         let object_library = chain.object_library;
         let plain = self.kind() == Some(TokenKind::Dot) && arguments.is_none();
         chain.library = chain.library && plain && self.names_one_of(at, &LIBRARIES);
         chain.object_library = object_library && plain && self.names_one_of(at, &OBJECT_LIBRARIES);
+        chain.standard_library =
+            chain.standard_library && plain && is_standard_library(self.name_at(at));
         if let Some(arguments) = arguments {
-            self.call(at, chain.qualified);
+            self.call(at, qualifier);
             self.progid(at, object_library, &arguments);
             self.finish_all(arguments);
         }
@@ -991,7 +1108,8 @@ impl<'a> Reader<'a> {
     /// has `arguments` if a `(` followed it. It is a member. With arguments it
     /// is a call, of the closed set of folding perhaps, and one that creates
     /// an object perhaps; without, it may be a constant, or a call all the
-    /// same.
+    /// same, unless an object qualifies it: the function of the library is a
+    /// call without arguments (`VBA.Shell "calc"`) as a name alone is.
     fn last_element(
         &mut self,
         chain: &Chain,
@@ -1000,22 +1118,23 @@ impl<'a> Reader<'a> {
     ) -> Node {
         self.member(at, false);
         let start = chain.start;
+        let qualifier = chain.qualifier();
         let Some(arguments) = arguments else {
-            // A qualified name belongs to another object, not to the module:
+            // A name qualified by an object belongs to it, not to the module:
             // a property that is read or set, or a method without arguments.
             // No call is listed for it.
-            if chain.qualified {
+            if qualifier == Qualifier::Member {
                 return Node::unknown(start);
             }
-            return match self.constant(start, at) {
-                Some(node) => node,
-                None => {
-                    self.bare_call(at, self.kind());
-                    Node::unknown(start)
-                }
-            };
+            if qualifier == Qualifier::Bare
+                && let Some(node) = self.constant(start, at)
+            {
+                return node;
+            }
+            self.bare_call(at, qualifier, self.kind());
+            return Node::unknown(start);
         };
-        self.call(at, chain.qualified);
+        self.call(at, qualifier);
         self.progid(at, chain.object_library, &arguments);
         match Folding::named(self.name_at(at)).filter(|_| chain.library) {
             Some(function) => self.fold(start, function, arguments),
@@ -1026,17 +1145,19 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// Lists the name at `at`, which stands alone with no dot before it and
-    /// no argument list after it, as a call, unless the token `next` that
-    /// follows it makes it a variable: it is assigned to or compared with `=`
-    /// (`Dir = 1`), or it is the variable of a `For Each`. The reader cannot
-    /// tell a function from a variable otherwise.
-    fn bare_call(&mut self, at: usize, next: Option<TokenKind>) {
+    /// Lists the name at `at`, which stands alone with no argument list after
+    /// it, as a call qualified as `qualifier` says (not at all, or by the
+    /// library only: `VBA.Shell "calc"`; the caller lists none for a member of
+    /// an object), unless the token `next` that follows it makes it a
+    /// variable: it is assigned to or compared with `=` (`Dir = 1`), or it is
+    /// the variable of a `For Each`. The reader cannot tell a function from a
+    /// variable otherwise.
+    fn bare_call(&mut self, at: usize, qualifier: Qualifier, next: Option<TokenKind>) {
         if !matches!(
             next,
             Some(TokenKind::Equals | TokenKind::ColonEquals | TokenKind::Keyword(Keyword::In))
         ) {
-            self.call(at, false);
+            self.call(at, qualifier);
         }
     }
 
