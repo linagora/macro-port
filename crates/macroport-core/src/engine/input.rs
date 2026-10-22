@@ -82,6 +82,11 @@ pub struct ModuleInput {
 pub struct NameSet(BTreeSet<String>);
 
 impl NameSet {
+    /// Whether the set holds no name.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Whether `name` is one of the names of the set. A name that is empty
     /// once its type character is gone is none of them.
     pub fn contains(&self, name: &str) -> bool {

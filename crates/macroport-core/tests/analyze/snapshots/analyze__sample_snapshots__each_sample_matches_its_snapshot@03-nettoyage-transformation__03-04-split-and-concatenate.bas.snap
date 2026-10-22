@@ -10,7 +10,7 @@ traits: none
 file: loc=34 logical_loc=23 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 03-04-split-and-concatenate (standard): loc=34 logical_loc=23 procedures=1 cyclomatic=5 cyclomatic_total=5 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub LeftRightConcatenate default lines 7-34: loc=28 logical_loc=23 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=8
+  sub LeftRightConcatenate default lines 7-34: loc=28 logical_loc=23 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=8
     api Cell.Offset*1
     api Cell.Offset.Value*9
     api Cells.EntireColumn.AutoFit*1

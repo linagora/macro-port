@@ -13,7 +13,7 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
   sub Label2_Click private lines 27-29: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
   sub MultiPage1_Change private lines 31-33: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
   sub tbxNameFile_Change private lines 35-37: loc=3 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
-  sub UserForm_Initialize private lines 42-63: loc=22 logical_loc=18 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=11
+  sub UserForm_Initialize private lines 42-63: loc=22 logical_loc=18 cyclomatic=2 max_nesting=2 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=true possibly_unused=false calls=none apis=11
     api Me.cbxSaveasType.List*1
     api Me.cbxSaveasType.ListIndex*1
     api Me.ckxAll.value*1
@@ -131,7 +131,7 @@ module 05-05-formulaire-export-feuilles (form): loc=474 logical_loc=367 procedur
     api Me.ckxUnCheckAll.value*1
     api Me.lbxSheet.ListCount*1
     api Me.lbxSheet.Selected*1
-  sub UserForm_QueryClose private lines 470-474: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub UserForm_QueryClose private lines 470-474: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=true possibly_unused=false calls=none apis=0
 parse:
   declaration Option(Explicit) line 22
   declaration Variable line 23

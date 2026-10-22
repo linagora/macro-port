@@ -14,6 +14,7 @@
 mod apis;
 mod calls;
 mod corpus;
+mod entry_points;
 mod failures;
 mod file_report;
 mod fixtures;
