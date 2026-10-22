@@ -3,7 +3,7 @@
   "tool": {
     "name": "macro-port",
     "version": "0.1.0",
-    "rules_version": "0.2.0",
+    "rules_version": "0.3.0",
     "build": "cli"
   },
   "generated_at": "2026-10-18T09:00:00Z",
