@@ -3,36 +3,40 @@
 //! The work must grow with the number of lines and no more: a procedure with
 //! no end, or a `Type` with none, must not send the parser looking for one in
 //! the lines that follow, header after header. Linear time shows on the clock
-//! only, so the limit is set far above what a single pass takes and far below
-//! what a second look at the lines read so far, at each line, would take on
-//! modules this long.
+//! only, and a limit in seconds fails on a loaded machine before a slow
+//! algorithm does: each check reads a module and one a quarter of its size, and
+//! compares the two times (`macroport_testkit::linear`).
 
-// clippy.toml keeps the clock out of the core, not out of its tests.
-#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 // clippy.toml excuses `expect` in the `#[test]` functions only, not in helpers.
 #![allow(clippy::expect_used)]
 
-use std::time::{Duration, Instant};
-
 use macroport_core::vba::{
-    MAX_RECOVERIES, MAX_TOKENS, ParsedModule, Recovery, RecoveryKind, parse, split_lines,
+    MAX_RECOVERIES, MAX_TOKENS, ParsedModule, Recovery, RecoveryKind, parse, split_lines, tokenize,
 };
+use macroport_testkit::linear::assert_linear_time;
 
 /// The lines of the hostile modules: far more than a real module has.
 const LINES: usize = 50_000;
 
-/// What reading one module may take.
-const LIMIT: Duration = Duration::from_secs(5);
+/// Reads the module that `text` gives for a quarter of `size`, then the one it
+/// gives for `size`, and fails if the time grows faster than the size
+/// (`macroport_testkit::linear`). Gives the larger module. The unit of `size`
+/// is the one that `text` takes: lines, or tokens. Splitting a text into lines
+/// is not part of the time.
+fn parse_in_linear_time(what: &str, size: usize, text: impl Fn(usize) -> String) -> ParsedModule {
+    let lines = |units| split_lines(&text(units)).expect("a text within the line limit");
+    assert_linear_time(what, size, lines, parse)
+}
 
-/// Reads `text` and fails if the parser takes longer than [`LIMIT`] over it.
-fn parse_in_time(text: &str) -> ParsedModule {
-    let lines = split_lines(text).expect("a text within the line limit");
-    let started = Instant::now();
-    let module = parse(&lines);
-    let elapsed = started.elapsed();
-    let head: String = text.chars().take(40).collect();
-    assert!(elapsed < LIMIT, "{head:?} took {elapsed:?}");
-    module
+/// `piece` repeated until the text holds more than `tokens` tokens, by up to
+/// one piece: for `MAX_TOKENS`, a line just past the most that the lexer keeps.
+fn repeated(piece: &str, tokens: usize) -> String {
+    let in_a_piece = tokenize(piece).len();
+    // The count below holds only if the pieces do not run together.
+    let in_two = tokenize(&piece.repeat(2)).len();
+    assert_eq!(in_two, in_a_piece.saturating_mul(2), "{piece:?}");
+    let pieces = tokens.checked_div(in_a_piece).unwrap_or(tokens);
+    piece.repeat(pieces.saturating_add(1))
 }
 
 #[test]
@@ -90,7 +94,8 @@ fn a_module_of_one_repeated_line_is_read_in_linear_time() {
         ("Type T\nSub a()\nEnd Sub", LINES, LINES, MAX_RECOVERIES),
     ];
     for (line, procedures, declarations, recoveries) in cases {
-        let module = parse_in_time(&format!("{line}\n").repeat(LINES));
+        let what = format!("{line:?}");
+        let module = parse_in_linear_time(&what, LINES, |units| format!("{line}\n").repeat(units));
         assert_eq!(module.procedures.len(), procedures, "{line:?}");
         assert_eq!(module.declarations.len(), declarations, "{line:?}");
         assert_eq!(module.recoveries.len(), recoveries, "{line:?}");
@@ -102,8 +107,10 @@ fn the_members_of_a_block_with_no_end_are_read_in_linear_time() {
     // One `Type` or `Enum` takes every line that cannot end it, directives
     // included, whose `#If` blocks stay open.
     for opener in ["Type T", "Enum E"] {
-        let members = "x As Long\n#If X Then\n".repeat(LINES / 2);
-        let module = parse_in_time(&format!("{opener}\n{members}"));
+        let module = parse_in_linear_time(opener, LINES, |lines| {
+            let members = "x As Long\n#If X Then\n".repeat(lines / 2);
+            format!("{opener}\n{members}")
+        });
         assert_eq!(module.declarations.len(), 1, "{opener:?}");
         assert!(module.procedures.is_empty(), "{opener:?}");
         assert_eq!(module.recoveries.len(), 1, "{opener:?}");
@@ -116,8 +123,9 @@ fn a_member_of_the_most_tokens_a_line_can_hold_is_read_in_linear_time() {
     // closes them, and none of these lines has one. Each is a `Type` of its
     // own, and ends the one before it.
     for piece in ["(", "(x)", ")", "x,"] {
-        let text = format!("Type T\nType({}\nEnd Type\n", piece.repeat(MAX_TOKENS));
-        let module = parse_in_time(&text);
+        let module = parse_in_linear_time(piece, MAX_TOKENS, |tokens| {
+            format!("Type T\nType({}\nEnd Type\n", repeated(piece, tokens))
+        });
         assert_eq!(module.declarations.len(), 2, "{piece:?}");
         // The first `Type` has no end, and the second cannot be read.
         assert_eq!(module.recoveries.len(), 2, "{piece:?}");
@@ -135,7 +143,9 @@ fn a_header_of_the_most_tokens_a_line_can_hold_is_counted_in_linear_time() {
         (",", 1..=1),
     ];
     for (piece, expected) in cases {
-        let module = parse_in_time(&format!("Sub a({}", piece.repeat(MAX_TOKENS)));
+        let module = parse_in_linear_time(piece, MAX_TOKENS, |tokens| {
+            format!("Sub a({}", repeated(piece, tokens))
+        });
         let [procedure] = module.procedures.as_slice() else {
             panic!("{piece:?}: {module:?}");
         };
@@ -158,8 +168,9 @@ fn unreadable(line: u32) -> Recovery {
 
 #[test]
 fn a_procedure_of_statements_that_cannot_be_read_keeps_the_first_recoveries() {
-    let body = "x = (\n".repeat(LINES);
-    let module = parse_in_time(&format!("Sub a()\n{body}End Sub\n"));
+    let module = parse_in_linear_time("x = (", LINES, |lines| {
+        format!("Sub a()\n{}End Sub\n", "x = (\n".repeat(lines))
+    });
     let [procedure] = module.procedures.as_slice() else {
         panic!("{module:?}");
     };
@@ -175,8 +186,9 @@ fn a_statement_of_the_most_tokens_a_line_can_hold_is_checked_in_linear_time() {
     // by the lexer, and is one recovery of the procedure whatever its length.
     let pieces = ["(", ")", "+ 1 ", "To "];
     for piece in pieces {
-        let statement = format!("x = {}", piece.repeat(MAX_TOKENS));
-        let module = parse_in_time(&format!("Sub a()\n{statement}\nEnd Sub\n"));
+        let module = parse_in_linear_time(piece, MAX_TOKENS, |tokens| {
+            format!("Sub a()\nx = {}\nEnd Sub\n", repeated(piece, tokens))
+        });
         let [procedure] = module.procedures.as_slice() else {
             panic!("{piece:?}: {module:?}");
         };
