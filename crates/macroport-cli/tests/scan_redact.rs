@@ -4,16 +4,13 @@
 //! and the options that go together. Most of them run the binary. Those that
 //! name the library (`Privacy`, `reports::documents`) check it against the
 //! core and the renderers that the binary is made of.
-//!
-//! Three of them need `analyze` to read the text modules (PR #133), which the
-//! stub under this branch does not: they are ignored, and pass on a `main` that
-//! has the analysis.
 
 mod common;
 mod support;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::ops::Range;
 use std::path::Path;
 
 use macroport_cli::args::Format;
@@ -206,6 +203,34 @@ fn vocabulary(dir: &Path, report: &Report) -> Vec<String> {
 /// Whether one of `texts` has `needle` in it.
 fn is_in(texts: &[String], needle: &str) -> bool {
     texts.iter().any(|text| text.contains(needle))
+}
+
+/// Whether one of `texts` shows `literal` other than across one of `kept`, the
+/// names that a report keeps on purpose. A kept name next to the text of the
+/// report spells what neither holds: `Err.LastDllError ×6` in the HTML spells
+/// `Error `. A kept name inside the literal excuses nothing.
+fn leaks(texts: &[String], literal: &str, kept: &[String]) -> bool {
+    texts.iter().any(|text| {
+        text.match_indices(literal).any(|(start, _)| {
+            let end = start + literal.len();
+            !kept.iter().any(|name| crosses(text, name, start..end))
+        })
+    })
+}
+
+/// Whether `name` is in `text` over a part of `range` and out of it.
+fn crosses(text: &str, name: &str, range: Range<usize>) -> bool {
+    // An occurrence that overlaps the range starts less than `name.len()` bytes
+    // before it and ends less than as far after it.
+    let from = text.floor_char_boundary(range.start.saturating_sub(name.len()));
+    let to = text.ceil_char_boundary(range.end.saturating_add(name.len()));
+    let Some(around) = text.get(from..to) else {
+        return false;
+    };
+    around.match_indices(name).any(|(at, _)| {
+        let (first, last) = (from + at, from + at + name.len());
+        first < range.end && range.start < last && (first < range.start || last > range.end)
+    })
 }
 
 /// The string literals of the VBA `source`: the text between double quotes,
@@ -552,7 +577,17 @@ fn a_redacted_path_keeps_the_extensions_that_the_walk_collects() {
 }
 
 #[test]
-#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
+fn a_kept_name_excuses_a_literal_that_it_crosses_and_not_one_that_holds_it() {
+    let kept = ["Err.LastDllError".to_owned(), "Err".to_owned()];
+
+    // The name and the text after it spell the literal: no leak.
+    assert!(!leaks(&["Err.LastDllError ×6".to_owned()], "Error ", &kept));
+    // The literal itself, with a kept name inside it: a leak.
+    let snippet = ["MsgBox \"Error \" & Err.Number".to_owned()];
+    assert!(leaks(&snippet, "Error ", &kept));
+}
+
+#[test]
 fn a_redacted_scan_of_the_corpus_shows_none_of_its_string_literals() {
     // The shortest literal that is looked for: shorter ones are the digits, the
     // words and the extensions that any report holds.
@@ -584,8 +619,11 @@ fn a_redacted_scan_of_the_corpus_shows_none_of_its_string_literals() {
     // nothing show some of the literals. Without this, a report that the
     // analysis has not filled yet passes for a report that hides everything.
     let shown_clear = shown_by(&dir.join("clear"));
+    let kept_clear = kept_names(&clear);
     assert!(
-        literals.iter().any(|literal| is_in(&shown_clear, literal)),
+        literals
+            .iter()
+            .any(|literal| leaks(&shown_clear, literal, &kept_clear)),
         "no literal of the corpus is in the reports of a scan that hides nothing"
     );
 
@@ -602,13 +640,12 @@ fn a_redacted_scan_of_the_corpus_shows_none_of_its_string_literals() {
         }
         let shown = shown_by(&dir.join(name));
         for literal in literals.iter().filter(|literal| !is_in(&allowed, literal)) {
-            assert!(!is_in(&shown, literal), "{name}: {literal:?}");
+            assert!(!leaks(&shown, literal, &allowed), "{name}: {literal:?}");
         }
     }
 }
 
 #[test]
-#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
 fn a_redacted_scan_of_the_corpus_hashes_the_names_of_the_project() {
     let dir = scratch("redact_identifiers");
     let clear = scan_root("corpus/families", &dir.join("clear"), &[]);
@@ -659,7 +696,6 @@ fn a_redacted_scan_of_the_corpus_hashes_the_names_of_the_project() {
 }
 
 #[test]
-#[ignore = "needs analyze() to read the text modules (PR #133), which this base does not have: remove once the stack is on a main that has it"]
 fn a_text_module_is_named_after_its_file_and_the_name_stays_without_identifiers() {
     // The core names the module of a .bas, .cls or .frm file after the file
     // (without its extension), and the table of SPEC section 8 keeps the names
