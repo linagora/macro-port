@@ -1,9 +1,10 @@
 # Macro-Port usage families (Lot 1). Licence: CC BY 4.0.
-# Each signal adds `weight` to its family score for a procedure, at most `max_hits_per_procedure` times (default 3).
+# Each signal adds `weight` to its family score for a procedure for each line it matches, at most `max_hits_per_procedure` lines (default 3).
+# A line that matches a signal several times counts once (docs/adr/0008-family-signal-hits-per-line.md).
 # Matchers are defined in docs/SPEC-LOT1.md section 7.
-version: 0.2.0
+version: 0.3.0
 scoring:
-  min_score: 3            # below this, the procedure is "unclassified"
+  min_score: 2            # below this, the procedure is "unclassified"
   secondary_ratio: 0.6    # secondary families: score >= ratio * primary score
   default_max_hits_per_procedure: 3
 
@@ -83,7 +84,7 @@ families:
       - { id: rpt.pdf-export, match: member, pattern: [ExportAsFixedFormat], weight: 5 }
       - { id: rpt.pdf-constant, match: regex, pattern: '\bxlTypePDF\b', weight: 2 }
       - { id: rpt.print, match: member, pattern: [PrintOut, PrintPreview], weight: 3 }
-      - { id: rpt.page-setup, match: member, pattern: [PageSetup, PrintArea, PrintTitleRows, PrintTitleColumns, CenterFooter, LeftFooter, RightFooter, CenterHeader, LeftHeader, RightHeader, FitToPagesWide, FitToPagesTall], weight: 2 }
+      - { id: rpt.page-setup, match: member, pattern: [PageSetup, PrintArea, PrintTitleRows, PrintTitleColumns, CenterFooter, LeftFooter, RightFooter, CenterHeader, LeftHeader, RightHeader, FitToPagesWide, FitToPagesTall], weight: 3 }
       - { id: rpt.page-breaks, match: member, pattern: [HPageBreaks, VPageBreaks, ResetAllPageBreaks], weight: 2 }
       - { id: rpt.save-copy, match: member, pattern: [SaveCopyAs], weight: 2 }
       - { id: rpt.new-report-sheet, match: chain, pattern: [Worksheets.Add, Sheets.Add, Workbooks.Add], weight: 1 }
@@ -150,16 +151,16 @@ families:
       - { id: ext.json, match: call, pattern: [ParseJson, ConvertToJson], weight: 2 }
       - { id: ext.web-query, match: string, pattern: '(?i)^URL;https?://', weight: 3 }
       - { id: ext.references, match: reference, pattern: '(?i)(ActiveX Data Objects|Microsoft XML|WinHTTP)', weight: 2, scope: project }
-      - { id: ext.sql, match: string, pattern: '(?i)^\s*(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b', weight: 2 }
+      - { id: ext.sql, match: string, pattern: '(?i)^\s*(SELECT\b.+\bFROM|INSERT\s+INTO|UPDATE\s+\S+\s+SET|DELETE\s+FROM)\b', weight: 2 }
 
   - id: 12-office-interop
     corpus_slug: 12-interop-office
     label: { en: "Automation of other Office applications", fr: "Interopérabilité Office" }
     signals:
-      - { id: office.outlook, match: progid, pattern: ['Outlook.Application'], weight: 5 }
-      - { id: office.word, match: progid, pattern: ['Word.Application', 'Word.Document'], weight: 5 }
-      - { id: office.powerpoint, match: progid, pattern: ['PowerPoint.Application'], weight: 5 }
-      - { id: office.access, match: progid, pattern: ['Access.Application'], weight: 4 }
+      - { id: office.outlook, match: progid, pattern: ['Outlook.Application*'], weight: 5 }
+      - { id: office.word, match: progid, pattern: ['Word.Application*', 'Word.Document*'], weight: 5 }
+      - { id: office.powerpoint, match: progid, pattern: ['PowerPoint.Application*'], weight: 5 }
+      - { id: office.access, match: progid, pattern: ['Access.Application*'], weight: 4 }
       - { id: office.early-binding, match: regex, pattern: '\bNew\s+(Outlook|Word|PowerPoint|Access)\.\w+', weight: 5 }
       - { id: office.mail-members, match: member, pattern: [CreateItem, MailItem, HTMLBody, Recipients, Attachments, GetNamespace, GetDefaultFolder], weight: 2 }
       - { id: office.word-members, match: member, pattern: [Bookmarks, MailMerge, Documents, Paragraphs, TypeText, ContentControls], weight: 2 }
