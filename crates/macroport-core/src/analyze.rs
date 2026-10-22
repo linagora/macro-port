@@ -37,7 +37,9 @@
 //! Nothing here executes or evaluates anything from the file, and nothing
 //! panics on its content: every failure is a status and an error code in the
 //! report. The codes that this module gives, besides those of the container
-//! and MS-OVBA layers:
+//! and MS-OVBA layers (one whose status is `unchanged` is no failure: it tells
+//! of something that was read all the same, and the status of the file stays
+//! what the rest of the report makes it):
 //!
 //! | code | status | meaning |
 //! | --- | --- | --- |
@@ -52,6 +54,7 @@
 //! | `ovba.project.too_large` | `too_large` | the `PROJECT` stream is above the limit of the MS-OVBA layer |
 //! | `vba.too_many_lines` | `too_large` | a module, or the modules of the file together, have too many lines to be read |
 //! | `vba.too_many_procedures` | `too_large` | a module would take the procedures of the file past what a report holds |
+//! | `vba.statement.too_deep` | `unchanged` | a module has statements nested too deep to be read in full; the rest of each is read flat |
 //!
 //! The message of an error about a module starts with `module <name>:`.
 
@@ -89,7 +92,8 @@ const BIFF8_WORKBOOK_STREAM: &str = "Workbook";
 pub struct Options<'a> {
     /// The rules. Extraction reads the container indicators from them, with
     /// their severity, and the front end takes from them the traits that the
-    /// parser and the metrics decide (`compile_error_suspected`).
+    /// parser, the metrics and the statements decide
+    /// (`compile_error_suspected`).
     pub rules: &'a RuleSet,
     /// The largest file, in bytes, that is read. A larger one gets the status
     /// `too_large` and is not opened: its report still gives its size and
@@ -230,9 +234,15 @@ impl Failure {
 
     /// The same failure, said to be that of the module `name`.
     fn in_module(mut self, name: &str) -> Self {
-        self.error.message = format!("module {name}: {}", self.error.message);
+        self.error.message = about_module(name, &self.error.message);
         self
     }
+}
+
+/// `message`, said to be about the module `name`: how the message of every
+/// error about a module starts.
+fn about_module(name: &str, message: &str) -> String {
+    format!("module {name}: {message}")
 }
 
 impl From<VbaError> for Failure {
