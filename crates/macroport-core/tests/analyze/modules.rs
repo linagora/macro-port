@@ -6,14 +6,15 @@
 
 use macroport_core::analyze::{Options, analyze, analyze_modules};
 use macroport_core::report::{
-    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, Status, Visibility,
+    Container, FileError, FileReport, Metrics, ModuleReport, ProcedureKind, ProcedureReport,
+    Status, Visibility,
 };
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::MAX_LINES;
 use macroport_testkit::corpus;
 
 use crate::support::{
-    HELLO, checked, module, modules, options, procedures, recovery_traits, report_of_modules,
+    HELLO, checked, marks_recovery, module, modules, options, procedures, report_of_modules,
     sha256, source,
 };
 
@@ -32,10 +33,12 @@ fn complexity(metrics: &Metrics) -> (Option<u32>, Option<u32>, Option<u32>) {
     )
 }
 
-/// The names of the procedures of `module`, with whether each has a trait.
+/// The names of the procedures of `module`, with whether each is suspected of
+/// not compiling.
 fn names(module: &ModuleReport) -> Vec<(&str, bool)> {
+    let marked = |procedure: &ProcedureReport| marks_recovery(procedure.traits.as_deref());
     (module.procedures.iter())
-        .map(|procedure| (procedure.name.as_str(), procedure.traits.is_some()))
+        .map(|procedure| (procedure.name.as_str(), marked(procedure)))
         .collect()
 }
 
@@ -359,20 +362,83 @@ fn a_module_with_too_many_procedures_is_too_large_and_the_others_are_still_read(
 }
 
 #[test]
+fn a_module_with_too_much_code_is_too_large_and_the_others_are_still_read() {
+    // A statement of half a million names may take more than the rule engine
+    // may read, whatever its text weighs, and it is refused before it is read.
+    let dense = format!("x = {}a\n", "a.".repeat(250_000));
+
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, HELLO),
+        source("Dense", ModuleType::Standard, &dense),
+        source("Third", ModuleType::Standard, HELLO),
+    ]);
+
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_much_code".to_owned(),
+        message:
+            "module Dense: the statements of the modules of the file take more than 64 MiB to read"
+                .to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let [first, dense, third] = modules(&file) else {
+        panic!("three modules expected");
+    };
+    // The dense module is listed as a module that no stage measured, and the
+    // modules around it are read.
+    assert_eq!((dense.procedures.len(), dense.metrics.loc), (0, 0));
+    assert_eq!((first.procedures.len(), third.procedures.len()), (1, 1));
+}
+
+#[test]
+fn the_modules_of_a_file_are_read_up_to_a_budget_of_lines() {
+    // The rule engine keeps what it reads of every module until the last one is
+    // read, so the lines of a file are bounded to bound its memory.
+    let sixty_thousand = "a\n".repeat(60_000);
+
+    let file = report_of_modules(vec![
+        source("First", ModuleType::Standard, &sixty_thousand),
+        source("Second", ModuleType::Standard, &sixty_thousand),
+        source("Third", ModuleType::Standard, "Sub A()\nEnd Sub\n"),
+    ]);
+
+    // The second crosses the budget and is read whole, and the third is not read.
+    assert_eq!(file.status, Status::TooLarge);
+    let errors = file.errors.as_ref().expect("errors");
+    let expected = FileError {
+        code: "vba.too_many_lines".to_owned(),
+        message: "module Third: the modules of the file have more than 100000 lines".to_owned(),
+    };
+    assert_eq!(errors, &[expected]);
+    let loc: Vec<_> = modules(&file).iter().map(|m| m.metrics.loc).collect();
+    assert_eq!(loc, [60_000, 60_000, 0]);
+    assert!(modules(&file)[2].procedures.is_empty());
+}
+
+#[test]
 fn a_procedure_that_did_not_parse_cleanly_gets_the_trait_compile_error_suspected() {
     for (text, expected) in [
         ("Sub Broken()\n    x = 1\n", true),
         ("Sub Broken()\n    x = 1\nEnd Function\n", true),
         ("Sub (a, b)\nEnd Sub\n", true),
+        // The blocks do not match: an If has no End If.
+        (
+            "Sub Broken()\n    If x Then\n        y = 1\nEnd Sub\n",
+            true,
+        ),
         ("Sub Fine()\n    x = 1\nEnd Sub\n", false),
     ] {
         let file = report_of(text);
 
         assert_eq!(file.status, Status::Ok, "{text:?}");
         let first = &module(&file).procedures[0];
-        let traits = expected.then(recovery_traits);
-        assert_eq!(first.traits, traits, "{text:?}");
-        assert_eq!(file.traits, traits, "{text:?}");
+        assert_eq!(
+            marks_recovery(first.traits.as_deref()),
+            expected,
+            "{text:?}"
+        );
+        assert_eq!(marks_recovery(file.traits.as_deref()), expected, "{text:?}");
     }
 }
 
@@ -394,13 +460,16 @@ fn a_procedure_whose_blocks_do_not_match_gets_the_trait_and_marks_the_file() {
     ] {
         let file = report_of(&format!("{text}Sub Other()\nEnd Sub\n"));
 
-        let traits = expected.then(recovery_traits);
         let [first, other] = &module(&file).procedures[..] else {
             panic!("two procedures expected");
         };
-        assert_eq!(first.traits, traits, "{text:?}");
-        assert_eq!(other.traits, None, "{text:?}");
-        assert_eq!(file.traits, traits, "{text:?}");
+        assert_eq!(
+            marks_recovery(first.traits.as_deref()),
+            expected,
+            "{text:?}"
+        );
+        assert!(!marks_recovery(other.traits.as_deref()), "{text:?}");
+        assert_eq!(marks_recovery(file.traits.as_deref()), expected, "{text:?}");
     }
 }
 
@@ -409,7 +478,7 @@ fn a_recovery_outside_any_procedure_marks_the_file_alone() {
     let file = report_of("Sub Fine()\nEnd Sub\nEnd Sub\nSub Later()\nEnd Sub\n");
 
     assert_eq!(names(module(&file)), [("Fine", false), ("Later", false)]);
-    assert_eq!(file.traits, Some(recovery_traits()));
+    assert!(marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
@@ -438,23 +507,21 @@ fn the_trait_is_the_one_that_the_rules_tie_to_the_parse_recovered_predicate() {
         &Options::new(&rules),
     ));
 
-    let expected = Some(vec!["does_not_parse".to_owned()]);
-    assert_eq!(module(&file).procedures[0].traits, expected);
-    assert_eq!(file.traits, expected);
+    let has =
+        |traits: &Option<Vec<String>>| (traits.iter().flatten()).any(|t| t == "does_not_parse");
+    assert!(has(&module(&file).procedures[0].traits));
+    assert!(has(&file.traits));
+    assert!(!marks_recovery(file.traits.as_deref()));
 }
 
 #[test]
-fn the_fields_that_later_stages_fill_are_left_out_not_made_up() {
+fn the_fields_that_no_stage_fills_yet_are_left_out_not_made_up() {
     let file = report_of(HELLO);
 
     let hello = &module(&file).procedures[0];
     assert_eq!(hello.is_entry_point, None);
     assert_eq!(hello.is_event_handler, None);
     assert_eq!(hello.possibly_unused, None);
-    assert_eq!(hello.traits, None);
-    assert_eq!(hello.primary_family, "unclassified");
-    assert!(hello.families.is_empty() && hello.signals.is_empty());
-    assert_eq!(file.traits, None);
 }
 
 /// A module that declares, outside any procedure, three `Declare` statements

@@ -17,7 +17,7 @@ module 05-04-formulaire-commercial-region (standard): loc=40 logical_loc=25 proc
     api lstRegions.ListIndex*1
     api Module1.blnCancelled*1
     api txtSalesPersonID.Text*1
-  sub UserForm_Initialize private lines 26-28: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub UserForm_Initialize private lines 26-28: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Module1.blnCancelled*1
   sub LaunchSalesPersonForm default lines 31-40: loc=10 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=compile_error_suspected entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api frmSalesPeople.Show*1

@@ -43,8 +43,8 @@ module 13-06-stdclipboard-api-presse-papiers (class): loc=1005 logical_loc=696 p
     api CloseClipboard*1
     api EmptyClipboard*1
     api Err.LastDllError*3
-  property_get text public lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=value apis=0
-  property_let text public lines 344-346: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=value apis=0
+  property_get text public lines 341-343: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=value apis=0
+  property_let text public lines 344-346: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=value apis=0
   function IsFormatAvailable public lines 352-364: loc=13 logical_loc=12 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetFormatSize,OpenClipboardTimeout,getAppHwnd apis=2
     api CloseClipboard*1
     api IsClipboardFormatAvailable*1
@@ -83,7 +83,7 @@ module 13-06-stdclipboard-api-presse-papiers (class): loc=1005 logical_loc=696 p
   property_set files public lines 516-523: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=protSetFilesText apis=1
     api StrConv*1
   sub SetFilesArr public lines 527-534: loc=8 logical_loc=8 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=protSetFilesText apis=0
-  sub protSetFilesText public lines 541-543: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub protSetFilesText public lines 541-543: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
   sub protSetFilesText public lines 545-581: loc=37 logical_loc=22 cyclomatic=9 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=CriticalRaise,OpenClipboardTimeout,getAppHwnd apis=11
     api CloseClipboard*1
     api CopyMemory*2

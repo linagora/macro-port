@@ -28,7 +28,7 @@ module 01-06-edit-table-report (standard): loc=230 logical_loc=146 procedures=7 
   function SelectFirstEmptyRowInColumn private lines 88-93: loc=6 logical_loc=5 cyclomatic=1 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api WS.Cells.End.Row*1
     api WS.Rows.Count*1
-  sub AutoSumColumnAF private lines 94-107: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=SelectFirstEmptyRowInColumn apis=6
+  sub AutoSumColumnAF private lines 94-107: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=recorded_macro entry_point=- event_handler=- possibly_unused=- calls=SelectFirstEmptyRowInColumn apis=6
     api ActiveCell.Column*1
     api ActiveCell.Font.Bold*1
     api ActiveCell.Font.ColorIndex*1

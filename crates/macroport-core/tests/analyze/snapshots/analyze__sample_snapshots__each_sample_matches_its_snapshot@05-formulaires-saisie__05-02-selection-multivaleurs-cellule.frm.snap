@@ -13,7 +13,7 @@ module 05-02-selection-multivaleurs-cellule (form): loc=97 logical_loc=51 proced
   sub btnAll_Click private lines 22-28: loc=7 logical_loc=6 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api lstVal.ListCount*1
     api lstVal.Selected*1
-  sub btnCancel_Click private lines 30-32: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub btnCancel_Click private lines 30-32: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Me.Hide*1
   sub btnOK_Click private lines 34-58: loc=25 logical_loc=17 cyclomatic=5 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=9
     api Len*2

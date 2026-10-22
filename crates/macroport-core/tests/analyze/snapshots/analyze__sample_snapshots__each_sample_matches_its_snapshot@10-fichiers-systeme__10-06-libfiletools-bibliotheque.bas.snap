@@ -50,7 +50,7 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
     api Dir*1
     api Len*1
     api Right*1
-  function BuildPath public lines 685-687: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=1
+  function BuildPath public lines 685-687: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=FixPathSeparators apis=1
     api Join*1
   function ConvertText public lines 693-739: loc=47 logical_loc=45 cyclomatic=9 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EncodeFromUTF16LE,EncodeToUTF16LE,PageCodeToText apis=5
     api CLng*2
@@ -300,8 +300,8 @@ module 10-06-libfiletools-bibliotheque (standard): loc=3623 logical_loc=2932 pro
   function GetODCloudDirs private lines 2418-2430: loc=13 logical_loc=14 cyclomatic=3 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=BuildPath,GetCloudPath apis=2
     api coll.Add*1
     api Dir*2
-  function GetCloudPath private lines 2431-2433: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GetUserPath apis=0
-  function GetUserPath private lines 2434-2436: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function GetCloudPath private lines 2431-2433: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=GetUserPath apis=0
+  function GetUserPath private lines 2434-2436: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Environ*1
   function CollectionToStrings private lines 2437-2452: loc=16 logical_loc=15 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=2
     api coll.Count*2

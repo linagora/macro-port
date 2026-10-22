@@ -163,7 +163,7 @@ module 11-05-vba-json-jsonconverter (standard): loc=1129 logical_loc=706 procedu
     api VBA.Month*1
     api VBA.Second*1
     api VBA.Year*1
-  function utc_SystemTimeToDate private lines 1124-1127: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+  function utc_SystemTimeToDate private lines 1124-1127: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=6
     api utc_Value.utc_wDay*1
     api utc_Value.utc_wHour*1
     api utc_Value.utc_wMinute*1

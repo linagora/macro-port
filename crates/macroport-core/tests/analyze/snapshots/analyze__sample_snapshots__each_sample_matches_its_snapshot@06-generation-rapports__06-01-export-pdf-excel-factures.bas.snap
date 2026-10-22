@@ -139,7 +139,7 @@ module 06-01-export-pdf-excel-factures (standard): loc=461 logical_loc=360 proce
     api iSh.Visible*1
     api wb.Sheets*1
     api wb.Sheets.count*2
-  sub testgetpath default lines 459-461: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=GET_PATH_EXPORT apis=0
+  sub testgetpath default lines 459-461: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=GET_PATH_EXPORT apis=0
 parse:
   declaration Option(Explicit) line 8
   procedure sub EXPORT_PDF_MultipleSheet_ForOne default static=false parameters=2 lines 11-53 recoveries=none unbalanced_blocks=false

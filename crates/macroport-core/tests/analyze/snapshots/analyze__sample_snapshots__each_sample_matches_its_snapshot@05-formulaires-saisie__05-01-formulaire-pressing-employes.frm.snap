@@ -145,7 +145,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsTemplate.Copy*1
   function sheetExists private lines 555-565: loc=11 logical_loc=10 cyclomatic=3 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Sheet.Name*1
-  sub ActivateSheet default lines 566-569: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  sub ActivateSheet default lines 566-569: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=recorded_macro,trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Worksheets.Activate*1
   sub NewEmployeeCancelBtn_Click private lines 571-587: loc=17 logical_loc=14 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FormDataMode apis=12
     api Me.ForeColor*3
@@ -221,7 +221,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
   sub AddNewItemBtnPressed_Click private lines 707-713: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FormDataMode apis=2
     api Me.AddNewItemPosition.SetFocus*1
     api Me.NewItemFrame.Visible*1
-  sub AddNewItemPosition_DropButtonClick private lines 714-717: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
+  sub AddNewItemPosition_DropButtonClick private lines 714-717: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
   sub UniquePositionTitle private lines 718-748: loc=31 logical_loc=23 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=13
     api AddNewItemPosition.List*1
     api Application.Match*1
@@ -299,8 +299,8 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
   sub RemoveItemBtnPress_Click private lines 903-909: loc=7 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FormDataMode apis=2
     api Me.RemoveItemFrame.Visible*1
     api Me.RemoveItemPosition.SetFocus*1
-  sub RemoveItemPosition_DropButtonClick private lines 910-913: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
-  sub RemoveItem_DropButtonClick private lines 914-917: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=SelectItemFromDropDownList apis=0
+  sub RemoveItemPosition_DropButtonClick private lines 910-913: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=UniquePositionTitle apis=0
+  sub RemoveItem_DropButtonClick private lines 914-917: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=SelectItemFromDropDownList apis=0
   sub SelectItemFromDropDownList private lines 918-947: loc=30 logical_loc=25 cyclomatic=9 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
     api RemoveItem.List*1
     api RemoveItemPosition.Value*8
@@ -441,7 +441,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api wsAdmin.Range.End.Row*1
     api wsAdmin.Range.Offset.Value*2
     api wsAdmin.Rows.Count*1
-  function isUniqueUser default lines 1242-1245: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function isUniqueUser default lines 1242-1245: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api Application.Match*1
   function EverythingFilledInAdminMode private lines 1246-1280: loc=35 logical_loc=28 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=10
     api AdminModeFrame.Controls*1
@@ -479,25 +479,25 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api Me.NextCollectionDate.Text*1
     api Me.OrderNo.Value*1
     api WS.Range.Offset.Value*19
-  sub Item1_AfterUpdate private lines 1380-1382: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item2_AfterUpdate private lines 1383-1385: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item3_AfterUpdate private lines 1386-1388: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item4_AfterUpdate private lines 1389-1391: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item5_AfterUpdate private lines 1392-1394: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item6_AfterUpdate private lines 1395-1397: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item7_AfterUpdate private lines 1398-1400: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item8_AfterUpdate private lines 1401-1403: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item9_AfterUpdate private lines 1404-1406: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item10_AfterUpdate private lines 1407-1409: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item11_AfterUpdate private lines 1410-1412: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item12_AfterUpdate private lines 1413-1415: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
-  sub Item13_AfterUpdate private lines 1416-1418: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item1_AfterUpdate private lines 1380-1382: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item2_AfterUpdate private lines 1383-1385: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item3_AfterUpdate private lines 1386-1388: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item4_AfterUpdate private lines 1389-1391: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item5_AfterUpdate private lines 1392-1394: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item6_AfterUpdate private lines 1395-1397: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item7_AfterUpdate private lines 1398-1400: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item8_AfterUpdate private lines 1401-1403: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item9_AfterUpdate private lines 1404-1406: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item10_AfterUpdate private lines 1407-1409: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item11_AfterUpdate private lines 1410-1412: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item12_AfterUpdate private lines 1413-1415: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
+  sub Item13_AfterUpdate private lines 1416-1418: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=EnabledItemsToClean apis=0
   sub EnabledItemsToClean private lines 1419-1468: loc=50 logical_loc=46 cyclomatic=16 max_nesting=5 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api Controls.Enabled*9
     api Controls.Value*4
     api ctl.Tag*5
     api ItemsListFrame.Controls*1
-  sub UnitPrice1_AfterUpdate private lines 1469-1472: loc=4 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub UnitPrice1_AfterUpdate private lines 1469-1472: loc=4 logical_loc=2 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
   sub UpdateSubTotal private lines 1473-1495: loc=23 logical_loc=19 cyclomatic=5 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
     api Controls.Enabled*5
     api Controls.Value*1
@@ -505,7 +505,7 @@ module 05-01-formulaire-pressing-employes (form): loc=1522 logical_loc=1152 proc
     api ItemsListFrame.Controls*1
   sub SaveBtnPressed_Click private lines 1497-1502: loc=6 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=FillingInForm apis=1
     api ThisWorkbook.Save*1
-  sub CloseEntireFormBtnPressed_Click private lines 1503-1507: loc=5 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=0
+  sub CloseEntireFormBtnPressed_Click private lines 1503-1507: loc=5 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=none apis=0
   sub UserForm_Terminate private lines 1508-1522: loc=15 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=3
     api ThisWorkbook.Save*2
     api Windows.Close*2
