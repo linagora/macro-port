@@ -12,7 +12,9 @@ use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
 use macroport_core::vba::{MAX_LINES, ModuleSource};
 use macroport_testkit::corpus;
 
-use crate::support::{HELLO, checked, module, modules, options, recovery_traits, sha256};
+use crate::support::{
+    HELLO, checked, module, modules, options, procedures, recovery_traits, sha256,
+};
 
 fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
     ModuleSource {
@@ -586,8 +588,7 @@ fn analyze_reads_the_procedures_of_the_modules_of_a_workbook() {
 
     assert_eq!((file.container, file.status), (Container::Xlsm, Status::Ok));
     assert_eq!(file.errors, Some(Vec::new()));
-    let found: Vec<_> = (modules(&file).iter())
-        .flat_map(|module| &module.procedures)
+    let found: Vec<_> = procedures(&file)
         .map(|p| (p.name.as_str(), p.start_line))
         .collect();
     // Excel's export of the module has them at these lines.
