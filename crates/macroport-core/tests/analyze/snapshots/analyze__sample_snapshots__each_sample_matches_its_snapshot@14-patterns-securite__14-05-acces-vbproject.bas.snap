@@ -10,7 +10,7 @@ traits: none
 file: loc=30 logical_loc=20 procedures=2 cyclomatic=6 cyclomatic_total=7 max_nesting=2 forms=0 declare_count=0 external_dependencies=0
 module 14-05-acces-vbproject (standard): loc=30 logical_loc=20 procedures=2 cyclomatic=6 cyclomatic_total=7 max_nesting=2 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
-  sub ExporterModules public lines 12-24: loc=13 logical_loc=16 cyclomatic=6 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=7
+  sub ExporterModules public lines 12-24: loc=13 logical_loc=16 cyclomatic=6 max_nesting=2 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
     api comp.Export*1
     api comp.Name*1
     api comp.Type*1
@@ -18,7 +18,7 @@ module 14-05-acces-vbproject (standard): loc=30 logical_loc=20 procedures=2 cycl
     api MkDir*1
     api ThisWorkbook.Path*1
     api ThisWorkbook.VBProject.VBComponents*1
-  sub InjecterProcedure public lines 27-30: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=1
+  sub InjecterProcedure public lines 27-30: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
     api ThisWorkbook.VBProject.VBComponents.CodeModule.AddFromString*1
 parse:
   declaration Option(Explicit) line 8

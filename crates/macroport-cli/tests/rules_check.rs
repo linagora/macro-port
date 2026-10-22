@@ -16,6 +16,10 @@ const FILE_STAGE: &str = " (regexes, ids and references are not checked yet)";
 /// What `rules check` prints when the rules are valid.
 const ALL_OK: &str = "families.yaml: ok\nsecurity.yaml: ok\ncomplexity.yaml: ok\n";
 
+/// The metrics of the report, which are those that `complexity.yaml` can name.
+const METRICS: &str = "loc, logical_loc, procedures, cyclomatic, cyclomatic_total, max_nesting, \
+                       parameters, goto_count, forms, declare_count, external_dependencies";
+
 fn macro_port<S: AsRef<OsStr>>(args: impl IntoIterator<Item = S>) -> Output {
     Command::new(env!("CARGO_BIN_EXE_macro-port"))
         .args(args)
@@ -750,16 +754,37 @@ fn unknown_complexity_keys_are_rejected_at_every_level() {
 
 #[test]
 fn metrics_must_be_defined_in_metric_definitions() {
-    let output = check_complexity("unknown-metric");
+    let output = check_complexity("undefined-metric");
 
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     assert_eq!(
         stderr(&output),
-        "complexity.yaml: metric 'max_cyclomatic' is not defined in metric_definitions \
+        "complexity.yaml: metric 'cyclomatic' is not defined in metric_definitions \
          (at /file_levels/medium/any/1/metric)\n\
          complexity.yaml: trivial: metric 'loc' is not defined in metric_definitions \
          (at /traits/1/all/0/metric)\n\
          2 problems found\n"
+    );
+}
+
+#[test]
+fn the_old_name_of_cyclomatic_is_rejected() {
+    // Version 0.1.0 of complexity.yaml called the metric `max_cyclomatic`
+    // where the report says `cyclomatic`. A file that still does, in a level,
+    // in the definitions and in a trait, is no longer accepted (#29).
+    let output = check_complexity("old-metric-name");
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "complexity.yaml: 'max_cyclomatic' is not one of: {METRICS} \
+             (at /file_levels/medium/any/1/metric)\n\
+             complexity.yaml: unknown key 'max_cyclomatic' (at /metric_definitions/max_cyclomatic)\n\
+             complexity.yaml: trivial: 'max_cyclomatic' is not one of: {METRICS} \
+             (at /traits/1/all/1/metric)\n\
+             3 problems found{FILE_STAGE}\n"
+        )
     );
 }
 
