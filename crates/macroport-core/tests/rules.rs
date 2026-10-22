@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Loading the rules files into typed rules.
 
+use macroport_core::report::Metrics;
 use macroport_core::rules::{
-    Bound, ChainTerm, Condition, FileLevels, Matcher, MetricCondition, Problem, RuleSet,
+    Bound, ChainTerm, Condition, FileLevels, Matcher, Metric, MetricCondition, Problem, RuleSet,
     RulesSources, Scope, Severity, StructuralPredicate, TextMode, TraitRule, parse_value,
 };
 
@@ -653,7 +654,7 @@ fn problems_of_every_file_are_reported_together() {
             &[],
             &[],
         ),
-        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH, &[]),
+        complexity: &complexity_yaml("[{ metric: loc, gte: 1 }]", HIGH, &[]),
     })
     .expect_err("the rules are refused");
 
@@ -664,7 +665,7 @@ fn problems_of_every_file_are_reported_together() {
              (at /families/0/signals/0/pattern)",
             "security.yaml: sec.loop: invalid regex '(For': unclosed group \
              (at /signals/0/pattern)",
-            "complexity.yaml: metric 'lines' is not defined in metric_definitions \
+            "complexity.yaml: metric 'loc' is not defined in metric_definitions \
              (at /file_levels/medium/any/0/metric)",
         ]
     );
@@ -708,14 +709,14 @@ fn versions_are_compared_once_every_file_loads() {
     let problems = RuleSet::load(&RulesSources {
         families: &families_yaml(&["{ id: fmt.a, match: member, pattern: [A], weight: 1 }"]),
         security: &security_yaml(&[], &[], &[]).replace("0.1.0", "0.2.0"),
-        complexity: &complexity_yaml("[{ metric: lines, gte: 1 }]", HIGH, &[]),
+        complexity: &complexity_yaml("[{ metric: loc, gte: 1 }]", HIGH, &[]),
     })
     .expect_err("the rules are refused");
 
     assert_eq!(
         shown(&problems),
         [
-            "complexity.yaml: metric 'lines' is not defined in metric_definitions \
+            "complexity.yaml: metric 'loc' is not defined in metric_definitions \
           (at /file_levels/medium/any/0/metric)"
         ]
     );
@@ -730,10 +731,28 @@ fn embedded_complexity_rules_load() {
     assert_eq!(
         complexity.file_levels.high.last(),
         Some(&MetricCondition {
-            metric: "declare_count".to_owned(),
+            metric: Metric::DeclareCount,
             bound: Bound::AtLeast(1),
         })
     );
+    // The highest cyclomatic complexity of a file is `cyclomatic`, the metric
+    // of the report, not `max_cyclomatic` (#29).
+    let cyclomatic = |level: &[MetricCondition]| {
+        level
+            .iter()
+            .find(|condition| condition.metric == Metric::Cyclomatic)
+            .map(|condition| condition.bound)
+    };
+    assert_eq!(
+        cyclomatic(&complexity.file_levels.medium),
+        Some(Bound::AtLeast(10))
+    );
+    assert_eq!(
+        cyclomatic(&complexity.file_levels.high),
+        Some(Bound::AtLeast(25))
+    );
+    assert!(complexity.metric_definitions.contains_key("cyclomatic"));
+    assert!(!complexity.metric_definitions.contains_key("max_cyclomatic"));
     let traits: Vec<&str> = complexity
         .traits
         .iter()
@@ -754,8 +773,10 @@ fn embedded_complexity_rules_load() {
     assert!(
         matches!(
             &trivial[1],
-            Condition::Metric(MetricCondition { metric, bound: Bound::AtMost(0) })
-                if metric == "external_dependencies"
+            Condition::Metric(MetricCondition {
+                metric: Metric::ExternalDependencies,
+                bound: Bound::AtMost(0)
+            })
         ),
         "{trivial:?}"
     );
@@ -789,8 +810,8 @@ fn trait_conditions_load_in_every_form() {
     };
     let [
         Condition::Metric(metric),
-        Condition::Comment(comments),
-        Condition::ProcedureName(names),
+        Condition::Matches(Matcher::Comment(comments)),
+        Condition::Matches(Matcher::ProcedureName(names)),
         Condition::Ratio {
             of,
             per_logical_loc_gte,
@@ -803,7 +824,7 @@ fn trait_conditions_load_in_every_form() {
     assert_eq!(
         metric,
         &MetricCondition {
-            metric: "logical_loc".to_owned(),
+            metric: Metric::LogicalLoc,
             bound: Bound::AtMost(3),
         }
     );
@@ -827,11 +848,11 @@ fn level_thresholds_are_whole_numbers_however_yaml_spells_them() {
         rules.complexity.file_levels,
         FileLevels {
             medium: vec![MetricCondition {
-                metric: "logical_loc".to_owned(),
+                metric: Metric::LogicalLoc,
                 bound: Bound::AtLeast(150),
             }],
             high: vec![MetricCondition {
-                metric: "procedures".to_owned(),
+                metric: Metric::Procedures,
                 bound: Bound::AtMost(16),
             }],
         }
@@ -842,7 +863,7 @@ fn level_thresholds_are_whole_numbers_however_yaml_spells_them() {
 fn metrics_are_those_of_metric_definitions() {
     let problems = load_complexity(&complexity_yaml(
         MEDIUM,
-        "[{ metric: procedures, gte: 50 }, { metric: max_cyclomatic, gte: 25 }]",
+        "[{ metric: procedures, gte: 50 }, { metric: cyclomatic, gte: 25 }]",
         &[complexity_trait(
             "t",
             "all: [{ metric: logical_loc, lte: 3 }, { metric: loc, lte: 3 }]",
@@ -853,10 +874,103 @@ fn metrics_are_those_of_metric_definitions() {
     assert_eq!(
         shown(&problems),
         [
-            "complexity.yaml: metric 'max_cyclomatic' is not defined in metric_definitions \
+            "complexity.yaml: metric 'cyclomatic' is not defined in metric_definitions \
              (at /file_levels/high/any/1/metric)",
             "complexity.yaml: t: metric 'loc' is not defined in metric_definitions \
              (at /traits/0/all/1/metric)",
+        ]
+    );
+}
+
+/// What `unknown metric` problems say about the metrics that exist.
+const METRICS: &str = "loc, logical_loc, procedures, cyclomatic, cyclomatic_total, max_nesting, \
+                       parameters, goto_count, forms, declare_count, external_dependencies";
+
+#[test]
+fn the_metrics_of_the_rules_are_those_of_the_report() {
+    // Every metric of a report, set.
+    let report = Metrics {
+        loc: 1,
+        logical_loc: 2,
+        procedures: Some(3),
+        cyclomatic: Some(4),
+        cyclomatic_total: Some(5),
+        max_nesting: Some(6),
+        parameters: Some(7),
+        goto_count: Some(8),
+        forms: Some(9),
+        declare_count: Some(10),
+        external_dependencies: Some(11),
+    };
+    let written = serde_json::to_value(&report).expect("the metrics serialise");
+    let mut in_report: Vec<&str> = written
+        .as_object()
+        .expect("the metrics are an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    in_report.sort_unstable();
+
+    let in_rules: Vec<&str> = Metric::ALL.into_iter().map(Metric::name).collect();
+    assert_eq!(in_rules.join(", "), METRICS);
+
+    let mut sorted = in_rules;
+    sorted.sort_unstable();
+    assert_eq!(sorted, in_report);
+}
+
+#[test]
+fn the_old_name_of_cyclomatic_is_refused() {
+    // Version 0.1.0 of complexity.yaml called `cyclomatic` `max_cyclomatic`,
+    // in its conditions and in its definitions. The report never did (#29).
+    let text = complexity_yaml(
+        MEDIUM,
+        "[{ metric: procedures, gte: 50 }, { metric: max_cyclomatic, gte: 25 }]",
+        &[complexity_trait(
+            "t",
+            "all: [{ metric: max_cyclomatic, lte: 3 }]",
+        )],
+    )
+    .replace(
+        "procedures: Procedures }",
+        "procedures: Procedures, max_cyclomatic: Highest }",
+    );
+
+    let problems = load_complexity(&text).expect_err("the rules are refused");
+
+    let unknown = format!("unknown metric 'max_cyclomatic', expected one of: {METRICS}");
+    assert_eq!(
+        shown(&problems),
+        [
+            format!("complexity.yaml: {unknown} (at /file_levels/high/any/1/metric)"),
+            format!("complexity.yaml: {unknown} (at /metric_definitions/max_cyclomatic)"),
+            format!("complexity.yaml: t: {unknown} (at /traits/0/all/0/metric)"),
+        ]
+    );
+}
+
+#[test]
+fn only_metrics_of_the_report_can_be_defined() {
+    // A key of metric_definitions is a name in a JSON Pointer: `/` and `~`
+    // are escaped in it.
+    let text = complexity_yaml(MEDIUM, HIGH, &[]).replace(
+        "procedures: Procedures }",
+        "procedures: Procedures, \"a/b~c\": Odd, Procedures: Odd }",
+    );
+
+    let problems = load_complexity(&text).expect_err("the rules are refused");
+
+    assert_eq!(
+        shown(&problems),
+        [
+            format!(
+                "complexity.yaml: unknown metric 'Procedures', expected one of: {METRICS} \
+                 (at /metric_definitions/Procedures)"
+            ),
+            format!(
+                "complexity.yaml: unknown metric 'a/b~c', expected one of: {METRICS} \
+                 (at /metric_definitions/a~1b~0c)"
+            ),
         ]
     );
 }

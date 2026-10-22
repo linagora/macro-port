@@ -21,9 +21,22 @@
       }
     },
     "metric_definitions": {
-      "description": "The metrics that conditions can name, each with what it counts.",
+      "description": "The metrics that conditions can name, each with what it counts. Only the metrics of the report can be defined: see $defs/metric.",
       "type": "object",
-      "additionalProperties": { "type": "string", "minLength": 1 }
+      "additionalProperties": false,
+      "properties": {
+        "loc": { "$ref": "#/$defs/metric_definition" },
+        "logical_loc": { "$ref": "#/$defs/metric_definition" },
+        "procedures": { "$ref": "#/$defs/metric_definition" },
+        "cyclomatic": { "$ref": "#/$defs/metric_definition" },
+        "cyclomatic_total": { "$ref": "#/$defs/metric_definition" },
+        "max_nesting": { "$ref": "#/$defs/metric_definition" },
+        "parameters": { "$ref": "#/$defs/metric_definition" },
+        "goto_count": { "$ref": "#/$defs/metric_definition" },
+        "forms": { "$ref": "#/$defs/metric_definition" },
+        "declare_count": { "$ref": "#/$defs/metric_definition" },
+        "external_dependencies": { "$ref": "#/$defs/metric_definition" }
+      }
     },
     "traits": {
       "type": "array",
@@ -54,6 +67,27 @@
         "parse_recovered"
       ]
     },
+    "metric": {
+      "description": "A metric of the report, under the name that report.schema.json gives it in metrics. The core lists the same names.",
+      "enum": [
+        "loc",
+        "logical_loc",
+        "procedures",
+        "cyclomatic",
+        "cyclomatic_total",
+        "max_nesting",
+        "parameters",
+        "goto_count",
+        "forms",
+        "declare_count",
+        "external_dependencies"
+      ]
+    },
+    "metric_definition": {
+      "description": "What a metric counts.",
+      "type": "string",
+      "minLength": 1
+    },
     "threshold": {
       "description": "A whole number that fits the core's 32 bits.",
       "type": "integer",
@@ -79,7 +113,7 @@
       "required": ["metric"],
       "additionalProperties": false,
       "properties": {
-        "metric": { "type": "string", "minLength": 1 },
+        "metric": { "$ref": "#/$defs/metric" },
         "gte": { "$ref": "#/$defs/threshold" },
         "lte": { "$ref": "#/$defs/threshold" }
       },

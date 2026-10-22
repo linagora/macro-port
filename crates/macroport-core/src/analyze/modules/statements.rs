@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The statements of a module, read once for what they show of the file and of
-//! the module (SPEC M2 items 3, 4 and 6).
+//! the module (SPEC M2 items 3 to 6).
 //!
 //! The parser and the metrics read the lines of a module for their structure.
 //! The facts of a statement ([`Facts`]) are what the other stages read: the
@@ -20,9 +20,9 @@
 //!
 //! [`Statements::read`] is the walk that `analyze` makes, one for each module,
 //! and every stage that reads statements is fed by it. It hands the ProgIDs to
-//! the set of the file, the APIs to the lists of the procedures, and keeps what
-//! the statements show of the module: the ones that nest expressions too deep
-//! to be read in full.
+//! the set of the file, the APIs to the lists of the procedures, the names to
+//! the call graph, and keeps what the statements show of the module: the ones
+//! that nest expressions too deep to be read in full.
 
 use std::collections::BTreeSet;
 use std::ops::Range;
@@ -30,7 +30,10 @@ use std::ops::Range;
 use super::Analysis;
 use super::apis::FileApis;
 use crate::report::ApiUse;
-use crate::vba::{ConstTable, Facts, LogicalLine, Procedure, StatementReader, is_external_progid};
+use crate::vba::{
+    CallGraph, ConstTable, Facts, LogicalLine, ModuleId, Procedure, StatementReader,
+    is_external_progid,
+};
 
 /// The most distinct ProgIDs that a file keeps. Real code names a handful, and
 /// a hostile file can name as many as its text holds calls; past the limit a
@@ -144,17 +147,21 @@ pub(super) struct Statements {
 
 impl Statements {
     /// Reads every statement of `analysis`. The classes that they pass to
-    /// `CreateObject` and `GetObject` join `progids`, the set of the file, and
-    /// the APIs they use are counted in the lists of the procedures, which
-    /// `file_apis`, that of the file, bounds.
+    /// `CreateObject` and `GetObject` join `progids`, the set of the file, the
+    /// APIs they use are counted in the lists of the procedures, which
+    /// `file_apis`, that of the file, bounds, and the names they mention go to
+    /// `graph`, the call graph of the file, where `module` is the place of the
+    /// module.
     pub(super) fn read(
         analysis: &Analysis,
         progids: &mut ExternalProgids,
         file_apis: &mut FileApis,
+        graph: &mut CallGraph,
+        module: ModuleId,
     ) -> Self {
         let mut statements = Self::default();
         let mut lists = file_apis.module(analysis);
-        each_statement(analysis, |place, _, line, facts| {
+        each_statement(analysis, |place, position, line, facts| {
             for progid in &facts.progids {
                 progids.add(progid);
             }
@@ -163,6 +170,7 @@ impl Statements {
             }
             if let Place::Procedure(index) = place {
                 lists.add(index, &facts);
+                graph.read(module, index, position, &facts);
             }
         });
         statements.api_lists = lists.finish();
@@ -212,7 +220,7 @@ pub(super) struct TooDeep {
 mod tests {
     use super::*;
     use crate::report::{ProcedureKind, Visibility};
-    use crate::rules::{RuleSet, RulesSources};
+    use crate::rules::{ModuleType, RuleSet, RulesSources};
     use crate::vba::MAX_NESTING;
 
     fn analysis(text: &str) -> Analysis {
@@ -310,17 +318,43 @@ mod tests {
         FileApis::new(&rules)
     }
 
+    /// What the statements of `text` show of its module, read as the only module
+    /// of a file whose call graph is `graph`. The ProgIDs they pass are added to
+    /// `progids`.
+    fn read_into(text: &str, progids: &mut ExternalProgids, graph: &mut CallGraph) -> Statements {
+        let analysis = analysis(text);
+        let module = graph.add_module(ModuleType::Standard, &analysis.module.procedures, &[]);
+        Statements::read(&analysis, progids, &mut file_apis(), graph, module)
+    }
+
     /// The ProgIDs that the statements of `text` give, as the file keeps them.
     fn progids(text: &str) -> Vec<String> {
         let mut found = ExternalProgids::default();
-        Statements::read(&analysis(text), &mut found, &mut file_apis());
+        read_into(text, &mut found, &mut CallGraph::new());
         found.iter().cloned().collect()
     }
 
     /// What the statements of `text` show of its module.
     fn statements_of(text: &str) -> Statements {
-        let mut progids = ExternalProgids::default();
-        Statements::read(&analysis(text), &mut progids, &mut file_apis())
+        read_into(text, &mut ExternalProgids::default(), &mut CallGraph::new())
+    }
+
+    #[test]
+    fn the_statements_of_the_procedures_feed_the_call_graph_and_those_outside_them_do_not() {
+        let text = "Private Sub A()\n    B\nEnd Sub\nPrivate Sub B()\nEnd Sub\n\
+                    Dim x As Long\nx = A\n";
+        let mut graph = CallGraph::new();
+
+        read_into(text, &mut ExternalProgids::default(), &mut graph);
+
+        // `x = A` lies outside the procedures: nothing calls `A`, and `B` does not
+        // call it, though it ends the module. Both are private, so only a call
+        // keeps one from being possibly unused.
+        let links: Vec<_> = graph.resolve().into_iter().flatten().collect();
+        let calls: Vec<_> = links.iter().map(|links| links.calls.clone()).collect();
+        assert_eq!(calls, [Some(vec!["B".to_owned()]), Some(Vec::new())]);
+        let unused: Vec<_> = links.iter().map(|links| links.possibly_unused).collect();
+        assert_eq!(unused, [Some(true), Some(false)]);
     }
 
     #[test]
