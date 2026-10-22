@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! The complexity level of a file and the traits of its procedures (SPEC M3),
-//! from `rules/complexity.yaml`.
+//! The complexity level of a file and the traits of its procedures and of the
+//! file itself (SPEC M3), from `rules/complexity.yaml`.
 //!
 //! The functions are pure. The metrics are those of the report, which the
 //! caller has computed (SPEC M2 item 7): a metric condition bounds one of them,
@@ -46,27 +46,67 @@ pub fn procedure_traits(
     procedure: usize,
     metrics: &Metrics,
 ) -> Vec<String> {
-    let subject = Subject {
-        evaluator,
-        module,
-        procedure,
-        metrics,
-    };
+    let scope = Scope::Procedure { module, procedure };
+    traits(
+        rules,
+        &Subject {
+            evaluator,
+            scope,
+            metrics,
+        },
+    )
+}
+
+/// The ids of the traits of a file, in the order of the rules. `metrics` are
+/// the metrics of the file.
+///
+/// A rule applies to the file as it does to a procedure: it bounds the metrics
+/// of the file, and its conditions on the source read every module, so that a
+/// comment, a procedure name or a structural predicate is found anywhere in
+/// the project and a ratio counts the uses in the project against the logical
+/// lines of the file. The traits of the procedures are not gathered: a file
+/// with many procedures is not `trivial` because one of them is.
+///
+/// A file with no code has the traits that its metrics give, `trivial` among
+/// them. Whether such a file has traits is for the caller to decide.
+pub fn file_traits(
+    rules: &Complexity,
+    evaluator: &Evaluator<'_>,
+    metrics: &Metrics,
+) -> Vec<String> {
+    traits(
+        rules,
+        &Subject {
+            evaluator,
+            scope: Scope::File,
+            metrics,
+        },
+    )
+}
+
+/// What the traits are about: where the source is read, and the metrics.
+#[derive(Debug)]
+struct Subject<'a, 'p> {
+    evaluator: &'a Evaluator<'p>,
+    scope: Scope,
+    metrics: &'a Metrics,
+}
+
+/// The part of the project that the conditions on the source read.
+#[derive(Debug, Clone, Copy)]
+enum Scope {
+    Procedure { module: usize, procedure: usize },
+    File,
+}
+
+/// The ids of the traits that hold of `subject`, in the order of the rules.
+fn traits(rules: &Complexity, subject: &Subject<'_, '_>) -> Vec<String> {
     rules
         .traits
         .iter()
         .filter(|candidate| subject.has(&candidate.rule))
         .map(|candidate| candidate.id.clone())
         .collect()
-}
-
-/// A procedure, whose source the conditions read, and its metrics.
-#[derive(Debug)]
-struct Subject<'a, 'p> {
-    evaluator: &'a Evaluator<'p>,
-    module: usize,
-    procedure: usize,
-    metrics: &'a Metrics,
 }
 
 impl Subject<'_, '_> {
@@ -112,18 +152,23 @@ impl Subject<'_, '_> {
         f64::from(uses) / f64::from(logical_loc) >= per_logical_loc_gte
     }
 
-    /// Whether `matcher` finds anything in the procedure.
+    /// Whether `matcher` finds anything in the part of the project that the
+    /// traits are about.
     fn finds(&self, matcher: &Matcher) -> bool {
         self.count(matcher) > 0
     }
 
-    /// The number of hits of `matcher` in the procedure. Only the `regex`
-    /// matcher reads the text mode, and a trait has none.
+    /// The number of hits of `matcher` in the part of the project that the
+    /// traits are about. Only the `regex` matcher reads the text mode, and a
+    /// trait has none.
     fn count(&self, matcher: &Matcher) -> usize {
         let text = TextMode::Code;
-        let hits = self
-            .evaluator
-            .procedure_hits(self.module, self.procedure, matcher, text);
+        let hits = match self.scope {
+            Scope::Procedure { module, procedure } => self
+                .evaluator
+                .procedure_hits(module, procedure, matcher, text),
+            Scope::File => self.evaluator.project_hits(matcher, text),
+        };
         hits.len()
     }
 }

@@ -423,7 +423,7 @@ fn holding(predicate: StructuralPredicate) -> ProcedureInput {
 }
 
 #[test]
-fn every_structural_predicate_is_a_trait_of_the_procedure() {
+fn every_structural_predicate_is_a_trait_of_the_procedure_and_of_the_file() {
     // One rule per predicate, named like it, and one procedure per predicate in
     // a document module, which handles the events of the worksheets.
     let names = StructuralPredicate::ALL.map(StructuralPredicate::name);
@@ -441,6 +441,7 @@ fn every_structural_predicate_is_a_trait_of_the_procedure() {
         let traits = procedure_traits(&rules, &evaluator, 0, index, &metrics(1));
         assert_eq!(traits, [name]);
     }
+    assert_eq!(file_traits(&rules, &evaluator, &metrics(1)), names);
 }
 
 #[test]
@@ -469,6 +470,104 @@ fn an_index_out_of_range_has_nothing_to_read_but_the_metrics() {
         let traits = procedure_traits(&rules, &evaluator, owner, index, &metrics(1));
         assert_eq!(traits, ["small"], "{owner}, {index}");
     }
+}
+
+#[test]
+fn a_file_trait_bounds_the_metrics_it_is_given() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[("trivial", "all: [{ metric: logical_loc, lte: 3 }]")],
+    );
+    let project = project(vec![module(
+        "Module1",
+        ModuleType::Standard,
+        vec![
+            procedure("Tiny", 1, Vec::new()),
+            procedure("Long", 5, Vec::new()),
+        ],
+    )]);
+    let evaluator = Evaluator::new(&project);
+
+    assert_eq!(
+        procedure_traits(&rules, &evaluator, 0, 0, &metrics(2)),
+        ["trivial"]
+    );
+    assert!(procedure_traits(&rules, &evaluator, 0, 1, &metrics(40)).is_empty());
+    // The file has the lines of both.
+    assert!(file_traits(&rules, &evaluator, &metrics(42)).is_empty());
+    assert_eq!(file_traits(&rules, &evaluator, &metrics(3)), ["trivial"]);
+}
+
+#[test]
+fn a_file_trait_reads_the_whole_project() {
+    let rules = complexity(
+        MEDIUM,
+        HIGH,
+        &[
+            (
+                "commented",
+                "any: [{ match: comment, pattern: 'macro recorded' }]",
+            ),
+            (
+                "named",
+                "any: [{ match: procedure_name, pattern: '^Macro\\d+$' }]",
+            ),
+            ("unused", "structural: possibly_unused"),
+        ],
+    );
+    let mut unused = procedure("Helper", 1, Vec::new());
+    unused.predicates.possibly_unused = true;
+    // The first module holds none of them: the comment is in the declarations
+    // of the second, the name and the flag are in the third.
+    let project = project(vec![
+        module(
+            "Module1",
+            ModuleType::Standard,
+            vec![procedure("Main", 1, vec![line(2, "x = 1")])],
+        ),
+        module("Module2", ModuleType::Standard, Vec::new())
+            .with_declarations(vec![line(1, "' macro recorded long ago")]),
+        module(
+            "Module3",
+            ModuleType::Standard,
+            vec![procedure("Macro7", 1, Vec::new()), unused],
+        ),
+    ]);
+    let evaluator = Evaluator::new(&project);
+
+    assert_eq!(
+        file_traits(&rules, &evaluator, &metrics(9)),
+        ["commented", "named", "unused"]
+    );
+    assert!(procedure_traits(&rules, &evaluator, 0, 0, &metrics(9)).is_empty());
+}
+
+#[test]
+fn a_file_ratio_counts_the_uses_of_every_module_over_the_lines_of_the_file() {
+    let rules = ratio("Select", "0.2");
+    let project = project(vec![
+        module(
+            "Module1",
+            ModuleType::Standard,
+            vec![procedure("First", 1, vec![uses(2, "Select")])],
+        ),
+        module(
+            "Module2",
+            ModuleType::Standard,
+            vec![procedure("Second", 1, vec![uses(2, "Select")])],
+        ),
+    ]);
+    let evaluator = Evaluator::new(&project);
+
+    // Two uses in the file, one in a procedure.
+    assert_eq!(file_traits(&rules, &evaluator, &metrics(10)), ["t"]);
+    assert!(file_traits(&rules, &evaluator, &metrics(11)).is_empty());
+    assert_eq!(
+        procedure_traits(&rules, &evaluator, 0, 0, &metrics(5)),
+        ["t"]
+    );
+    assert!(procedure_traits(&rules, &evaluator, 0, 0, &metrics(6)).is_empty());
 }
 
 #[test]
@@ -516,4 +615,16 @@ fn the_shipped_traits_apply() {
     assert_eq!(traits(2, 5), ["recorded_macro"]);
     assert_eq!(traits(3, 50), ["possibly_unused"]);
     assert_eq!(traits(4, 50), ["compile_error_suspected"]);
+}
+
+#[test]
+fn a_file_with_no_code_is_trivial() {
+    // Whether such a file has traits is for the caller to decide.
+    let rules = shipped().complexity;
+    let project = project(Vec::new());
+
+    assert_eq!(
+        file_traits(&rules, &Evaluator::new(&project), &metrics(0)),
+        ["trivial"]
+    );
 }

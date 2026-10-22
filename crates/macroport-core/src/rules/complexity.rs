@@ -124,17 +124,19 @@ pub enum TraitRule {
 /// flag says otherwise.
 #[derive(Debug, Clone)]
 pub enum Condition {
-    /// A bound on a procedure metric.
+    /// A bound on a metric.
     Metric(MetricCondition),
     /// The matcher finds something: `Matcher::Comment` for `match: comment`
     /// (regexes on comment text) and `Matcher::ProcedureName` for
     /// `match: procedure_name` (regexes on the procedure name).
     Matches(Matcher),
     /// The occurrences of these members or chains, divided by the
-    /// procedure's `logical_loc`, reach `per_logical_loc_gte`. A name of `of`
-    /// that holds a dot is a chain and any other is a member. The schema
-    /// requires `of` not to be empty and the threshold to be positive, and the
-    /// loader leaves that to it.
+    /// `logical_loc`, reach `per_logical_loc_gte`. A name of `of` that holds a
+    /// dot is a chain and any other is a member. For a procedure, the
+    /// occurrences and the `logical_loc` are its own; for a file, the
+    /// occurrences are those of every module and the `logical_loc` is the
+    /// file's. The schema requires `of` not to be empty and the threshold to be
+    /// positive, and the loader leaves that to it.
     Ratio {
         of: Vec<String>,
         per_logical_loc_gte: f64,
