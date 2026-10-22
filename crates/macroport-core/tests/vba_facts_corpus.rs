@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The facts of the whole corpus (SPEC M2 items 3 and 4): the text samples and
 //! Excel's own exports of the binary fixtures, read statement by statement as
-//! the parser will give them. The ProgIDs that the security samples of family
-//! 14 need (ACCEPTANCE A5) are pinned, and a second, much cruder reader checks
-//! the first on every other statement.
+//! the parser will give them. The ProgIDs and the marks of obfuscation that
+//! the security samples of family 14 need (ACCEPTANCE A5) are pinned, and a
+//! second, much cruder reader checks the first on every other statement.
 
 // clippy.toml excuses `expect` in the `#[test]` functions only, not in helpers.
 #![allow(clippy::expect_used)]
@@ -14,8 +14,8 @@ use macroport_core::vba::{ConstTable, Facts, LogicalKind, StatementReader, parse
 use macroport_testkit::corpus;
 use regex::Regex;
 
-/// The obfuscated sample of family 14, whose `CreateObject` is given a class
-/// built from pieces.
+/// The obfuscated sample of family 14, which `CreateObject` and `Chr` give
+/// away.
 const OBFUSCATED: &str = "families/14-patterns-securite/14-02-workbook-open-obfuscation-chr.cls";
 
 /// A statement of a module with its facts.
@@ -126,19 +126,44 @@ fn the_obfuscated_progid_of_sample_14_02_folds_to_wscript_shell() {
 }
 
 #[test]
-fn the_exports_of_sample_14_02_give_the_same_progids_as_the_text() {
+fn the_string_built_from_character_codes_in_sample_14_02_is_a_mark_of_obfuscation() {
     let all = statements();
-    let progids_of = |sample: &str| -> Vec<(String, Vec<String>)> {
+    let sample = of_sample(&all, OBFUSCATED);
+    let marked: Vec<_> = sample
+        .iter()
+        .filter(|statement| statement.facts.chr_obfuscation)
+        .collect();
+    let [build] = marked.as_slice() else {
+        panic!("{} statements with a mark", marked.len());
+    };
+    assert_eq!(
+        build.text,
+        r#"c = Chr(110) & Chr(111) & "te" & "pad" & Chr(46) & StrReverse("exe")"#
+    );
+    assert_eq!(build.facts.strings, ["notepad.exe"]);
+    assert_eq!(build.line, 14);
+}
+
+#[test]
+fn the_exports_of_sample_14_02_give_the_same_facts_as_the_text() {
+    let all = statements();
+    let facts_of = |sample: &str| -> Vec<(String, Vec<String>, bool)> {
         of_sample(&all, sample)
             .iter()
-            .filter(|s| !s.facts.progids.is_empty())
-            .map(|s| (s.text.clone(), s.facts.progids.clone()))
+            .filter(|s| !s.facts.progids.is_empty() || s.facts.chr_obfuscation)
+            .map(|s| {
+                (
+                    s.text.clone(),
+                    s.facts.progids.clone(),
+                    s.facts.chr_obfuscation,
+                )
+            })
             .collect()
     };
-    let text = progids_of(OBFUSCATED);
-    assert_eq!(text.len(), 1, "{text:?}");
+    let text = facts_of(OBFUSCATED);
+    assert_eq!(text.len(), 2, "{text:?}");
     for extension in ["xls", "xlsb", "xlsm"] {
-        let export = progids_of(&format!(
+        let export = facts_of(&format!(
             "fixtures/generated/14-02-workbook-open-obfuscation-chr.{extension}.expected.cls"
         ));
         assert_eq!(export, text, "{extension}");
@@ -166,6 +191,40 @@ fn the_progids_of_the_security_samples_are_the_classes_they_create() {
         let sample = format!("families/14-patterns-securite/{sample}");
         assert_eq!(progids_of(&sample), expected, "{sample}");
     }
+}
+
+#[test]
+fn the_only_statements_with_the_marks_of_obfuscation_are_those_of_sample_14_02() {
+    let all = statements();
+    let marked: Vec<_> = all
+        .iter()
+        .filter(|statement| statement.facts.chr_obfuscation)
+        .collect();
+    for statement in &marked {
+        assert!(statement.path.contains("14-02-"), "{}", statement.path);
+    }
+    // The text sample and the three exports of the fixture.
+    assert_eq!(marked.len(), 4);
+}
+
+#[test]
+fn a_crude_reader_finds_the_marks_of_obfuscation_where_the_reader_does() {
+    // The crude reader: three calls of `Chr` on a line, or a `StrReverse` of a
+    // string literal.
+    let all = statements();
+    let chr = Regex::new(r"(?i)\bchr[wb]?\$?\s*\(").expect("a regular expression");
+    let reverse = Regex::new(r#"(?i)\bstrreverse\$?\s*\(\s*""#).expect("a regular expression");
+    let crude: Vec<_> = all
+        .iter()
+        .filter(|s| chr.find_iter(&s.text).count() >= 3 || reverse.is_match(&s.text))
+        .map(|s| (s.path.as_str(), s.line))
+        .collect();
+    let read: Vec<_> = all
+        .iter()
+        .filter(|s| s.facts.chr_obfuscation)
+        .map(|s| (s.path.as_str(), s.line))
+        .collect();
+    assert_eq!(read, crude);
 }
 
 #[test]
