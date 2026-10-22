@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod clock;
 pub mod i18n;
 pub mod render;
 pub mod scan;
