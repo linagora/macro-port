@@ -6,17 +6,20 @@
 //! converted into, and knows nothing of the lexer or of the parser. An
 //! [`Evaluator`] runs a matcher over a procedure, a module or the whole
 //! project and returns [`Hit`]s, each with the line to cite and the text to
-//! quote. Scoring the hits is left to the callers: family scores, security
-//! signals and complexity traits.
+//! quote. Three engines score the hits: [`families`] for the family scores,
+//! [`security`] for the signals and [`complexity`] for the level and the traits.
+//! [`findings::run`] runs the three on one file, in that order.
 
 pub mod complexity;
 mod eval;
 pub mod families;
+pub mod findings;
 mod glob;
 mod hit;
 mod input;
 mod matchers;
 mod names;
+pub mod security;
 #[cfg(test)]
 pub(crate) mod testing;
 mod unit;
@@ -28,3 +31,4 @@ pub use input::{
     ProjectInput,
 };
 pub use matchers::{is_auto_exec, is_event_handler};
+pub(crate) use names::comparable_key;

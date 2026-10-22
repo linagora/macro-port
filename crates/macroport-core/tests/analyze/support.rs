@@ -46,17 +46,12 @@ pub fn codes(report: &FileReport) -> Vec<&str> {
     errors.map(|error| error.code.as_str()).collect()
 }
 
-/// The traits that the shipped rules give to what did not parse cleanly: the
-/// ones tied to the predicate `parse_recovered`.
-pub fn recovery_traits() -> Vec<String> {
-    vec!["compile_error_suspected".to_owned()]
-}
-
-/// Whether `traits` include the ones that a parse that recovered gives. A
-/// report may carry other traits, from the rules that look at the metrics.
+/// Whether `traits` has the trait that the shipped rules give to what did not
+/// parse cleanly, the one tied to the predicate `parse_recovered`. A report may
+/// carry other traits, from the rules that look at the metrics: the rule engine
+/// gives every trait of a procedure or a file.
 pub fn marks_recovery(traits: Option<&[String]>) -> bool {
-    let marked = recovery_traits();
-    traits.is_some_and(|traits| marked.iter().all(|name| traits.contains(name)))
+    traits.is_some_and(|traits| traits.iter().any(|id| id == "compile_error_suspected"))
 }
 
 /// The signal `id` of `severity` that a container indicator makes: it is the

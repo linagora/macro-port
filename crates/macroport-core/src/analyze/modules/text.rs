@@ -10,7 +10,7 @@ use super::finish;
 use crate::analyze::project::Project;
 use crate::analyze::{Extraction, Options, Reading, hex, sha256_hex, too_large};
 use crate::report::{Container, FileReport, Metrics, ModuleReport, VbaProject};
-use crate::rules::{ModuleType, RuleSet};
+use crate::rules::ModuleType;
 use crate::vba::ModuleSource;
 
 /// The most bytes that the texts handed to [`analyze_modules`] may total: as
@@ -54,7 +54,7 @@ pub fn analyze_modules(
         })
         .unzip();
     finish(
-        text_extraction(path, size, sha256, reports, sources, options.rules),
+        text_extraction(path, size, sha256, reports, sources),
         &options,
     )
 }
@@ -90,7 +90,6 @@ pub(super) fn text_extraction(
     sha256: String,
     modules: Vec<ModuleReport>,
     sources: Vec<Option<String>>,
-    rules: &RuleSet,
 ) -> Extraction {
     let report = VbaProject {
         name: None,
@@ -101,7 +100,7 @@ pub(super) fn text_extraction(
     };
     let mut reading = Reading::new(Container::TextModule);
     reading.project = Some(Project { report, sources });
-    reading.into_extraction(path, size, sha256, rules)
+    reading.into_extraction(path, size, sha256)
 }
 
 /// The report of a text module, as extraction would give it before the front
