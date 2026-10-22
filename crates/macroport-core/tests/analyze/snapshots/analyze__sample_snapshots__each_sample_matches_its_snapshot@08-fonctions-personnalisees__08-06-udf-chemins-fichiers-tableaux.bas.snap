@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=284 logical_loc=175 procedures=5 cyclomatic=13 cyclomatic_total=49 max_nesting=3 forms=0 declare_count=0
+file: loc=284 logical_loc=175 procedures=5 cyclomatic=13 cyclomatic_total=49 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 08-06-udf-chemins-fichiers-tableaux (standard): loc=284 logical_loc=175 procedures=5 cyclomatic=13 cyclomatic_total=49 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   function IS_FILE public lines 68-114: loc=47 logical_loc=39 cyclomatic=10 max_nesting=3 parameters=1 goto_count=2 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=103 logical_loc=62 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 forms=0 declare_count=0
+file: loc=103 logical_loc=62 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 forms=0 declare_count=0 external_dependencies=0
 module 03-05-split-product-code-regex (standard): loc=103 logical_loc=62 procedures=1 cyclomatic=7 cyclomatic_total=7 max_nesting=4 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
   sub splitStyleFabricColourSizeV3 default lines 9-103: loc=95 logical_loc=61 cyclomatic=7 max_nesting=4 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-

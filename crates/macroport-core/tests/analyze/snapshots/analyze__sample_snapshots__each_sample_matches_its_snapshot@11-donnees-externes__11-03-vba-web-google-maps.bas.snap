@@ -7,7 +7,7 @@ status: ok
 container: text_module
 errors: none
 traits: none
-file: loc=102 logical_loc=44 procedures=4 cyclomatic=2 cyclomatic_total=6 max_nesting=1 forms=0 declare_count=0
+file: loc=102 logical_loc=44 procedures=4 cyclomatic=2 cyclomatic_total=6 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 11-03-vba-web-google-maps (standard): loc=102 logical_loc=44 procedures=4 cyclomatic=2 cyclomatic_total=6 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
   function GetDirections default lines 8-50: loc=43 logical_loc=21 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
