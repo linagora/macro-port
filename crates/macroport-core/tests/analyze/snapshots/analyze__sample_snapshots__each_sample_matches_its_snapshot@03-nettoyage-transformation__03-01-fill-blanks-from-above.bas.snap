@@ -10,7 +10,7 @@ traits: none
 file: loc=20 logical_loc=10 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 03-01-fill-blanks-from-above (standard): loc=20 logical_loc=10 procedures=1 cyclomatic=1 cyclomatic_total=1 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub FillCellsFromAbove default lines 7-20: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=4
+  sub FillCellsFromAbove default lines 7-20: loc=14 logical_loc=10 cyclomatic=1 max_nesting=1 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=4
     api Application.ScreenUpdating*2
     api Columns.SpecialCells.Formula*1
     api Columns.Value*2

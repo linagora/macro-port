@@ -6,11 +6,11 @@ families/11-donnees-externes/11-03-vba-web-google-maps.bas
 status: ok
 container: text_module
 errors: none
-traits: none
+traits: possibly_unused
 file: loc=102 logical_loc=44 procedures=4 cyclomatic=2 cyclomatic_total=6 max_nesting=1 forms=0 declare_count=0 external_dependencies=0
 module 11-03-vba-web-google-maps (standard): loc=102 logical_loc=44 procedures=4 cyclomatic=2 cyclomatic_total=6 max_nesting=1 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  function GetDirections default lines 8-50: loc=43 logical_loc=21 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=DirectionsRequest,MapsClient apis=11
+  function GetDirections default lines 8-50: loc=43 logical_loc=21 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=DirectionsRequest,MapsClient apis=11
     api DirectionsRequest.AddQuerystringParam*3
     api DirectionsRequest.AddUrlSegment*1
     api DirectionsRequest.Format*1
@@ -22,15 +22,15 @@ module 11-03-vba-web-google-maps (standard): loc=102 logical_loc=44 procedures=4
     api Response.Data*1
     api Response.StatusCode*1
     api WebStatusCode.Ok*1
-  sub ProcessDirections public lines 52-64: loc=13 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=5
+  sub ProcessDirections public lines 52-64: loc=13 logical_loc=9 cyclomatic=2 max_nesting=1 parameters=1 goto_count=0 external_dependencies=0 traits=possibly_unused entry_point=false event_handler=false possibly_unused=true calls=none apis=5
     api Debug.Print*2
     api Response.Content*1
     api Response.Data*1
     api Response.StatusCode*1
     api WebStatusCode.Ok*1
-  function MapsClient default lines 66-78: loc=13 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=1
+  function MapsClient default lines 66-78: loc=13 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=1
     api MapsClient.BaseUrl*1
-  function DirectionsRequest default lines 80-102: loc=23 logical_loc=10 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=7
+  function DirectionsRequest default lines 80-102: loc=23 logical_loc=10 cyclomatic=1 max_nesting=0 parameters=2 goto_count=0 external_dependencies=0 traits=none entry_point=true event_handler=false possibly_unused=false calls=none apis=7
     api DirectionsRequest.AddQuerystringParam*3
     api DirectionsRequest.AddUrlSegment*1
     api DirectionsRequest.Format*1
