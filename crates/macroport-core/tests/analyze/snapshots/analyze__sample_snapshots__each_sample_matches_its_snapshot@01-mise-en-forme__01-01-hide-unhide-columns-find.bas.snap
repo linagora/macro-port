@@ -10,8 +10,20 @@ traits: none
 file: loc=68 logical_loc=40 procedures=2 cyclomatic=4 cyclomatic_total=8 max_nesting=3 forms=0 declare_count=0 external_dependencies=0
 module 01-01-hide-unhide-columns-find (standard): loc=68 logical_loc=40 procedures=2 cyclomatic=4 cyclomatic_total=8 max_nesting=3 declare_count=0
   declarations: declare_count=0 with_events_count=0 option_explicit=false option_vba_support=false
-  sub Hide_Columns default lines 7-37: loc=31 logical_loc=20 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
-  sub Unhide_Columns default lines 39-68: loc=30 logical_loc=20 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Hide_Columns default lines 7-37: loc=31 logical_loc=20 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api m_rnCheck.Find*1
+    api m_rnCheck.FindNext*1
+    api m_rnFind.Address*2
+    api m_rnFind.EntireColumn.Hidden*1
+    api m_wbBook.Worksheets*1
+    api m_wsSheet.Range.SpecialCells*1
+  sub Unhide_Columns default lines 39-68: loc=30 logical_loc=20 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=none apis=6
+    api m_rnCheck.Find*1
+    api m_rnCheck.FindNext*1
+    api m_rnFind.Address*2
+    api m_rnFind.EntireColumn.Hidden*1
+    api m_wbBook.Worksheets*1
+    api m_wsSheet.Range.SpecialCells*1
 parse:
   procedure sub Hide_Columns default static=false parameters=0 lines 7-37 recoveries=none unbalanced_blocks=false
   procedure sub Unhide_Columns default static=false parameters=0 lines 39-68 recoveries=none unbalanced_blocks=false
