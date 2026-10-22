@@ -19,5 +19,7 @@ mod indicators;
 mod judgments;
 mod modules;
 mod robustness;
+mod sample_snapshots;
+mod statements;
 mod support;
 mod text_files;

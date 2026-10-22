@@ -1,0 +1,99 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/11-donnees-externes/11-05-vba-json-jsonconverter.bas
+---
+families/11-donnees-externes/11-05-vba-json-jsonconverter.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 forms=0 declare_count=14 external_dependencies=1
+module 11-05-vba-json-jsonconverter (standard): loc=1129 logical_loc=706 procedures=24 cyclomatic=49 cyclomatic_total=165 max_nesting=7 declare_count=14
+  declarations: declare_count=14 with_events_count=0 option_explicit=true option_vba_support=false
+  function ParseJson public lines 178-195: loc=18 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ConvertToJson public lines 205-461: loc=257 logical_loc=198 cyclomatic=49 max_nesting=7 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseObject private lines 467-497: loc=31 logical_loc=28 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseArray private lines 499-521: loc=23 logical_loc=20 cyclomatic=5 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseValue private lines 523-548: loc=26 logical_loc=26 cyclomatic=8 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseString private lines 550-608: loc=59 logical_loc=51 cyclomatic=12 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseNumber private lines 610-641: loc=32 logical_loc=21 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseKey private lines 643-669: loc=27 logical_loc=24 cyclomatic=9 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_IsUndefined private lines 671-682: loc=12 logical_loc=11 cyclomatic=4 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_Encode private lines 684-743: loc=60 logical_loc=39 cyclomatic=13 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_Peek private lines 745-749: loc=5 logical_loc=4 cyclomatic=1 max_nesting=0 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub json_SkipSpaces private lines 751-756: loc=6 logical_loc=5 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_StringIsLargeNumber private lines 758-784: loc=27 logical_loc=18 cyclomatic=5 max_nesting=3 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_ParseErrorMessage private lines 786-812: loc=27 logical_loc=13 cyclomatic=3 max_nesting=1 parameters=3 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub json_BufferAppend private lines 814-860: loc=47 logical_loc=14 cyclomatic=3 max_nesting=1 parameters=4 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function json_BufferToString private lines 862-866: loc=5 logical_loc=5 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ParseUtc public lines 899-918: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ConvertToUtc public lines 928-947: loc=20 logical_loc=15 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ParseIso public lines 957-1025: loc=69 logical_loc=57 cyclomatic=14 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function ConvertToIso public lines 1035-1044: loc=10 logical_loc=7 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function utc_ConvertDate private lines 1052-1081: loc=30 logical_loc=21 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function utc_ExecuteInShell private lines 1083-1110: loc=28 logical_loc=24 cyclomatic=5 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function utc_DateToSystemTime private lines 1114-1122: loc=9 logical_loc=9 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function utc_SystemTimeToDate private lines 1124-1127: loc=4 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=1 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 52
+  declaration Directive(If) line 55
+  declaration Directive(If) line 57
+  declaration Declare { name: "utc_popen", is_function: true } line 60
+  declaration Declare { name: "utc_pclose", is_function: true } line 62
+  declaration Declare { name: "utc_fread", is_function: true } line 64
+  declaration Declare { name: "utc_feof", is_function: true } line 66
+  declaration Directive(Else) line 69
+  declaration Declare { name: "utc_popen", is_function: true } line 72
+  declaration Declare { name: "utc_pclose", is_function: true } line 74
+  declaration Declare { name: "utc_fread", is_function: true } line 76
+  declaration Declare { name: "utc_feof", is_function: true } line 78
+  declaration Directive(EndIf) line 81
+  declaration Directive(ElseIf) line 83
+  declaration Declare { name: "utc_GetTimeZoneInformation", is_function: true } line 88
+  declaration Declare { name: "utc_SystemTimeToTzSpecificLocalTime", is_function: true } line 90
+  declaration Declare { name: "utc_TzSpecificLocalTimeToSystemTime", is_function: true } line 92
+  declaration Directive(Else) line 95
+  declaration Declare { name: "utc_GetTimeZoneInformation", is_function: true } line 97
+  declaration Declare { name: "utc_SystemTimeToTzSpecificLocalTime", is_function: true } line 99
+  declaration Declare { name: "utc_TzSpecificLocalTimeToSystemTime", is_function: true } line 101
+  declaration Directive(EndIf) line 104
+  declaration Directive(If) line 106
+  declaration Directive(If) line 108
+  declaration Type line 109
+  declaration Directive(Else) line 114
+  declaration Type line 116
+  declaration Directive(EndIf) line 121
+  declaration Directive(Else) line 123
+  declaration Type line 125
+  declaration Type line 136
+  declaration Directive(EndIf) line 146
+  declaration Type line 149
+  declaration Variable line 164
+  declaration Directive(If) line 1050
+  declaration Directive(Else) line 1112
+  declaration Directive(EndIf) line 1129
+  procedure function ParseJson public static=false parameters=1 lines 178-195 recoveries=none unbalanced_blocks=false
+  procedure function ConvertToJson public static=false parameters=3 lines 205-461 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseObject private static=false parameters=2 lines 467-497 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseArray private static=false parameters=2 lines 499-521 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseValue private static=false parameters=2 lines 523-548 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseString private static=false parameters=2 lines 550-608 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseNumber private static=false parameters=2 lines 610-641 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseKey private static=false parameters=2 lines 643-669 recoveries=none unbalanced_blocks=false
+  procedure function json_IsUndefined private static=false parameters=1 lines 671-682 recoveries=none unbalanced_blocks=false
+  procedure function json_Encode private static=false parameters=1 lines 684-743 recoveries=none unbalanced_blocks=false
+  procedure function json_Peek private static=false parameters=3 lines 745-749 recoveries=none unbalanced_blocks=false
+  procedure sub json_SkipSpaces private static=false parameters=2 lines 751-756 recoveries=none unbalanced_blocks=false
+  procedure function json_StringIsLargeNumber private static=false parameters=1 lines 758-784 recoveries=none unbalanced_blocks=false
+  procedure function json_ParseErrorMessage private static=false parameters=3 lines 786-812 recoveries=none unbalanced_blocks=false
+  procedure sub json_BufferAppend private static=false parameters=4 lines 814-860 recoveries=none unbalanced_blocks=false
+  procedure function json_BufferToString private static=false parameters=2 lines 862-866 recoveries=none unbalanced_blocks=false
+  procedure function ParseUtc public static=false parameters=1 lines 899-918 recoveries=none unbalanced_blocks=false
+  procedure function ConvertToUtc public static=false parameters=1 lines 928-947 recoveries=none unbalanced_blocks=false
+  procedure function ParseIso public static=false parameters=1 lines 957-1025 recoveries=none unbalanced_blocks=false
+  procedure function ConvertToIso public static=false parameters=1 lines 1035-1044 recoveries=none unbalanced_blocks=false
+  procedure function utc_ConvertDate private static=false parameters=2 lines 1052-1081 recoveries=none unbalanced_blocks=false
+  procedure function utc_ExecuteInShell private static=false parameters=1 lines 1083-1110 recoveries=none unbalanced_blocks=false
+  procedure function utc_DateToSystemTime private static=false parameters=1 lines 1114-1122 recoveries=none unbalanced_blocks=false
+  procedure function utc_SystemTimeToDate private static=false parameters=1 lines 1124-1127 recoveries=none unbalanced_blocks=false
+  recoveries: none

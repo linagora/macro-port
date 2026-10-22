@@ -10,25 +10,13 @@ use macroport_core::report::{
     Status, Visibility,
 };
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources};
-use macroport_core::vba::{MAX_LINES, ModuleSource};
+use macroport_core::vba::MAX_LINES;
 use macroport_testkit::corpus;
 
 use crate::support::{
-    HELLO, checked, marks_recovery, module, modules, options, procedures, sha256,
+    HELLO, checked, marks_recovery, module, modules, options, procedures, report_of_modules,
+    sha256, source,
 };
-
-fn source(name: &str, module_type: ModuleType, text: &str) -> ModuleSource {
-    ModuleSource {
-        name: name.to_owned(),
-        module_type,
-        text: text.to_owned(),
-    }
-}
-
-/// The report of `modules` as a text file.
-fn report_of_modules(modules: Vec<ModuleSource>) -> FileReport {
-    checked(analyze_modules(modules, "Book.bas", &options()))
-}
 
 /// The report of `text` as the only module of a file.
 fn report_of(text: &str) -> FileReport {
@@ -583,15 +571,14 @@ fn a_module_reports_the_declarations_outside_its_procedures() {
 }
 
 #[test]
-fn the_external_dependencies_of_a_file_are_left_out_whatever_its_declares_say() {
+fn the_declares_of_a_file_count_as_one_external_dependency() {
     let file = report_of(DECLARING);
 
-    // A `Declare` statement is a dependency, but the ProgIDs that the statements
-    // pass to `CreateObject` and `GetObject` are not read yet, so a count would
-    // fall short.
+    // Three `Declare` statements make one dependency, the file having no
+    // reference and its statements passing no ProgID.
     let metrics = file.metrics.as_ref().expect("the metrics of the file");
     assert_eq!(metrics.declare_count, Some(3));
-    assert_eq!(metrics.external_dependencies, None);
+    assert_eq!(metrics.external_dependencies, Some(1));
 }
 
 #[test]

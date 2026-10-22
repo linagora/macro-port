@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), with what measuring the procedures
-//! showed ([`Analysis::measures`]). Five conventions matter to the engine:
+//! showed ([`Analysis::measures`]). Six conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -16,11 +16,14 @@
 //!   of the block (`.Font` under `With Range("A1")` is `Range.Font`). The
 //!   blocks are followed within a procedure, and within each run of lines
 //!   between two procedures: a block never outlives the run that opens it.
-//! - `parse_recovered` holds for a procedure when the parser recovered in it,
-//!   when a statement of it nests expressions deeper than the reader follows,
-//!   or when its blocks do not match (SPEC M2 item 6). It holds for the module
-//!   when it holds for one of its procedures, or when the parser recovered
-//!   outside any.
+//! - `parse_recovered` holds for a procedure when the parser recovered in it or
+//!   when its blocks do not match (SPEC M2 item 6), and for the module when the
+//!   parser recovered in it, outside the procedures too, or the blocks of one of
+//!   them do not match. A statement nested deeper than the reader follows is a
+//!   third cause: only the statements show it, so the caller adds it.
+//! - A call that follows a dot is `after_dot`, unless every name before it is a
+//!   name of the VBA library: `VBA.Shell "calc"` is a call of `Shell`, as
+//!   `Shell "calc"` is, and not the member of an object (ADR-0010).
 //!
 //! What the front end does not read yet is left empty, not guessed: the ProgIDs
 //! of the statements, and the predicates `chr_obfuscation` and
@@ -295,20 +298,15 @@ fn read_module(
     };
 
     let mut input = module_input(name, module_type);
-    // Whether a statement of the module is too deep to be read. The analysis
-    // knows what the parser and the measure found, not that.
-    let mut suspect = false;
     for gap in &outside {
-        let (code, deep) = converter.code_lines(slice(logical, gap))?;
+        let code = converter.code_lines(slice(logical, gap))?;
         input.declarations.extend(code);
-        suspect |= deep;
     }
     let mut procedures = Vec::with_capacity(parsed.procedures.len());
     let mut metrics = Vec::with_capacity(parsed.procedures.len());
     let found = parsed.procedures.iter().zip(&analysis.measures);
     for (index, (procedure, measure)) in found.enumerate() {
-        let (lines, deep) = converter.code_lines(slice(logical, &procedure.lines))?;
-        suspect |= deep;
+        let lines = converter.code_lines(slice(logical, &procedure.lines))?;
         procedures.push(ProcedureInput {
             name: procedure.name.clone(),
             kind: procedure.kind,
@@ -318,14 +316,14 @@ fn read_module(
             predicates: ParserPredicates {
                 udf_candidate: vba::is_udf_candidate(module_type, procedure, &analysis.lines),
                 nested_loop_compare: measure.nested_loop_compare.clone(),
-                parse_recovered: analysis.procedure_recovered(index) || deep,
+                parse_recovered: analysis.procedure_recovered(index),
                 ..ParserPredicates::default()
             },
         });
         metrics.push(measure.metrics.clone());
     }
     input.procedures = procedures;
-    input.parse_recovered = analysis.is_recovered() || suspect;
+    input.parse_recovered = analysis.is_recovered();
 
     let with_events =
         parsed
@@ -386,37 +384,32 @@ struct Converter<'c, 'r> {
 }
 
 impl Converter<'_, '_> {
-    /// The lines of the engine for `lines`, and whether one of the statements
-    /// nests expressions deeper than the reader follows. Fails when a line does
-    /// not fit in the room that is left.
+    /// The lines of the engine for `lines`. Fails when a line does not fit in
+    /// the room that is left.
     ///
     /// `lines` is a run: the lines between two procedures, or those of one
     /// procedure. The reader that follows its `With` blocks is its own, so
     /// that a block a run leaves open, which a procedure without an end does,
     /// is closed with the run and gives its object to no other.
-    fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<(Vec<CodeLine>, bool), VbaError> {
+    fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<Vec<CodeLine>, VbaError> {
         let mut reader = StatementReader::new(self.consts);
-        let mut too_deep = false;
         // The room limits what is kept, so room is not made for all the lines
         // at once: a module of a quarter of a million lines would take 50 MB
         // before the first of them was refused.
         let mut code = Vec::with_capacity(lines.len().min(1 << 12));
         for line in lines {
-            let (converted, deep) = self.code_line(&mut reader, line)?;
-            too_deep |= deep;
-            code.push(converted);
+            code.push(self.code_line(&mut reader, line)?);
         }
-        Ok((code, too_deep))
+        Ok(code)
     }
 
     /// The line of the engine for `line`, which `reader` reads after the lines
-    /// of its run, and whether its statement nests expressions too deep to be
-    /// read.
+    /// of its run.
     fn code_line(
         &mut self,
         reader: &mut StatementReader<'_>,
         line: &LogicalLine,
-    ) -> Result<(CodeLine, bool), VbaError> {
+    ) -> Result<CodeLine, VbaError> {
         let comment = line.comment.as_ref().map(|comment| comment.text.clone());
         let raw = raw_text(&line.text, comment.as_deref());
         if line.kind != LogicalKind::Code {
@@ -429,7 +422,7 @@ impl Converter<'_, '_> {
                 ..CodeLine::default()
             };
             self.room.take(line_bytes(&code))?;
-            return Ok((code, false));
+            return Ok(code);
         }
         // A statement that cannot fit is refused on its tokens, before its
         // facts are read. The tokens are gone when the facts are: they weigh 24
@@ -451,7 +444,7 @@ impl Converter<'_, '_> {
             ..CodeLine::default()
         };
         self.room.take(line_bytes(&converted))?;
-        Ok((converted, facts.too_deep))
+        Ok(converted)
     }
 }
 
@@ -463,11 +456,13 @@ fn member(found: vba::MemberUse) -> MemberUse {
     }
 }
 
-/// A call that the statement reader found, as the engine reads it.
+/// A call that the statement reader found, as the engine reads it. The engine
+/// knows no library: a call qualified by the names of the VBA library alone is
+/// one of the library, not of a member of an object (ADR-0010).
 fn call(found: vba::CallSite) -> CallSite {
     CallSite {
         name: found.name,
-        after_dot: found.after_dot,
+        after_dot: found.after_dot && !found.library,
     }
 }
 
@@ -502,7 +497,6 @@ fn without_strings(text: &str, tokens: &[Token]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vba::MAX_NESTING;
 
     fn analysis(text: &str) -> Analysis {
         Analysis::of(text).expect("a short module")
@@ -715,27 +709,51 @@ mod tests {
         assert_eq!(adapted.input.procedures[0].lines[1].chains, [["A", "B"]]);
     }
 
+    /// The names of the members of a line.
+    fn members(line: &CodeLine) -> Vec<&str> {
+        (line.members.iter())
+            .map(|member| member.name.as_str())
+            .collect()
+    }
+
+    /// The calls of a line as (name, after_dot) pairs.
+    fn calls(line: &CodeLine) -> Vec<(&str, bool)> {
+        (line.calls.iter())
+            .map(|call| (call.name.as_str(), call.after_dot))
+            .collect()
+    }
+
     #[test]
     fn the_members_and_the_calls_of_a_statement_are_those_the_reader_finds() {
         let adapted =
             adapted("Sub Run()\n    Shell \"calc\"\n    ws.Cells(1, 1).Value = 2\nEnd Sub\n");
 
-        fn members(line: &CodeLine) -> Vec<&str> {
-            (line.members.iter())
-                .map(|member| member.name.as_str())
-                .collect()
-        }
-        fn calls(line: &CodeLine) -> Vec<(&str, bool)> {
-            (line.calls.iter())
-                .map(|call| (call.name.as_str(), call.after_dot))
-                .collect()
-        }
         let lines = &adapted.input.procedures[0].lines;
         assert_eq!(members(&lines[1]), ["Shell"]);
         assert_eq!(calls(&lines[1]), [("Shell", false)]);
         assert_eq!(members(&lines[2]), ["ws", "Cells", "Value"]);
         assert_eq!(calls(&lines[2]), [("Cells", true)]);
         assert!(lines[2].members.iter().all(|member| !member.named_argument));
+    }
+
+    #[test]
+    fn a_call_qualified_by_the_vba_library_alone_is_not_the_call_of_a_member() {
+        let adapted = adapted(
+            "Sub Run()\n    VBA.Shell \"calc\"\n    x = VBA.Interaction.Shell(\"calc\")\n    \
+             y = Foo.VBA.Shell(\"calc\")\n    z = ws.Range(\"A1\")\n    t = Shell(\"calc\")\n\
+             End Sub\n",
+        );
+
+        let lines = &adapted.input.procedures[0].lines;
+        // The library is no object: its `Shell` is `Shell` written in full, in
+        // the statement form as in the function form (ADR-0010).
+        assert_eq!(calls(&lines[1]), [("Shell", false)]);
+        assert_eq!(calls(&lines[2]), [("Shell", false)]);
+        // A member of an object is one whatever its name, and so is the
+        // `Shell` of a `VBA` that is itself the member of an object.
+        assert_eq!(calls(&lines[3]), [("Shell", true)]);
+        assert_eq!(calls(&lines[4]), [("Range", true)]);
+        assert_eq!(calls(&lines[5]), [("Shell", false)]);
     }
 
     #[test]
@@ -786,22 +804,6 @@ mod tests {
 
         let clean = adapted("Sub Fine()\nEnd Sub\n").input;
         assert!(!clean.parse_recovered);
-    }
-
-    #[test]
-    fn a_statement_too_deep_to_be_read_counts_as_one_that_did_not_parse() {
-        let deep = format!(
-            "x = {}1{}",
-            "(".repeat(MAX_NESTING + 1),
-            ")".repeat(MAX_NESTING + 1)
-        );
-
-        let inside = adapted(&format!("Sub Run()\n    {deep}\nEnd Sub\n")).input;
-        assert!(inside.procedures[0].predicates.parse_recovered);
-        assert!(inside.parse_recovered);
-        let outside = adapted(&format!("{deep}\nSub Run()\nEnd Sub\n")).input;
-        assert!(!outside.procedures[0].predicates.parse_recovered);
-        assert!(outside.parse_recovered);
     }
 
     #[test]

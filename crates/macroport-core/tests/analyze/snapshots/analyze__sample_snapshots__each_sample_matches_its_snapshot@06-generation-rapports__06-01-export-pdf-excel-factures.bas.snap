@@ -1,0 +1,51 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/06-generation-rapports/06-01-export-pdf-excel-factures.bas
+---
+families/06-generation-rapports/06-01-export-pdf-excel-factures.bas
+status: ok
+container: text_module
+errors: none
+traits: none
+file: loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 forms=0 declare_count=0 external_dependencies=1
+module 06-01-export-pdf-excel-factures (standard): loc=461 logical_loc=360 procedures=18 cyclomatic=12 cyclomatic_total=66 max_nesting=4 declare_count=0
+  declarations: declare_count=0 with_events_count=0 option_explicit=true option_vba_support=false
+  sub EXPORT_PDF_MultipleSheet_ForOne default lines 11-53: loc=43 logical_loc=28 cyclomatic=2 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub test_EXPORTPDFOneByOne default lines 54-61: loc=8 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EXPORTPDFOneByOne default lines 65-112: loc=48 logical_loc=32 cyclomatic=3 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub Export_Excel_MultipleSheet_ForOne default lines 113-148: loc=36 logical_loc=30 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub test_ExportExcelOneByOne default lines 151-157: loc=7 logical_loc=7 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub EXPORTExcelOneByOne default lines 158-200: loc=43 logical_loc=35 cyclomatic=4 max_nesting=1 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetNextAvailableName default lines 201-219: loc=19 logical_loc=13 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub test_GetListProjectChecked default lines 220-224: loc=5 logical_loc=5 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetListProjectChecked default lines 225-249: loc=25 logical_loc=22 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function NextNameSheetAvailable default lines 251-267: loc=17 logical_loc=16 cyclomatic=4 max_nesting=2 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GetSelectedSheet default lines 268-281: loc=14 logical_loc=14 cyclomatic=4 max_nesting=3 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function CreateSaveFileName private lines 282-296: loc=15 logical_loc=15 cyclomatic=2 max_nesting=2 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub CREATE_FOLDER default lines 301-343: loc=43 logical_loc=32 cyclomatic=8 max_nesting=1 parameters=0 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function getExportName public lines 345-357: loc=13 logical_loc=10 cyclomatic=2 max_nesting=0 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function GET_PATH_EXPORT public lines 360-413: loc=54 logical_loc=47 cyclomatic=12 max_nesting=4 parameters=1 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function getListSheet public lines 414-441: loc=28 logical_loc=27 cyclomatic=7 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  function CountSheet public lines 442-457: loc=16 logical_loc=16 cyclomatic=4 max_nesting=3 parameters=2 goto_count=0 traits=none entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+  sub testgetpath default lines 459-461: loc=3 logical_loc=3 cyclomatic=1 max_nesting=0 parameters=0 goto_count=0 traits=trivial entry_point=- event_handler=- possibly_unused=- calls=- apis=-
+parse:
+  declaration Option(Explicit) line 8
+  procedure sub EXPORT_PDF_MultipleSheet_ForOne default static=false parameters=2 lines 11-53 recoveries=none unbalanced_blocks=false
+  procedure sub test_EXPORTPDFOneByOne default static=false parameters=0 lines 54-61 recoveries=none unbalanced_blocks=false
+  procedure sub EXPORTPDFOneByOne default static=false parameters=2 lines 65-112 recoveries=none unbalanced_blocks=false
+  procedure sub Export_Excel_MultipleSheet_ForOne default static=false parameters=2 lines 113-148 recoveries=none unbalanced_blocks=false
+  procedure sub test_ExportExcelOneByOne default static=false parameters=0 lines 151-157 recoveries=none unbalanced_blocks=false
+  procedure sub EXPORTExcelOneByOne default static=false parameters=2 lines 158-200 recoveries=none unbalanced_blocks=false
+  procedure function GetNextAvailableName default static=false parameters=1 lines 201-219 recoveries=none unbalanced_blocks=false
+  procedure sub test_GetListProjectChecked default static=false parameters=0 lines 220-224 recoveries=none unbalanced_blocks=false
+  procedure function GetListProjectChecked default static=false parameters=0 lines 225-249 recoveries=none unbalanced_blocks=false
+  procedure function NextNameSheetAvailable default static=false parameters=2 lines 251-267 recoveries=none unbalanced_blocks=false
+  procedure function GetSelectedSheet default static=false parameters=0 lines 268-281 recoveries=none unbalanced_blocks=false
+  procedure function CreateSaveFileName private static=false parameters=1 lines 282-296 recoveries=none unbalanced_blocks=false
+  procedure sub CREATE_FOLDER default static=false parameters=0 lines 301-343 recoveries=none unbalanced_blocks=false
+  procedure function getExportName public static=false parameters=1 lines 345-357 recoveries=none unbalanced_blocks=false
+  procedure function GET_PATH_EXPORT public static=false parameters=1 lines 360-413 recoveries=none unbalanced_blocks=false
+  procedure function getListSheet public static=false parameters=2 lines 414-441 recoveries=none unbalanced_blocks=false
+  procedure function CountSheet public static=false parameters=2 lines 442-457 recoveries=none unbalanced_blocks=false
+  procedure sub testgetpath default static=false parameters=0 lines 459-461 recoveries=none unbalanced_blocks=false
+  recoveries: none

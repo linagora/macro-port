@@ -1,0 +1,29 @@
+---
+source: crates/macroport-core/tests/analyze/sample_snapshots.rs
+input_file: corpus/families/13-api-windows-activex/13-01-declare-ptrsafe-compilation-conditionnelle.bas
+---
+families/13-api-windows-activex/13-01-declare-ptrsafe-compilation-conditionnelle.bas
+status: no_macros
+container: text_module
+errors: none
+traits: none
+file: loc=37 logical_loc=15 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 forms=0 declare_count=6 external_dependencies=1
+module 13-01-declare-ptrsafe-compilation-conditionnelle (standard): loc=37 logical_loc=15 procedures=0 cyclomatic=0 cyclomatic_total=0 max_nesting=0 declare_count=6
+  declarations: declare_count=6 with_events_count=0 option_explicit=false option_vba_support=false
+parse:
+  declaration Declare { name: "MessageBeep", is_function: false } line 8
+  declaration Declare { name: "MessageBeep", is_function: false } line 10
+  declaration Declare { name: "GetWinFlags", is_function: true } line 12
+  declaration Directive(If) line 17
+  declaration Declare { name: "MessageBeep", is_function: false } line 18
+  declaration Directive(Else) line 19
+  declaration Declare { name: "MessageBeep", is_function: false } line 20
+  declaration Directive(EndIf) line 21
+  declaration Declare { name: "GetActiveWindow", is_function: true } line 25
+  declaration Directive(If) line 28
+  declaration Directive(If) line 30
+  declaration Directive(Else) line 32
+  declaration Directive(EndIf) line 34
+  declaration Directive(Else) line 35
+  declaration Directive(EndIf) line 37
+  recoveries: none
