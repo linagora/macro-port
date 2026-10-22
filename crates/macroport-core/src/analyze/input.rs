@@ -3,7 +3,7 @@
 //!
 //! [`adapt`] turns the lines and the procedures of a module into the model
 //! that the engine reads ([`ModuleInput`]), with what measuring the procedures
-//! showed ([`Analysis::measures`]). Six conventions matter to the engine:
+//! showed ([`Analysis::measures`]). Seven conventions matter to the engine:
 //!
 //! - The line numbers are the physical lines of the file, never renumbered
 //!   (SPEC section 5): the parser has kept them, so they are copied.
@@ -20,14 +20,20 @@
 //!   `CreateObject` and `GetObject`, folded like its strings. The dependencies
 //!   of the procedures and of the file are counted from them (see
 //!   [`metrics`](super::metrics)), and the trait `trivial` reads the former.
+//! - A statement that shows a mark of obfuscation (SPEC section 7: three calls
+//!   of `Chr` joined, or `StrReverse` of a literal) is cited for the predicate
+//!   `chr_obfuscation` by its position among the lines of its procedure. The
+//!   engine cites the statements of procedures only, so a mark outside any
+//!   procedure is cited nowhere.
 //! - `parse_recovered` holds for a procedure when the parser recovered in it,
 //!   when a statement of it nests expressions deeper than the reader follows
-//!   (that statement has no ProgID), or when its blocks do not match (SPEC M2
-//!   item 6). It holds for the module when it holds for one of its procedures,
-//!   or when the parser recovered outside any.
+//!   (it reads the rest of that statement flat, so the statement has no ProgID
+//!   and no mark of obfuscation past that point), or when its blocks do not
+//!   match (SPEC M2 item 6). It holds for the module when it holds for one of
+//!   its procedures, or when the parser recovered outside any.
 //!
 //! What the front end does not read yet is left empty, not guessed: the
-//! predicates `chr_obfuscation` and `possibly_unused`.
+//! predicate `possibly_unused`.
 //!
 //! The facts of a statement weigh a few dozen times its text, and only the text
 //! of the file bounds how many statements it holds. The engine keeps what it
@@ -310,26 +316,27 @@ fn read_module(
     // knows what the parser and the measure found, not that.
     let mut suspect = false;
     for gap in &outside {
-        let (code, deep) = converter.code_lines(slice(logical, gap))?;
-        input.declarations.extend(code);
-        suspect |= deep;
+        let run = converter.code_lines(slice(logical, gap))?;
+        input.declarations.extend(run.lines);
+        suspect |= run.too_deep;
     }
     let mut procedures = Vec::with_capacity(parsed.procedures.len());
     let mut metrics = Vec::with_capacity(parsed.procedures.len());
     let found = parsed.procedures.iter().zip(&analysis.measures);
     for (index, (procedure, measure)) in found.enumerate() {
-        let (lines, deep) = converter.code_lines(slice(logical, &procedure.lines))?;
-        suspect |= deep;
+        let run = converter.code_lines(slice(logical, &procedure.lines))?;
+        suspect |= run.too_deep;
         procedures.push(ProcedureInput {
             name: procedure.name.clone(),
             kind: procedure.kind,
             start_line: procedure.start_line,
             end_line: procedure.end_line,
-            lines,
+            lines: run.lines,
             predicates: ParserPredicates {
                 udf_candidate: vba::is_udf_candidate(module_type, procedure, &analysis.lines),
+                chr_obfuscation: run.obfuscated,
                 nested_loop_compare: measure.nested_loop_compare.clone(),
-                parse_recovered: analysis.procedure_recovered(index) || deep,
+                parse_recovered: analysis.procedure_recovered(index) || run.too_deep,
                 ..ParserPredicates::default()
             },
         });
@@ -396,38 +403,65 @@ struct Converter<'c, 'r> {
     room: &'r mut Room,
 }
 
+/// A statement as the engine reads it, with what reading it showed besides the
+/// facts that its line holds.
+struct Statement {
+    line: CodeLine,
+    /// The statement nests expressions deeper than the reader follows.
+    too_deep: bool,
+    /// An expression of the statement shows a mark of obfuscation.
+    obfuscated: bool,
+}
+
+/// The lines of the engine for a run of statements, with what reading them
+/// showed.
+struct Run {
+    lines: Vec<CodeLine>,
+    /// A statement of the run nests expressions deeper than the reader follows.
+    too_deep: bool,
+    /// The position among `lines` of each statement that shows a mark of
+    /// obfuscation: what `chr_obfuscation` cites. A position takes 8 bytes, which
+    /// the room does not count: a mark needs three calls, so its statement
+    /// weighs far more than that.
+    obfuscated: Vec<usize>,
+}
+
 impl Converter<'_, '_> {
-    /// The lines of the engine for `lines`, and whether one of the statements
-    /// nests expressions deeper than the reader follows. Fails when a line does
-    /// not fit in the room that is left.
+    /// The lines of the engine for `lines`, and what reading their statements
+    /// showed. Fails when a line does not fit in the room that is left.
     ///
     /// `lines` is a run: the lines between two procedures, or those of one
     /// procedure. The reader that follows its `With` blocks is its own, so
     /// that a block a run leaves open, which a procedure without an end does,
     /// is closed with the run and gives its object to no other.
-    fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<(Vec<CodeLine>, bool), VbaError> {
+    fn code_lines(&mut self, lines: &[LogicalLine]) -> Result<Run, VbaError> {
         let mut reader = StatementReader::new(self.consts);
-        let mut too_deep = false;
         // The room limits what is kept, so room is not made for all the lines
         // at once: a module of a quarter of a million lines would take 50 MB
         // before the first of them was refused.
-        let mut code = Vec::with_capacity(lines.len().min(1 << 12));
+        let mut run = Run {
+            lines: Vec::with_capacity(lines.len().min(1 << 12)),
+            too_deep: false,
+            obfuscated: Vec::new(),
+        };
         for line in lines {
-            let (converted, deep) = self.code_line(&mut reader, line)?;
-            too_deep |= deep;
-            code.push(converted);
+            let statement = self.code_line(&mut reader, line)?;
+            run.too_deep |= statement.too_deep;
+            if statement.obfuscated {
+                run.obfuscated.push(run.lines.len());
+            }
+            run.lines.push(statement.line);
         }
-        Ok((code, too_deep))
+        Ok(run)
     }
 
-    /// The line of the engine for `line`, which `reader` reads after the lines
-    /// of its run, and whether its statement nests expressions too deep to be
-    /// read.
+    /// The statement of the engine for `line`, which `reader` reads after the
+    /// lines of its run.
     fn code_line(
         &mut self,
         reader: &mut StatementReader<'_>,
         line: &LogicalLine,
-    ) -> Result<(CodeLine, bool), VbaError> {
+    ) -> Result<Statement, VbaError> {
         let comment = line.comment.as_ref().map(|comment| comment.text.clone());
         let raw = raw_text(&line.text, comment.as_deref());
         if line.kind != LogicalKind::Code {
@@ -440,7 +474,11 @@ impl Converter<'_, '_> {
                 ..CodeLine::default()
             };
             self.room.take(line_bytes(&code))?;
-            return Ok((code, false));
+            return Ok(Statement {
+                line: code,
+                too_deep: false,
+                obfuscated: false,
+            });
         }
         // A statement that cannot fit is refused on its tokens, before its
         // facts are read. The tokens are gone when the facts are: they weigh 24
@@ -462,7 +500,11 @@ impl Converter<'_, '_> {
             progids: facts.progids,
         };
         self.room.take(line_bytes(&converted))?;
-        Ok((converted, facts.too_deep))
+        Ok(Statement {
+            line: converted,
+            too_deep: facts.too_deep,
+            obfuscated: facts.chr_obfuscation,
+        })
     }
 }
 
@@ -631,12 +673,84 @@ mod tests {
     }
 
     #[test]
-    fn the_predicates_that_the_front_end_does_not_read_yet_are_left_unset() {
-        // A sub that obfuscates a string, and that nothing calls.
+    fn the_predicate_that_the_front_end_does_not_read_yet_is_left_unset() {
+        // A sub that nothing calls, and two character codes, which are no mark
+        // of obfuscation.
         let adapted = adapted("Sub Run()\n    x = Chr(65) & Chr(66)\nEnd Sub\n");
 
         let procedure = &adapted.input.procedures[0];
+        assert!(!procedure.predicates.possibly_unused);
         assert_eq!(procedure.predicates, ParserPredicates::default());
+    }
+
+    #[test]
+    fn the_statements_that_show_a_mark_of_obfuscation_are_cited_by_their_position() {
+        // The positions count every line of the procedure, its declaration and
+        // its `End` line too, and a `:` makes a statement of its own.
+        let text = [
+            "Sub Run()",
+            "    x = 1",
+            "    y = Chr(72) & Chr(105) & Chr(33)",
+            "    z = StrReverse(\"abc\")",
+            "    a = 1: b = Chr(1) & Chr(2) & Chr(3)",
+            "    c = Chr(65) & Chr(66)",
+            "End Sub",
+            "",
+        ]
+        .join("\n");
+
+        let adapted = adapted(&text);
+
+        let procedure = &adapted.input.procedures[0];
+        let cited = &procedure.predicates.chr_obfuscation;
+        assert_eq!(cited, &[2, 3, 5]);
+        let statements: Vec<_> = (cited.iter())
+            .map(|&at| procedure.lines[at].raw.as_str())
+            .collect();
+        assert_eq!(
+            statements,
+            [
+                "y = Chr(72) & Chr(105) & Chr(33)",
+                "z = StrReverse(\"abc\")",
+                "b = Chr(1) & Chr(2) & Chr(3)"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_mark_of_obfuscation_is_cited_for_its_own_procedure_only() {
+        let text = [
+            "Sub First()",
+            "    x = 1",
+            "End Sub",
+            "Sub Second()",
+            "    y = Chr(1) + Chr(2) + Chr(3)",
+            "End Sub",
+            "",
+        ]
+        .join("\n");
+
+        let adapted = adapted(&text);
+
+        let cited: Vec<_> = (adapted.input.procedures.iter())
+            .map(|procedure| procedure.predicates.chr_obfuscation.clone())
+            .collect();
+        // The position is among the lines of the procedure, not of the module.
+        assert_eq!(cited, [Vec::new(), vec![1]]);
+    }
+
+    #[test]
+    fn a_mark_of_obfuscation_outside_any_procedure_is_cited_nowhere() {
+        let adapted =
+            adapted("Const Hidden = Chr(1) & Chr(2) & Chr(3)\nSub Run()\n    x = 1\nEnd Sub\n");
+
+        // The engine cites the statements of procedures only.
+        let procedure = &adapted.input.procedures[0];
+        assert!(procedure.predicates.chr_obfuscation.is_empty());
+        assert_eq!(
+            raws(&adapted.input.declarations),
+            [(1, "Const Hidden = Chr(1) & Chr(2) & Chr(3)")]
+        );
     }
 
     #[test]

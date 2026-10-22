@@ -98,6 +98,44 @@ fn the_event_handler_of_a_document_module_is_an_auto_exec_procedure() {
     assert!(signal_ids(first(&standard)).is_empty());
 }
 
+/// The lines and the snippets that the signal `signal_id` cites in the first
+/// procedure of a file.
+fn cited<'a>(file: &'a FileReport, signal_id: &str) -> Vec<(u32, &'a str)> {
+    let signals = first(file).signals.iter();
+    let found = signals.filter(|signal| signal.signal_id == signal_id);
+    let evidence = found.flat_map(|signal| signal.evidence.iter().flatten());
+    evidence
+        .map(|item| (item.line, item.snippet.as_deref().unwrap_or_default()))
+        .collect()
+}
+
+#[test]
+fn a_statement_that_builds_a_string_from_character_codes_raises_the_signal_of_obfuscation() {
+    // Three codes joined are a mark of obfuscation, and so is the reverse of a
+    // literal. Two codes are not.
+    let spelled =
+        "Sub Spell()\n    s = Chr(72) & Chr(105) & Chr(33)\n    t = Chr(72) & Chr(105)\nEnd Sub\n";
+    let reversed = "Sub Spell()\n    s = 1\n    t = StrReverse(\"cba\")\nEnd Sub\n";
+    let few = "Sub Spell()\n    t = Chr(72) & Chr(105)\nEnd Sub\n";
+
+    let spelling = report_of(spelled);
+    let reversing = report_of(reversed);
+    let two = report_of(few);
+
+    // Only the statement that shows the mark is cited, by its line in the file.
+    let id = "sec.chr-obfuscation";
+    assert_eq!(
+        cited(&spelling, id),
+        [(2, "s = Chr(72) & Chr(105) & Chr(33)")]
+    );
+    assert_eq!(cited(&reversing, id), [(3, "t = StrReverse(\"cba\")")]);
+    assert!(signal_ids(first(&two)).is_empty());
+    // The signal is medium: only a chain with an execution makes the file high.
+    let signal = &first(&spelling).signals[0];
+    assert_eq!(signal.severity, Severity::Medium);
+    assert_eq!(spelling.max_severity, Some(Severity::Medium));
+}
+
 #[test]
 fn a_function_that_a_formula_could_call_is_classified_as_a_udf() {
     let udf = "Function Twice(x)\n    Twice = x * 2\nEnd Function\n";

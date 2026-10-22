@@ -4,15 +4,10 @@
 //! The ground truth is `corpus/ground-truth/security-expected.yaml`: the
 //! signals that each sample of family 14 must raise. The samples go through
 //! `analyze_modules`, as modules of a text file, so that the signals are those
-//! of the whole pipeline: front end, rule engine and report.
-//!
-//! Two of the signals wait for a fact that the front end does not read yet
-//! (the obfuscated character codes of the statements). The test is a ratchet:
-//! `WAITING` lists the signals that are known not to fire, by the sample, and
-//! the test fails both when a signal is missing that is not listed and when a
-//! listed signal fires, so that the list only shrinks and ends empty. The other
-//! bullet of A5, the obfuscated ProgID of 14-02 resolved to `WScript.Shell`, is
-//! checked here through `sec.wscript-run` on that sample.
+//! of the whole pipeline: front end, rule engine and report. Every expected
+//! signal must be raised. The other bullet of A5, the obfuscated ProgID of
+//! 14-02 resolved to `WScript.Shell`, is checked here through
+//! `sec.wscript-run` on that sample.
 
 // The helpers are test code: a panic in one is a failed test. `clippy.toml`
 // only exempts the bodies of `#[test]` functions. The file reads the corpus
@@ -28,17 +23,6 @@ use macroport_core::report::FileReport;
 use macroport_core::rules::{ModuleType, RuleSet, RulesSources, Severity};
 use macroport_core::vba::ModuleSource;
 use macroport_testkit::corpus;
-
-/// The signals of each sample of family 14 that are known not to fire yet, and
-/// the fact of the front end they wait for.
-const WAITING: &[(&str, &[&str])] = &[
-    // The character codes of `Chr` (the predicate `chr_obfuscation`), and the
-    // chain of signals that the signal on them completes.
-    (
-        "14-02",
-        &["sec.chr-obfuscation", "sec.chain.obfuscated-execution"],
-    ),
-];
 
 static RULES: LazyLock<RuleSet> = LazyLock::new(|| {
     RuleSet::load(&RulesSources::EMBEDDED).expect("the rules that ship with the tool load")
@@ -104,41 +88,29 @@ fn sample(id: &str) -> String {
 }
 
 #[test]
-fn the_signals_of_the_security_samples_are_raised_but_for_those_that_wait() {
-    let waiting: BTreeMap<&str, BTreeSet<&str>> = WAITING
-        .iter()
-        .map(|(id, signals)| (*id, signals.iter().copied().collect()))
-        .collect();
+fn every_expected_signal_of_the_security_samples_is_raised() {
     let expected = expected();
+    // A ground truth that lost its samples would pass for nothing.
+    assert!(expected.len() >= 6, "{} samples", expected.len());
     let (mut raised_count, mut total) = (0, 0);
-    let mut problems = Vec::new();
+    let mut missing = Vec::new();
 
     for (id, wanted) in &expected {
         let report = report_of(&sample(id));
         let raised: BTreeSet<&str> = signals(&report).into_iter().map(|(id, _)| id).collect();
-        let missing: BTreeSet<&str> = (wanted.iter())
-            .map(String::as_str)
-            .filter(|signal| !raised.contains(signal))
-            .collect();
-        let waits = waiting.get(id.as_str()).cloned().unwrap_or_default();
-        raised_count += wanted.len() - missing.len();
-        total += wanted.len();
-        println!("{id}: raised {raised:?}, missing {missing:?}");
-        for signal in missing.difference(&waits) {
-            problems.push(format!("{id}: {signal} is not raised"));
-        }
-        for signal in waits.difference(&missing) {
-            problems.push(format!("{id}: {signal} is raised, remove it from WAITING"));
-        }
-    }
-    for id in waiting.keys() {
-        if !expected.contains_key(*id) {
-            problems.push(format!("{id}: waits for signals that nobody expects"));
+        println!("{id}: raised {raised:?}");
+        for signal in wanted {
+            total += 1;
+            if raised.contains(signal.as_str()) {
+                raised_count += 1;
+            } else {
+                missing.push(format!("{id}: {signal} is not raised"));
+            }
         }
     }
 
     println!("A5: {raised_count} of {total} expected signals raised");
-    assert_eq!(problems, Vec::<String>::new());
+    assert_eq!(missing, Vec::<String>::new());
 }
 
 #[test]
